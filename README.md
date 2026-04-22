@@ -1,3 +1,3 @@
-# KDADK-MMPM
+# DADK
 
-KDADK-MMPM SIG信息
+数据检测加速套件 Data Analytics Development Kit
