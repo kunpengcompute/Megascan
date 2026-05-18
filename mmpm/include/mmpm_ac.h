@@ -16,8 +16,10 @@ typedef struct ACNode {
     int* output;
     int id_size;
     int out_size;
-    bool flags[BYTE_MAX_SIZE];              // marks whether the pointer is an ancestor or a child node.
+    bool is_non_child_node[BYTE_MAX_SIZE];  // false: child node pointer; true: non-child pointer (ancestor/fail/...).
     uint32_t node_idx;
+    struct ACNode* parent;      
+    uint8_t parent_ch;          
 } ACNode;
 
 typedef struct {
@@ -33,5 +35,6 @@ int ac_automaton_destroy(ACAutomaton *automaton);
 int ac_automaton_insert(ACAutomaton* automaton,  uint32_t alias, const uint8_t *pattern, uint32_t len);
 int ac_automaton_build(ACAutomaton* automaton);
 int ac_automaton_match(ACAutomaton *automaton, const uint8_t *data, uint32_t len);
+int ac_automaton_remove(ACAutomaton *automaton, uint32_t alias, const uint8_t *pattern, uint32_t len);
 
 #endif

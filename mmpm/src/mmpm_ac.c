@@ -7,7 +7,6 @@
 #include <stdbool.h>
 #include <pthread.h>
 #include <limits.h>
-#include "securec.h"
 #include "mmpm_ac.h"
 
 #define MMPM_AC_AUTOMATON_INITIAL_ID 1
@@ -15,31 +14,22 @@
 static void *secure_realloc(void *old_ptr, size_t old_size, size_t new_size)
 {
     void *new_ptr = NULL;
-    errno_t ret = EOK;
-
     if (new_size == 0) {
         goto end;
     }
-
     if ((old_ptr == NULL && old_size != 0) || (old_ptr != NULL && old_size == 0)) {
         goto end;
     }
-
+    
     new_ptr = malloc(new_size);
     if (new_ptr == NULL) {
         goto end;
     }
-
     if (old_size == 0) {
         goto end;
     }
 
-    ret = memcpy_s(new_ptr, new_size, old_ptr, (new_size < old_size) ? new_size : old_size);
-    if (ret != EOK) {
-        free(new_ptr);
-        new_ptr = NULL;
-        goto end;
-    }
+    memcpy(new_ptr, old_ptr, (new_size < old_size) ? new_size : old_size);
     free(old_ptr);
 
 end:
@@ -49,7 +39,6 @@ end:
 static ACNode *create_ac_node()
 {
     ACNode *node = (ACNode *)calloc(1, sizeof(ACNode));
-
     return node;
 }
 
@@ -77,16 +66,18 @@ static void do_ac_node_free(ACNode *node)
     if (node == NULL) {
         return;
     }
-
     for (i = 0; i < BYTE_MAX_SIZE; i++) {
-        if (node->flags[i] == false)
+        if (node->is_non_child_node[i] == false)
             do_ac_node_free(node->children[i]);
     }
     if (node->id_set != NULL) {
         free(node->id_set);
     }
+    if (node->output != NULL) {
+        free(node->output);
+    }
 
-    memset_s(node, sizeof(ACNode), 0, sizeof(ACNode));
+    memset(node, 0, sizeof(ACNode));
     free(node);
 }
 
@@ -95,17 +86,11 @@ int ac_automaton_destroy(ACAutomaton *automaton)
     if (automaton == NULL)
         return MMPM_INVALID_PARA;
     free(automaton->table);
-    if ((automaton->id_count > MMPM_AC_AUTOMATON_INITIAL_ID) && (automaton->output != NULL)) {
-        for (uint32_t i = 0; i < automaton->id_count; ++i) {
-            if (automaton->output[i]) {
-                free(automaton->output[i]);
-            }
-        }
-    }
-
     if (automaton->output != NULL) {
         free(automaton->output);
     }
+
+    do_ac_node_free(automaton->root);
 
     automaton->table = NULL;
     automaton->output = NULL;
@@ -134,6 +119,9 @@ int ac_automaton_insert(ACAutomaton *automaton, uint32_t alias, const uint8_t *p
             }
             node->children[pattern[i]]->node_idx = automaton->id_count;
             automaton->id_count++;
+            
+            node->children[pattern[i]]->parent = node;
+            node->children[pattern[i]]->parent_ch = pattern[i];
         }
         node = node->children[pattern[i]];
     }
@@ -281,8 +269,11 @@ static int do_ac_table_build(uint32_t *table, int **output, ACNode *node, uint32
     output[node->node_idx] = node->output;
 
     for (i = 0; i < BYTE_MAX_SIZE; i++) {
-        if (node->flags[i] == false) {
-            do_ac_table_build(table, output, node->children[i], id_count);
+        if (node->is_non_child_node[i] == false) {
+            int ret = do_ac_table_build(table, output, node->children[i], id_count);
+            if (ret != MMPM_SUCCESS) {
+                return ret;
+            }
         }
     }
     return MMPM_SUCCESS;
@@ -306,15 +297,13 @@ static int ac_table_build(ACAutomaton *automaton)
     if (automaton->output == NULL) {
         return MMPM_MALLOC_FAIL;
     }
-    memset_s(automaton->output, sizeof(int *) * automaton->id_count, 0, sizeof(int *) * automaton->id_count);
+    memset(automaton->output, 0, sizeof(int *) * automaton->id_count);
 
     // fill the change table content.
     int ret = do_ac_table_build(automaton->table, automaton->output, automaton->root, automaton->id_count);
     if (ret != MMPM_SUCCESS) {
         return ret;
     }
-    do_ac_node_free(automaton->root);
-    automaton->root = NULL;
 
     return MMPM_SUCCESS;
 }
@@ -349,7 +338,7 @@ int ac_automaton_build(ACAutomaton *automaton)
             queue[rear++] = root->children[i];
         } else {
             root->children[i] = root;
-            root->flags[i] = true;
+            root->is_non_child_node[i] = true;
         }
     }
 
@@ -367,7 +356,7 @@ int ac_automaton_build(ACAutomaton *automaton)
                     tmp = tmp->fail;
                 }
                 cur->children[i] = tmp->children[i] ? tmp->children[i] : root;
-                cur->flags[i] = true;
+                cur->is_non_child_node[i] = true;
                 continue;
             }
 
@@ -397,10 +386,349 @@ end:
     return ret;
 }
 
+typedef struct {
+    ACNode *node;
+    ACNode *fail;
+} DeletedNodeInfo;
+
+static bool has_no_real_children(ACNode *node)
+{
+    for (int i = 0; i < BYTE_MAX_SIZE; i++) {
+        if (node->children[i] != NULL && !node->is_non_child_node[i]) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static void free_ac_node_simple(ACNode *node)
+{
+    if (node == NULL) {
+        return;
+    }
+
+    if (node->id_set != NULL) {
+        free(node->id_set);
+    }
+    if (node->output != NULL) {
+        free(node->output);
+    }
+
+    memset(node, 0, sizeof(ACNode));
+    free(node);
+}
+
+static int find_deleted_node_index(const DeletedNodeInfo *deleted_infos, uint32_t deleted_cnt, const ACNode *node)
+{
+    for (uint32_t i = 0; i < deleted_cnt; i++) {
+        if (deleted_infos[i].node == node) {
+            return (int)i;
+        }
+    }
+    return -1;
+}
+
+static ACNode *resolve_deleted_fail_target(const DeletedNodeInfo *deleted_infos, uint32_t deleted_cnt,
+    ACNode *deleted_target, ACNode *root)
+{
+    ACNode *target = deleted_target;
+    int idx = find_deleted_node_index(deleted_infos, deleted_cnt, target);
+
+    while (idx >= 0) {
+        target = deleted_infos[idx].fail;
+        if (target == NULL) {
+            return root;
+        }
+        idx = find_deleted_node_index(deleted_infos, deleted_cnt, target);
+    }
+
+    return target;
+}
+
+static void prune_empty_nodes_collect(ACAutomaton *automaton, ACNode *node,
+    DeletedNodeInfo *deleted_infos, uint32_t *deleted_cnt)
+{
+    while (node != NULL && node != automaton->root) {
+        if (node->id_size != 0 || !has_no_real_children(node)) {
+            break;
+        }
+
+        ACNode *parent = node->parent;
+        uint8_t ch = node->parent_ch;
+
+        deleted_infos[*deleted_cnt].node = node;
+        deleted_infos[*deleted_cnt].fail = node->fail;
+        (*deleted_cnt)++;
+
+        parent->children[ch] = NULL;
+        parent->is_non_child_node[ch] = false;
+
+        free_ac_node_simple(node);
+        node = parent;
+    }
+}
+
+static int update_fail_pointers_local(ACAutomaton *automaton, const DeletedNodeInfo *deleted_infos, uint32_t deleted_cnt)
+{
+    if (deleted_cnt == 0) {
+        return MMPM_SUCCESS;
+    }
+
+    ACNode **queue = (ACNode **)calloc(automaton->id_count, sizeof(ACNode *));
+    if (queue == NULL) {
+        return MMPM_MALLOC_FAIL;
+    }
+
+    int front = 0, rear = 0;
+    queue[rear++] = automaton->root;
+
+    while (front < rear) {
+        ACNode *cur = queue[front++];
+
+        if (cur != automaton->root && cur->fail != NULL) {
+            int idx = find_deleted_node_index(deleted_infos, deleted_cnt, cur->fail);
+            if (idx >= 0) {
+                cur->fail = resolve_deleted_fail_target(deleted_infos, deleted_cnt, cur->fail, automaton->root);
+            }
+        }
+
+        for (int i = 0; i < BYTE_MAX_SIZE; i++) {
+            if (cur->children[i] != NULL && !cur->is_non_child_node[i]) {
+                queue[rear++] = cur->children[i];
+            }
+        }
+    }
+
+    free(queue);
+    return MMPM_SUCCESS;
+}
+
+static int clear_virtual_edges_and_reindex(ACAutomaton *automaton)
+{
+    ACNode **queue = (ACNode **)calloc(automaton->id_count, sizeof(ACNode *));
+    if (queue == NULL) {
+        return MMPM_MALLOC_FAIL;
+    }
+
+    int front = 0, rear = 0;
+    uint32_t new_id = 0;
+    queue[rear++] = automaton->root;
+
+    while (front < rear) {
+        ACNode *cur = queue[front++];
+        cur->node_idx = new_id++;
+
+        if (cur->output != NULL) {
+            free(cur->output);
+            cur->output = NULL;
+        }
+        cur->out_size = 0;
+
+        for (int i = 0; i < BYTE_MAX_SIZE; i++) {
+            if (cur->is_non_child_node[i]) {
+                cur->children[i] = NULL;
+                cur->is_non_child_node[i] = false;
+            }
+        }
+
+        for (int i = 0; i < BYTE_MAX_SIZE; i++) {
+            if (cur->children[i] != NULL && !cur->is_non_child_node[i]) {
+                queue[rear++] = cur->children[i];
+            }
+        }
+    }
+
+    automaton->id_count = new_id;
+    free(queue);
+    return MMPM_SUCCESS;
+}
+
+static int rebuild_output_with_current_fail(ACAutomaton *automaton)
+{
+    ACNode **queue = (ACNode **)calloc(automaton->id_count, sizeof(ACNode *));
+    if (queue == NULL) {
+        return MMPM_MALLOC_FAIL;
+    }
+
+    int front = 0, rear = 0;
+    int ret = MMPM_SUCCESS;
+    queue[rear++] = automaton->root;
+
+    while (front < rear) {
+        ACNode *cur = queue[front++];
+
+        if (cur != automaton->root) {
+            if (cur->parent == automaton->root) {
+                if (cur->id_size > 0) {
+                    ret = node_output_integrate_for_root_child(cur);
+                    if (ret != MMPM_SUCCESS) {
+                        break;
+                    }
+                }
+            } else {
+                ret = node_output_integrate(cur);
+                if (ret != MMPM_SUCCESS) {
+                    break;
+                }
+            }
+        }
+
+        for (int i = 0; i < BYTE_MAX_SIZE; i++) {
+            if (cur->children[i] != NULL && !cur->is_non_child_node[i]) {
+                queue[rear++] = cur->children[i];
+            }
+        }
+    }
+
+    free(queue);
+    return ret;
+}
+
+static int fill_virtual_edges_by_current_fail(ACAutomaton *automaton)
+{
+    ACNode **queue = (ACNode **)calloc(automaton->id_count, sizeof(ACNode *));
+    if (queue == NULL) {
+        return MMPM_MALLOC_FAIL;
+    }
+
+    ACNode *root = automaton->root;
+    int front = 0, rear = 0;
+
+    for (int i = 0; i < BYTE_MAX_SIZE; i++) {
+        if (root->children[i] != NULL && !root->is_non_child_node[i]) {
+            queue[rear++] = root->children[i];
+        } else {
+            root->children[i] = root;
+            root->is_non_child_node[i] = true;
+        }
+    }
+
+    while (front < rear) {
+        ACNode *cur = queue[front++];
+
+        for (int i = 0; i < BYTE_MAX_SIZE; i++) {
+            if (cur->children[i] == NULL) {
+                ACNode *tmp = cur->fail;
+                while (tmp != root && (tmp->children[i] == NULL || tmp->is_non_child_node[i])) {
+                    tmp = tmp->fail;
+                }
+                if (tmp->children[i] != NULL && !tmp->is_non_child_node[i]) {
+                    cur->children[i] = tmp->children[i];
+                } else {
+                    cur->children[i] = root;
+                }
+                cur->is_non_child_node[i] = true;
+            }
+        }
+
+        for (int i = 0; i < BYTE_MAX_SIZE; i++) {
+            if (cur->children[i] != NULL && !cur->is_non_child_node[i]) {
+                queue[rear++] = cur->children[i];
+            }
+        }
+    }
+
+    free(queue);
+    return MMPM_SUCCESS;
+}
+
+static int rebuild_table_output_after_local_fail(ACAutomaton *automaton)
+{
+    free(automaton->table);
+    automaton->table = NULL;
+    if (automaton->output != NULL) {
+        free(automaton->output);
+        automaton->output = NULL;
+    }
+
+    int ret = clear_virtual_edges_and_reindex(automaton);
+    if (ret != MMPM_SUCCESS) {
+        return ret;
+    }
+
+    ret = rebuild_output_with_current_fail(automaton);
+    if (ret != MMPM_SUCCESS) {
+        return ret;
+    }
+
+    ret = fill_virtual_edges_by_current_fail(automaton);
+    if (ret != MMPM_SUCCESS) {
+        return ret;
+    }
+
+    return ac_table_build(automaton);
+}
+
+int ac_automaton_remove(ACAutomaton *automaton, uint32_t alias, const uint8_t *pattern, uint32_t len)
+{
+    if (automaton == NULL || pattern == NULL || len == 0) {
+        return MMPM_INVALID_PARA;
+    }
+
+    if (automaton->root == NULL) {
+        return MMPM_INVALID_PARA;
+    }
+
+    ACNode *node = automaton->root;
+    for (uint32_t i = 0; i < len; i++) {
+        if (node->children[pattern[i]] == NULL || node->is_non_child_node[pattern[i]]) {
+            return MMPM_FIND_FAIL;
+        }
+        node = node->children[pattern[i]];
+    }
+
+    if (node->id_size == 0) {
+        return MMPM_FIND_FAIL;
+    }
+
+    int alias_idx = -1;
+    for (int i = 0; i < node->id_size; i++) {
+        if (node->id_set[i] == (int)alias) {
+            alias_idx = i;
+            break;
+        }
+    }
+    if (alias_idx == -1) {
+        return MMPM_FIND_FAIL;
+    }
+
+    memmove(&node->id_set[alias_idx], &node->id_set[alias_idx + 1],
+        (size_t)(node->id_size - alias_idx - 1) * sizeof(int));
+    node->id_size--;
+
+    DeletedNodeInfo *deleted_infos = (DeletedNodeInfo *)calloc(automaton->id_count, sizeof(DeletedNodeInfo));
+    if (deleted_infos == NULL) {
+        return MMPM_MALLOC_FAIL;
+    }
+    uint32_t deleted_cnt = 0;
+
+    prune_empty_nodes_collect(automaton, node, deleted_infos, &deleted_cnt);
+
+    int ret = update_fail_pointers_local(automaton, deleted_infos, deleted_cnt);
+    free(deleted_infos);
+    if (ret != MMPM_SUCCESS) {
+        return ret;
+    }
+
+    ret = rebuild_table_output_after_local_fail(automaton);
+    if (ret != MMPM_SUCCESS) {
+        return ret;
+    }
+
+    if (automaton->pattern_count > 0) {
+        automaton->pattern_count--;
+    }
+    return MMPM_SUCCESS;
+}
+
 int ac_automaton_match(ACAutomaton *automaton, const uint8_t *data, uint32_t len)
 {
     uint8_t idx;
     int table_ret = MMPM_FIND_FAIL;
+
+    if (automaton == NULL || automaton->table == NULL || automaton->output == NULL || data == NULL) {
+        return MMPM_INVALID_PARA;
+    }
 
     uint32_t node_index = 0;
     for (uint32_t i = 0; i < len; i++) {

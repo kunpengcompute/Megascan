@@ -2,13 +2,15 @@
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
 
  */
+#define _POSIX_C_SOURCE 200809L
+
+#include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-#include "securec.h"
 #include "mmpm_hash.h"
 
 #define ALIGN(s) (((s) + 63) & ~63)
-#define ALIGN_SIZE      64
+#define ALIGN_SIZE      (size_t)64
 
 #define DEFAULT_SUBBUCKET_NUM   96
 #define DJB2_HASH_SEED  5381
@@ -42,7 +44,7 @@ int hash_table_create(mmpm_hash **hash_table, uint32_t buckets, uint16_t key_siz
         return MMPM_MALLOC_FAIL;
     }
 
-    (void)memset_s(table, sizeof(mmpm_hash), 0, sizeof(mmpm_hash));
+    memset(table, 0, sizeof(mmpm_hash));
     table->bucket_num = buckets;
     table->key_size = key_size;
     table->build_ok = 0;
@@ -79,7 +81,7 @@ int hash_table_build(mmpm_hash *hash_table, uint32_t secondary_buckets)
         return MMPM_MALLOC_FAIL;
     }
 
-    (void)memset_s(malloc_ptr, malloc_size, 0, malloc_size);
+    memset(malloc_ptr, 0, malloc_size);
     hash_table->buckets = (mmpm_hash_bucket *)malloc_ptr;
 
     malloc_ptr += ALIGN(sizeof(mmpm_hash_bucket) * buckets_cnt);
@@ -160,8 +162,7 @@ int hash_table_add(mmpm_hash *hash_table, uint32_t alias, const uint8_t *key, ui
     }
 
     pthread_rwlock_wrlock(&hash_table->buckets[bucket_idx].subbuckets[subbucket_idx].rwlock);
-    (void)memset_s(node, sizeof(mmpm_hash_node) + hash_table->key_size, 0, \
-        sizeof(mmpm_hash_node) + hash_table->key_size);
+    memset(node, 0, sizeof(mmpm_hash_node) + hash_table->key_size);
     node->bucket_index = bucket_idx;
     node->subbucket_index = subbucket_idx;
     node->link_next = hash_table->buckets[bucket_idx].subbuckets[subbucket_idx].nodes;
@@ -169,7 +170,7 @@ int hash_table_add(mmpm_hash *hash_table, uint32_t alias, const uint8_t *key, ui
     if (hash_table->buckets[bucket_idx].subbuckets[subbucket_idx].nodes != NULL)
         hash_table->buckets[bucket_idx].subbuckets[subbucket_idx].nodes->link_pre = node;
     hash_table->buckets[bucket_idx].subbuckets[subbucket_idx].nodes = node;
-    (void)memcpy_s(node->content, key_len, key, key_len);
+    memcpy(node->content, key, key_len);
     node->key_len = key_len;
     node->alias = alias;
 

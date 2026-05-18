@@ -8,25 +8,6 @@ set -eu
 script_path="${BASH_SOURCE[0]}"
 workspace_dir=$(cd $(dirname "$script_path") && pwd)
 
-function build_huawei_secure_c()
-{
-    if [ -f "$workspace_dir/opensource/huawei_secure_c/lib/libsecurec.a" ]; then
-        return
-    fi
-    
-    if [ ! -d "$workspace_dir/opensource/huawei_secure_c" ]; then
-        echo "can't find the ${workspace_dir}/opensource/huawei_secure_c"
-        exit 1
-    fi
-
-    cd $workspace_dir/opensource/huawei_secure_c/src
-    make lib
-    if [ ! -f "$workspace_dir/opensource/huawei_secure_c/lib/libsecurec.a" ]; then
-        echo "compile huawei_secure_c static lib failed."
-        exit 1
-    fi
-}
-
 function build_mmpm()
 {
     # compile
@@ -36,6 +17,9 @@ function build_mmpm()
     cmake -S . -B build
 
     cmake --build build # install to ./output
+    
+    mkdir -p output/lib
+    cp ./output/lib/libmmpm.so ./output/
     
     cd ./output
     tar -czvf mmpm.tar.gz lib/ include/
@@ -48,8 +32,6 @@ function build_mmpm()
     rm -rf include/ lib/
     rm -rf rpmbuild
 }
-
-build_huawei_secure_c
 
 build_mmpm
 
