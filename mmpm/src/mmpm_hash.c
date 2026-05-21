@@ -2,15 +2,15 @@
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
 
  */
-#define _POSIX_C_SOURCE 200809L
-
-#include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
+#include <errno.h>
 #include "mmpm_hash.h"
+#include "mmpm_allocator.h"
 
 #define ALIGN(s) (((s) + 63) & ~63)
-#define ALIGN_SIZE      (size_t)64
+#define ALIGN_SIZE      64
 
 #define DEFAULT_SUBBUCKET_NUM   96
 #define DJB2_HASH_SEED  5381
@@ -38,7 +38,7 @@ int hash_table_create(mmpm_hash **hash_table, uint32_t buckets, uint16_t key_siz
     }
 
     *hash_table = NULL;
-    
+
     ret = posix_memalign((void **)(&(table)), ALIGN_SIZE, sizeof(mmpm_hash));
     if (ret || table == NULL) {
         return MMPM_MALLOC_FAIL;
@@ -109,7 +109,7 @@ error:
             pthread_rwlock_destroy(&hash_table->buckets[k].subbuckets[l].rwlock);
         }
     }
-    free(hash_table->buckets);
+    mmpm_free(hash_table->buckets);
     hash_table->buckets = NULL;
     return ret;
 }
@@ -240,7 +240,7 @@ int hash_table_remove(mmpm_hash *hash_table, const uint8_t *key, uint32_t key_le
         
         if (node->link_next)
             node->link_next->link_pre = node->link_pre;
-        free(node);
+        mmpm_free(node);
         hash_table->buckets[bucket_idx].subbuckets[subbucket_idx].node_num--;
     }
     pthread_rwlock_unlock(&hash_table->buckets[bucket_idx].subbuckets[subbucket_idx].rwlock);
@@ -266,7 +266,7 @@ int hash_table_destroy(mmpm_hash *hash_table)
             while (subbucket_head) {
                 tmp = subbucket_head;
                 subbucket_head = subbucket_head->link_next;
-                free(tmp);
+                mmpm_free(tmp);
             }
             (void)pthread_rwlock_unlock(&hash_table->buckets[i].subbuckets[j].rwlock);
             (void)pthread_rwlock_destroy(&hash_table->buckets[i].subbuckets[j].rwlock);
@@ -274,11 +274,11 @@ int hash_table_destroy(mmpm_hash *hash_table)
     }
 
     if (hash_table->buckets) {
-        free(hash_table->buckets);
+        mmpm_free(hash_table->buckets);
         hash_table->buckets = NULL;
     }
 
-    free(hash_table);
+    mmpm_free(hash_table);
     return MMPM_SUCCESS;
 }
 

@@ -6,6 +6,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include "mmpm_allocator.h"
 
 #define MMPM_SUCCESS            0
 #define MMPM_INVALID_PARA       (-1)
@@ -95,5 +96,15 @@ int mmpm_find_rule(mmpm_handler_t *handler, mmpm_rule_t *rule);
  * @return: 0 for success, an error code(negative number) for failure.
  */
 int mmpm_handler_destroy(mmpm_handler_t *handler);
+
+/**
+ * Set global memory allocator for MMPM.
+ *
+ * @alloc_func: Memory allocation function pointer.
+ * @calloc_func: Memory allocation and initialization function pointer.
+ * @free_func: Memory deallocation function pointer.
+ * @return: 0 for success, an error code(negative number) for failure.
+ */
+int mmpm_set_allocator(mmpm_alloc_t alloc_func, mmpm_calloc_t calloc_func, mmpm_free_t free_func);
 
 #endif

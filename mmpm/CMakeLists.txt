@@ -2,6 +2,7 @@ add_library(mmpm SHARED
     src/mmpm.c
     src/mmpm_hash.c
     src/mmpm_ac.c
+    src/mmpm_allocator.c
 )
 
 target_include_directories(mmpm PRIVATE
