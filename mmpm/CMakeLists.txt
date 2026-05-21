@@ -3,11 +3,9 @@ add_library(mmpm SHARED
     src/mmpm_hash.c
     src/mmpm_ac.c
 )
-target_link_libraries(mmpm PRIVATE securec)
 
 target_include_directories(mmpm PRIVATE
     include
-    ${CMAKE_SOURCE_DIR}/opensource/huawei_secure_c/include
 )
 
 target_compile_options(mmpm PRIVATE -Wall -Werror -fvisibility=hidden -fstack-protector-strong -D_FORTIFY_SOURCE=2 -O2 -fpie -fpic -ftrapv)

@@ -195,8 +195,14 @@ int mmpm_remove_rule(mmpm_handler_t *handler, mmpm_rule_t *rule, uint32_t rule_n
                     goto end;
                 break;
             case MMPM_MATCHER_TYPE_AC:
-                ret = MMPM_NOT_SUPPORTED;
-                goto end;
+                if (!handler->is_built) {
+                    ret = MMPM_INVALID_PARA;
+                    goto end;
+                }
+                ret = ac_automaton_remove(handler->mmpm_matcher, rule[i].alias, rule[i].key, rule[i].key_len);
+                if (ret)
+                    goto end;
+                break;
             default:
                 /* no possible. */
                 break;

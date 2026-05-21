@@ -28,7 +28,8 @@ set(CMAKE_CXX_FLAGS
 )
 add_link_options(--coverage)
 
-LINK_DIRECTORIES(${PROJECT_LINK_DIR})
+LINK_DIRECTORIES(${PROJECT_LINK_DIR}
+                ${CMAKE_CURRENT_SOURCE_DIR}/../output/)
 
 # coverage option
 if(COVER)
