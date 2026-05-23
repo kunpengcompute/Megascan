@@ -15,6 +15,7 @@
 #define MMPM_INIT_RWLOCK_FAIL   (-5)
 #define MMPM_MEMCPY_FAIL        (-6)
 #define MMPM_NOT_SUPPORTED      (-7)
+#define MMPM_STREAM_STALE       (-8)
 
 typedef uint32_t (*hash_calc_func)(const uint8_t *key, uint32_t key_len);
 
@@ -39,6 +40,7 @@ typedef struct {
     bool is_built;
 } mmpm_handler_t;
 
+typedef struct ms_stream ms_stream_t;
 /**
  * Initialize multi-pattern matching handler.
  *
