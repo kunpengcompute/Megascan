@@ -28,6 +28,7 @@ typedef struct {
     uint32_t id_count;
     uint32_t *table;
     int **output;
+    uint64_t generation;
 } ACAutomaton;
 
 int ac_automaton_init(ACAutomaton *automaton);
@@ -36,5 +37,6 @@ int ac_automaton_insert(ACAutomaton* automaton,  uint32_t alias, const uint8_t *
 int ac_automaton_build(ACAutomaton* automaton);
 int ac_automaton_match(ACAutomaton *automaton, const uint8_t *data, uint32_t len);
 int ac_automaton_remove(ACAutomaton *automaton, uint32_t alias, const uint8_t *pattern, uint32_t len);
+int ac_automaton_match_state(ACAutomaton *automaton, const uint8_t *data, uint32_t len, uint32_t *node_index);
 
 #endif
