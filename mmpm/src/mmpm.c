@@ -245,7 +245,7 @@ int mmpm_open_stream(mmpm_handler_t *handler, ms_stream_t **stream)
         return MMPM_INVALID_PARA;
     }
 
-    ms_stream_t *s = (ms_stream_t *)calloc(1, sizeof(ms_stream_t));
+    ms_stream_t *s = (ms_stream_t *)mmpm_calloc(1, sizeof(ms_stream_t));
     if (s == NULL) {
         return MMPM_MALLOC_FAIL;
     }
@@ -303,6 +303,6 @@ int mmpm_close_stream(ms_stream_t *stream)
         return MMPM_INVALID_PARA;
     }
 
-    free(stream);
+    mmpm_free(stream);
     return MMPM_SUCCESS;
 }

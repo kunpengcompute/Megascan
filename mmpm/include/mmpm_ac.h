@@ -37,10 +37,6 @@ int ac_automaton_insert(ACAutomaton* automaton,  uint32_t alias, const uint8_t *
 int ac_automaton_build(ACAutomaton* automaton);
 int ac_automaton_match(ACAutomaton *automaton, const uint8_t *data, uint32_t len);
 int ac_automaton_remove(ACAutomaton *automaton, uint32_t alias, const uint8_t *pattern, uint32_t len);
-int mmpm_open_stream(mmpm_handler_t *handler, ms_stream_t **stream);
-int mmpm_scan_stream(ms_stream_t *stream, const uint8_t *data, uint32_t len);
-int mmpm_reset_stream(ms_stream_t *stream);
-int mmpm_close_stream(ms_stream_t *stream);
 int ac_automaton_match_state(ACAutomaton *automaton, const uint8_t *data, uint32_t len, uint32_t *node_index);
 
 #endif

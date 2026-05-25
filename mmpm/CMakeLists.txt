@@ -19,7 +19,10 @@ set_target_properties(mmpm
     LIBRARY_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/output/lib
 )
 
-execute_process(
-    COMMAND sh -c "mkdir -p ${CMAKE_SOURCE_DIR}/output/include/ && cp -rf ./include/mmpm.h ${CMAKE_SOURCE_DIR}/output/include/"
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/mmpm
+add_custom_command(TARGET mmpm POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_SOURCE_DIR}/output/include
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            ${CMAKE_CURRENT_SOURCE_DIR}/include/mmpm.h
+            ${CMAKE_CURRENT_SOURCE_DIR}/include/mmpm_allocator.h
+            ${CMAKE_SOURCE_DIR}/output/include
 )
