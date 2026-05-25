@@ -6,6 +6,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include "mmpm_allocator.h"
 
 #define MMPM_SUCCESS            0
 #define MMPM_INVALID_PARA       (-1)
@@ -133,4 +134,18 @@ int mmpm_close_stream(ms_stream_t *stream);
  */
 int mmpm_handler_destroy(mmpm_handler_t *handler);
 
+<<<<<<< HEAD
 #endif
+=======
+/**
+ * Set global memory allocator for MMPM.
+ *
+ * @alloc_func: Memory allocation function pointer.
+ * @calloc_func: Memory allocation and initialization function pointer.
+ * @free_func: Memory deallocation function pointer.
+ * @return: 0 for success, an error code(negative number) for failure.
+ */
+int mmpm_set_allocator(mmpm_alloc_t alloc_func, mmpm_calloc_t calloc_func, mmpm_free_t free_func);
+
+#endif
+>>>>>>> 261b4113ae953ffd4463a3f2bdf3080217a04f3d
