@@ -8,6 +8,7 @@
 #include "mmpm_hash.h"
 #include "mmpm_ac.h"
 #include "mmpm.h"
+#include "mmpm_allocator.h"
 
 #define HASH_DEFAULT_BUCKET_SIZE 100000
 #define IPV4_TUPLE_SIZE          16
@@ -35,7 +36,7 @@ int mmpm_handler_init(mmpm_handler_t *handler, mmpm_matcher_type type, uint32_t 
             ret = hash_table_build(handler->mmpm_matcher, secondary_buckets);
             break;
         case MMPM_MATCHER_TYPE_AC:
-            handler->mmpm_matcher = malloc(sizeof(ACAutomaton));
+            handler->mmpm_matcher = mmpm_malloc(sizeof(ACAutomaton));
             if (handler->mmpm_matcher == NULL)
                 return MMPM_MALLOC_FAIL;
             ret = ac_automaton_init(handler->mmpm_matcher);
@@ -45,7 +46,7 @@ int mmpm_handler_init(mmpm_handler_t *handler, mmpm_matcher_type type, uint32_t 
     }
 
     if (ret) {
-        free(handler->mmpm_matcher);
+        mmpm_free(handler->mmpm_matcher);
         handler->mmpm_matcher = NULL;
     }
     handler->type = type;
@@ -74,7 +75,7 @@ int mmpm_handler_destroy(mmpm_handler_t *handler)
             break;
         case MMPM_MATCHER_TYPE_AC:
             (void)ac_automaton_destroy(handler->mmpm_matcher);
-            free(handler->mmpm_matcher);
+            mmpm_free(handler->mmpm_matcher);
             break;
         default:
             pthread_mutex_unlock(&mutex);
