@@ -15,6 +15,13 @@
 
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 
+struct ms_stream {
+    ACAutomaton *automaton;
+    uint32_t node_index;
+    uint64_t offset;
+    uint64_t generation;
+};
+
 __attribute__((visibility("default")))
 int mmpm_handler_init(mmpm_handler_t *handler, mmpm_matcher_type type, uint32_t buckets, uint32_t secondary_buckets)
 {
@@ -222,5 +229,80 @@ int mmpm_set_hash_func(mmpm_handler_t *handler, hash_calc_func hash_func)
     
     hash_table_set_hash_func(handler->mmpm_matcher, hash_func);
 
+    return MMPM_SUCCESS;
+}
+
+__attribute__((visibility("default")))
+int mmpm_open_stream(mmpm_handler_t *handler, ms_stream_t **stream)
+{
+    if (handler == NULL || stream == NULL || *stream != NULL) {
+        return MMPM_INVALID_PARA;
+    }
+
+    if (handler->type != MMPM_MATCHER_TYPE_AC ||
+        handler->mmpm_matcher == NULL ||
+        !handler->is_built) {
+        return MMPM_INVALID_PARA;
+    }
+
+    ms_stream_t *s = (ms_stream_t *)mmpm_calloc(1, sizeof(ms_stream_t));
+    if (s == NULL) {
+        return MMPM_MALLOC_FAIL;
+    }
+
+    ACAutomaton *automaton = (ACAutomaton *)handler->mmpm_matcher;
+    s->automaton = automaton;
+    s->node_index = 0;
+    s->offset = 0;
+    s->generation = automaton->generation;
+
+    *stream = s;
+    return MMPM_SUCCESS;
+}
+
+__attribute__((visibility("default")))
+int mmpm_scan_stream(ms_stream_t *stream, const uint8_t *data, uint32_t len)
+{
+    if (stream == NULL || stream->automaton == NULL || data == NULL) {
+        return MMPM_INVALID_PARA;
+    }
+
+    if (stream->generation != stream->automaton->generation) {
+        return MMPM_STREAM_STALE;
+    }
+
+    int ret = ac_automaton_match_state(stream->automaton,
+                                       data,
+                                       len,
+                                       &stream->node_index);
+    if (ret == MMPM_SUCCESS || ret == MMPM_FIND_FAIL) {
+        stream->offset += len;
+    }
+
+    return ret;
+}
+
+__attribute__((visibility("default")))
+int mmpm_reset_stream(ms_stream_t *stream)
+{
+    if (stream == NULL || stream->automaton == NULL) {
+        return MMPM_INVALID_PARA;
+    }
+
+    stream->node_index = 0;
+    stream->offset = 0;
+    stream->generation = stream->automaton->generation;
+
+    return MMPM_SUCCESS;
+}
+
+__attribute__((visibility("default")))
+int mmpm_close_stream(ms_stream_t *stream)
+{
+    if (stream == NULL) {
+        return MMPM_INVALID_PARA;
+    }
+
+    mmpm_free(stream);
     return MMPM_SUCCESS;
 }

@@ -47,7 +47,7 @@ int ac_automaton_init(ACAutomaton *automaton)
 {
     if (automaton == NULL)
         return MMPM_INVALID_PARA;
-
+    automaton->generation = 0;
     automaton->root = create_ac_node();
     if (automaton->root == NULL)
         return MMPM_MALLOC_FAIL;
@@ -378,6 +378,9 @@ int ac_automaton_build(ACAutomaton *automaton)
     }
     /* Translate the pre-tree to query-table. */
     ret = ac_table_build(automaton);
+    if (ret == MMPM_SUCCESS) {
+        automaton->generation++;
+    }
 
 end:
     if (queue != NULL) {
@@ -719,24 +722,40 @@ int ac_automaton_remove(ACAutomaton *automaton, uint32_t alias, const uint8_t *p
     if (automaton->pattern_count > 0) {
         automaton->pattern_count--;
     }
+
+    automaton->generation++;
     return MMPM_SUCCESS;
 }
 
-int ac_automaton_match(ACAutomaton *automaton, const uint8_t *data, uint32_t len)
+int ac_automaton_match_state(ACAutomaton *automaton,
+                             const uint8_t *data,
+                             uint32_t len,
+                             uint32_t *node_index)
 {
     uint8_t idx;
     int table_ret = MMPM_FIND_FAIL;
 
-    if (automaton == NULL || automaton->table == NULL || automaton->output == NULL || data == NULL) {
+    if (automaton == NULL || automaton->table == NULL ||
+        automaton->output == NULL || data == NULL || node_index == NULL) {
         return MMPM_INVALID_PARA;
     }
 
-    uint32_t node_index = 0;
+    uint32_t state = *node_index;
     for (uint32_t i = 0; i < len; i++) {
         idx = data[i];
-        node_index = automaton->table[(uint64_t)node_index * BYTE_MAX_SIZE + idx];
-        if (automaton->output[node_index] != NULL)
+        state = automaton->table[(uint64_t)state * BYTE_MAX_SIZE + idx];
+        if (automaton->output[state] != NULL) {
             table_ret = MMPM_SUCCESS;
+        }
     }
+
+    *node_index = state;
     return table_ret;
+}
+
+int ac_automaton_match(ACAutomaton *automaton, const uint8_t *data, uint32_t len)
+{
+    uint32_t node_index = 0;
+
+    return ac_automaton_match_state(automaton, data, len, &node_index);
 }

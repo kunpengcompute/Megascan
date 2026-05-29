@@ -58,6 +58,7 @@ mmpm_free_t mmpm_get_db_free(void)
     return g_mmpm_db_free;
 }
 
+__attribute__((visibility("default")))
 int MMPM_CDECL mmpm_set_allocator(mmpm_alloc_t alloc_func, mmpm_calloc_t calloc_func, mmpm_free_t free_func)
 {
     g_mmpm_db_alloc = normalise_alloc(alloc_func);
