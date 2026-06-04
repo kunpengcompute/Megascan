@@ -1,11 +1,11 @@
 /*
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  */
-#ifndef MMPM_AC_H
-#define MMPM_AC_H
+#ifndef MS_AC_H
+#define MS_AC_H
 
 #include <stdbool.h>
-#include "mmpm.h"
+#include "ms.h"
 
 #define BYTE_MAX_SIZE 256  // number of state transition conditions in bytes
 

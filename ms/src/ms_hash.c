@@ -6,8 +6,8 @@
 #include <string.h>
 #include <stdlib.h>
 #include <errno.h>
-#include "mmpm_hash.h"
-#include "mmpm_allocator.h"
+#include "ms_hash.h"
+#include "ms_allocator.h"
 
 #define ALIGN(s) (((s) + 63) & ~63)
 #define ALIGN_SIZE      64
@@ -28,23 +28,23 @@ static uint32_t hash_func_djb2_hash32(const uint8_t *key, uint32_t key_len)
     return hash;
 }
 
-int hash_table_create(mmpm_hash **hash_table, uint32_t buckets, uint16_t key_size)
+int hash_table_create(ms_hash **hash_table, uint32_t buckets, uint16_t key_size)
 {
     int ret;
-    mmpm_hash *table = NULL;
+    ms_hash *table = NULL;
 
     if (hash_table == NULL || buckets == 0) {
-        return MMPM_INVALID_PARA;
+        return MS_INVALID_PARA;
     }
 
     *hash_table = NULL;
 
-    ret = posix_memalign((void **)(&(table)), ALIGN_SIZE, sizeof(mmpm_hash));
+    ret = posix_memalign((void **)(&(table)), ALIGN_SIZE, sizeof(ms_hash));
     if (ret || table == NULL) {
-        return MMPM_MALLOC_FAIL;
+        return MS_MALLOC_FAIL;
     }
 
-    memset(table, 0, sizeof(mmpm_hash));
+    memset(table, 0, sizeof(ms_hash));
     table->bucket_num = buckets;
     table->key_size = key_size;
     table->build_ok = 0;
@@ -54,7 +54,7 @@ int hash_table_create(mmpm_hash **hash_table, uint32_t buckets, uint16_t key_siz
     return 0;
 }
 
-int hash_table_build(mmpm_hash *hash_table, uint32_t secondary_buckets)
+int hash_table_build(ms_hash *hash_table, uint32_t secondary_buckets)
 {
     uint64_t buckets_cnt, subbuckets_cnt;
     size_t malloc_size = 0;
@@ -63,36 +63,36 @@ int hash_table_build(mmpm_hash *hash_table, uint32_t secondary_buckets)
     int ret;
 
     if (hash_table == NULL) {
-        return MMPM_INVALID_PARA;
+        return MS_INVALID_PARA;
     }
 
     if (hash_table->build_ok) {
-        return MMPM_BUILT_ALREADY;
+        return MS_BUILT_ALREADY;
     }
 
     buckets_cnt = hash_table->bucket_num;
     subbuckets_cnt = secondary_buckets ? secondary_buckets : DEFAULT_SUBBUCKET_NUM;
 
-    malloc_size += ALIGN(sizeof(mmpm_hash_bucket) * buckets_cnt);
-    malloc_size += ALIGN(sizeof(mmpm_hash_subbucket) * buckets_cnt * subbuckets_cnt);
+    malloc_size += ALIGN(sizeof(ms_hash_bucket) * buckets_cnt);
+    malloc_size += ALIGN(sizeof(ms_hash_subbucket) * buckets_cnt * subbuckets_cnt);
 
     ret = posix_memalign((void **)(&malloc_ptr), ALIGN_SIZE, malloc_size);
     if (ret || malloc_ptr == NULL) {
-        return MMPM_MALLOC_FAIL;
+        return MS_MALLOC_FAIL;
     }
 
     memset(malloc_ptr, 0, malloc_size);
-    hash_table->buckets = (mmpm_hash_bucket *)malloc_ptr;
+    hash_table->buckets = (ms_hash_bucket *)malloc_ptr;
 
-    malloc_ptr += ALIGN(sizeof(mmpm_hash_bucket) * buckets_cnt);
+    malloc_ptr += ALIGN(sizeof(ms_hash_bucket) * buckets_cnt);
     for (i = 0; i < buckets_cnt; i++) {
         hash_table->buckets[i].subbuckets = \
-            (mmpm_hash_subbucket *)(malloc_ptr + i * (sizeof(mmpm_hash_subbucket) * subbuckets_cnt));
+            (ms_hash_subbucket *)(malloc_ptr + i * (sizeof(ms_hash_subbucket) * subbuckets_cnt));
         hash_table->buckets[i].subbucket_num = subbuckets_cnt;
         for (j = 0; j < subbuckets_cnt; j++) {
             ret = pthread_rwlock_init(&hash_table->buckets[i].subbuckets[j].rwlock, NULL);
             if (ret) {
-                ret = MMPM_INIT_RWLOCK_FAIL;
+                ret = MS_INIT_RWLOCK_FAIL;
                 goto error;
             }
         }
@@ -109,12 +109,12 @@ error:
             pthread_rwlock_destroy(&hash_table->buckets[k].subbuckets[l].rwlock);
         }
     }
-    mmpm_free(hash_table->buckets);
+    ms_free(hash_table->buckets);
     hash_table->buckets = NULL;
     return ret;
 }
 
-static mmpm_hash_node *hash_table_match_node(mmpm_hash_node *node, const uint8_t *key, uint32_t key_len)
+static ms_hash_node *hash_table_match_node(ms_hash_node *node, const uint8_t *key, uint32_t key_len)
 {
     while (node) {
         if (key_len != node->key_len || memcmp(key, node->content, key_len) != 0) {
@@ -132,14 +132,14 @@ static uint32_t secondary_hash(uint32_t key)
     return key;
 }
 
-int hash_table_add(mmpm_hash *hash_table, uint32_t alias, const uint8_t *key, uint32_t key_len)
+int hash_table_add(ms_hash *hash_table, uint32_t alias, const uint8_t *key, uint32_t key_len)
 {
     uint32_t hash, bucket_idx, subbucket_idx;
-    mmpm_hash_node *node = NULL;
+    ms_hash_node *node = NULL;
     int ret;
 
     if (hash_table == NULL || key == NULL || key_len == 0 || key_len > hash_table->key_size) {
-        return MMPM_INVALID_PARA;
+        return MS_INVALID_PARA;
     }
     
     hash = hash_table->hash_func(key, key_len);
@@ -152,17 +152,17 @@ int hash_table_add(mmpm_hash *hash_table, uint32_t alias, const uint8_t *key, ui
     if (node) {
         node->alias = alias;
         pthread_rwlock_unlock(&hash_table->buckets[bucket_idx].subbuckets[subbucket_idx].rwlock);
-        return MMPM_SUCCESS;
+        return MS_SUCCESS;
     }
     pthread_rwlock_unlock(&hash_table->buckets[bucket_idx].subbuckets[subbucket_idx].rwlock);
 
-    ret = posix_memalign((void **)(&node), ALIGN_SIZE, sizeof(mmpm_hash_node) + hash_table->key_size);
+    ret = posix_memalign((void **)(&node), ALIGN_SIZE, sizeof(ms_hash_node) + hash_table->key_size);
     if (ret || node == NULL) {
-        return MMPM_MALLOC_FAIL;
+        return MS_MALLOC_FAIL;
     }
 
     pthread_rwlock_wrlock(&hash_table->buckets[bucket_idx].subbuckets[subbucket_idx].rwlock);
-    memset(node, 0, sizeof(mmpm_hash_node) + hash_table->key_size);
+    memset(node, 0, sizeof(ms_hash_node) + hash_table->key_size);
     node->bucket_index = bucket_idx;
     node->subbucket_index = subbucket_idx;
     node->link_next = hash_table->buckets[bucket_idx].subbuckets[subbucket_idx].nodes;
@@ -180,24 +180,24 @@ int hash_table_add(mmpm_hash *hash_table, uint32_t alias, const uint8_t *key, ui
     return 0;
 }
 
-int hash_table_find(mmpm_hash *hash_table, const uint8_t *key, uint32_t key_len, uint32_t *alias)
+int hash_table_find(ms_hash *hash_table, const uint8_t *key, uint32_t key_len, uint32_t *alias)
 {
     uint32_t hash, bucket_idx, subbucket_idx;
-    mmpm_hash_node *node = NULL;
+    ms_hash_node *node = NULL;
 
     if (hash_table == NULL || alias  == NULL) {
-        return MMPM_INVALID_PARA;
+        return MS_INVALID_PARA;
     }
 
     if (key == NULL || key_len == 0) {
-        return MMPM_FIND_FAIL;
+        return MS_FIND_FAIL;
     }
 
     hash = hash_table->hash_func(key, key_len);
     bucket_idx = hash % hash_table->bucket_num;
     subbucket_idx = secondary_hash(hash) % hash_table->buckets[bucket_idx].subbucket_num;
     if (!hash_table->buckets[bucket_idx].subbuckets[subbucket_idx].nodes) {
-        return MMPM_FIND_FAIL;
+        return MS_FIND_FAIL;
     }
 
     pthread_rwlock_rdlock(&hash_table->buckets[bucket_idx].subbuckets[subbucket_idx].rwlock);
@@ -209,16 +209,16 @@ int hash_table_find(mmpm_hash *hash_table, const uint8_t *key, uint32_t key_len,
         return 0;
     }
     pthread_rwlock_unlock(&hash_table->buckets[bucket_idx].subbuckets[subbucket_idx].rwlock);
-    return MMPM_FIND_FAIL;
+    return MS_FIND_FAIL;
 }
 
-int hash_table_remove(mmpm_hash *hash_table, const uint8_t *key, uint32_t key_len)
+int hash_table_remove(ms_hash *hash_table, const uint8_t *key, uint32_t key_len)
 {
     uint32_t hash, bucket_idx, subbucket_idx;
-    mmpm_hash_node *node = NULL;
+    ms_hash_node *node = NULL;
 
     if (hash_table == NULL) {
-        return MMPM_INVALID_PARA;
+        return MS_INVALID_PARA;
     }
 
     if (key == NULL || key_len == 0) {
@@ -240,33 +240,33 @@ int hash_table_remove(mmpm_hash *hash_table, const uint8_t *key, uint32_t key_le
         
         if (node->link_next)
             node->link_next->link_pre = node->link_pre;
-        mmpm_free(node);
+        ms_free(node);
         hash_table->buckets[bucket_idx].subbuckets[subbucket_idx].node_num--;
     }
     pthread_rwlock_unlock(&hash_table->buckets[bucket_idx].subbuckets[subbucket_idx].rwlock);
 
 end:
-    return MMPM_SUCCESS;
+    return MS_SUCCESS;
 }
 
-int hash_table_destroy(mmpm_hash *hash_table)
+int hash_table_destroy(ms_hash *hash_table)
 {
     uint32_t i, j;
 
     if (hash_table == NULL) {
-        return MMPM_INVALID_PARA;
+        return MS_INVALID_PARA;
     }
 
     /* free all rwlock of stage-2 hash_bucket. */
     for (i = 0; i < hash_table->bucket_num; i++) {
         for (j = 0; j < hash_table->buckets[i].subbucket_num; j++) {
             (void)pthread_rwlock_wrlock(&hash_table->buckets[i].subbuckets[j].rwlock);
-            mmpm_hash_node* subbucket_head = hash_table->buckets[i].subbuckets[j].nodes;
-            mmpm_hash_node* tmp;
+            ms_hash_node* subbucket_head = hash_table->buckets[i].subbuckets[j].nodes;
+            ms_hash_node* tmp;
             while (subbucket_head) {
                 tmp = subbucket_head;
                 subbucket_head = subbucket_head->link_next;
-                mmpm_free(tmp);
+                ms_free(tmp);
             }
             (void)pthread_rwlock_unlock(&hash_table->buckets[i].subbuckets[j].rwlock);
             (void)pthread_rwlock_destroy(&hash_table->buckets[i].subbuckets[j].rwlock);
@@ -274,15 +274,15 @@ int hash_table_destroy(mmpm_hash *hash_table)
     }
 
     if (hash_table->buckets) {
-        mmpm_free(hash_table->buckets);
+        ms_free(hash_table->buckets);
         hash_table->buckets = NULL;
     }
 
-    mmpm_free(hash_table);
-    return MMPM_SUCCESS;
+    ms_free(hash_table);
+    return MS_SUCCESS;
 }
 
-void hash_table_set_hash_func(mmpm_hash *hash_table, hash_calc_func hash_func)
+void hash_table_set_hash_func(ms_hash *hash_table, hash_calc_func hash_func)
 {
     if (hash_table == NULL) {
         return;

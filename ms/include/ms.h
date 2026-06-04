@@ -1,45 +1,45 @@
 /*
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  */
-#ifndef MMPM_H
-#define MMPM_H
+#ifndef MS_H
+#define MS_H
 
 #include <stdint.h>
 #include <stdbool.h>
-#include "mmpm_allocator.h"
+#include "ms_allocator.h"
 
-#define MMPM_SUCCESS            0
-#define MMPM_INVALID_PARA       (-1)
-#define MMPM_MALLOC_FAIL        (-2)
-#define MMPM_BUILT_ALREADY      (-3)
-#define MMPM_FIND_FAIL          (-4)
-#define MMPM_INIT_RWLOCK_FAIL   (-5)
-#define MMPM_MEMCPY_FAIL        (-6)
-#define MMPM_NOT_SUPPORTED      (-7)
-#define MMPM_STREAM_STALE       (-8)
+#define MS_SUCCESS            0
+#define MS_INVALID_PARA       (-1)
+#define MS_MALLOC_FAIL        (-2)
+#define MS_BUILT_ALREADY      (-3)
+#define MS_FIND_FAIL          (-4)
+#define MS_INIT_RWLOCK_FAIL   (-5)
+#define MS_MEMCPY_FAIL        (-6)
+#define MS_NOT_SUPPORTED      (-7)
+#define MS_STREAM_STALE       (-8)
 
 typedef uint32_t (*hash_calc_func)(const uint8_t *key, uint32_t key_len);
 
 typedef enum {
-    MMPM_MATCHER_NONE = 0,
-    MMPM_MATCHER_TYPE_HASH,
-    MMPM_MATCHER_TYPE_AC,
-    MMPM_MATCHER_TYPE_MAX
-} mmpm_matcher_type;
+    MS_MATCHER_NONE = 0,
+    MS_MATCHER_TYPE_HASH,
+    MS_MATCHER_TYPE_AC,
+    MS_MATCHER_TYPE_MAX
+} ms_matcher_type;
 
 typedef struct {
     uint32_t alias;
     uint32_t key_len;
     uint8_t *key;
-} mmpm_rule_t;
+} ms_rule_t;
 
 typedef struct {
-    void *mmpm_matcher;
-    mmpm_matcher_type type;
+    void *ms_matcher;
+    ms_matcher_type type;
     
     /* mark whether the ac automation has been built. */
     bool is_built;
-} mmpm_handler_t;
+} ms_handler_t;
 
 typedef struct ms_stream ms_stream_t;
 /**
@@ -51,7 +51,7 @@ typedef struct ms_stream ms_stream_t;
  * @secondary_buckets_num: Number of secondary hash buckets.
  * @return: 0 for success, an error code(negative number) for failure.
  */
-int mmpm_handler_init(mmpm_handler_t *handler, mmpm_matcher_type type, uint32_t buckets, uint32_t secondary_buckets);
+int ms_handler_init(ms_handler_t *handler, ms_matcher_type type, uint32_t buckets, uint32_t secondary_buckets);
 
 /**
  * Register hash calculation function.
@@ -60,7 +60,7 @@ int mmpm_handler_init(mmpm_handler_t *handler, mmpm_matcher_type type, uint32_t 
  * @hash_func: Hash function pointer.
  * @return: 0 for success, an error code(negative number) for failure.
  */
-int mmpm_set_hash_func(mmpm_handler_t *handler, hash_calc_func hash_func);
+int ms_set_hash_func(ms_handler_t *handler, hash_calc_func hash_func);
 
 /**
  * Import rules.
@@ -70,7 +70,7 @@ int mmpm_set_hash_func(mmpm_handler_t *handler, hash_calc_func hash_func);
  * @rule_num: Number of rules, needs to be consistent with the parameter @rule.
  * @return: 0 for success, an error code(negative number) for failure.
  */
-int mmpm_add_rule(mmpm_handler_t *handler, mmpm_rule_t *rule, uint32_t rule_num);
+int ms_add_rule(ms_handler_t *handler, ms_rule_t *rule, uint32_t rule_num);
 
 /**
  * Delete target rules.
@@ -80,7 +80,7 @@ int mmpm_add_rule(mmpm_handler_t *handler, mmpm_rule_t *rule, uint32_t rule_num)
  * @rule_num: Number of rules, needs to be consistent with the parameter @rule.
  * @return: 0 for success, an error code(negative number) for failure.
  */
-int mmpm_remove_rule(mmpm_handler_t *handler, mmpm_rule_t *rule, uint32_t rule_num);
+int ms_remove_rule(ms_handler_t *handler, ms_rule_t *rule, uint32_t rule_num);
 
 /**
  * Matching target rule.
@@ -89,7 +89,7 @@ int mmpm_remove_rule(mmpm_handler_t *handler, mmpm_rule_t *rule, uint32_t rule_n
  * @rule: Pending matching rule.
  * @return: 0 for success, an error code(negative number) for failure.
  */
-int mmpm_find_rule(mmpm_handler_t *handler, mmpm_rule_t *rule);
+int ms_find_rule(ms_handler_t *handler, ms_rule_t *rule);
 
 /**
  * Open a stream for AC matching.
@@ -98,7 +98,7 @@ int mmpm_find_rule(mmpm_handler_t *handler, mmpm_rule_t *rule);
  * @stream: Stream handle to be opened.
  * @return: 0 for success, an error code(negative number) for failure.
  */
-int mmpm_open_stream(mmpm_handler_t *handler, ms_stream_t **stream);
+int ms_open_stream(ms_handler_t *handler, ms_stream_t **stream);
 
 /**
  * Scan data on an opened AC stream.
@@ -108,7 +108,7 @@ int mmpm_open_stream(mmpm_handler_t *handler, ms_stream_t **stream);
  * @len: Length of pending matching data.
  * @return: 0 for success, an error code(negative number) for failure.
  */
-int mmpm_scan_stream(ms_stream_t *stream, const uint8_t *data, uint32_t len);
+int ms_scan_stream(ms_stream_t *stream, const uint8_t *data, uint32_t len);
 
 /**
  * Reset an opened AC stream to initial state.
@@ -116,7 +116,7 @@ int mmpm_scan_stream(ms_stream_t *stream, const uint8_t *data, uint32_t len);
  * @stream: Opened stream handle.
  * @return: 0 for success, an error code(negative number) for failure.
  */
-int mmpm_reset_stream(ms_stream_t *stream);
+int ms_reset_stream(ms_stream_t *stream);
 
 /**
  * Close an opened AC stream.
@@ -124,7 +124,7 @@ int mmpm_reset_stream(ms_stream_t *stream);
  * @stream: Opened stream handle.
  * @return: 0 for success, an error code(negative number) for failure.
  */
-int mmpm_close_stream(ms_stream_t *stream);
+int ms_close_stream(ms_stream_t *stream);
 
 /**
  * Destroy multi-pattern matching handler.
@@ -132,16 +132,16 @@ int mmpm_close_stream(ms_stream_t *stream);
  * @handler: Matching engine handle.
  * @return: 0 for success, an error code(negative number) for failure.
  */
-int mmpm_handler_destroy(mmpm_handler_t *handler);
+int ms_handler_destroy(ms_handler_t *handler);
 
 /**
- * Set global memory allocator for MMPM.
+ * Set global memory allocator for MS.
  *
  * @alloc_func: Memory allocation function pointer.
  * @calloc_func: Memory allocation and initialization function pointer.
  * @free_func: Memory deallocation function pointer.
  * @return: 0 for success, an error code(negative number) for failure.
  */
-int MMPM_CDECL mmpm_set_allocator(mmpm_alloc_t alloc_func, mmpm_calloc_t calloc_func, mmpm_free_t free_func);
+int MS_CDECL ms_set_allocator(ms_alloc_t alloc_func, ms_calloc_t calloc_func, ms_free_t free_func);
 
 #endif

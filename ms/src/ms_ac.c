@@ -7,10 +7,10 @@
 #include <stdbool.h>
 #include <pthread.h>
 #include <limits.h>
-#include "mmpm_ac.h"
-#include "mmpm_allocator.h"
+#include "ms_ac.h"
+#include "ms_allocator.h"
 
-#define MMPM_AC_AUTOMATON_INITIAL_ID 1
+#define MS_AC_AUTOMATON_INITIAL_ID 1
 
 static void *secure_realloc(void *old_ptr, size_t old_size, size_t new_size)
 {
@@ -22,7 +22,7 @@ static void *secure_realloc(void *old_ptr, size_t old_size, size_t new_size)
         goto end;
     }
 
-    new_ptr = mmpm_malloc(new_size);
+    new_ptr = ms_malloc(new_size);
     if (new_ptr == NULL) {
         goto end;
     }
@@ -31,7 +31,7 @@ static void *secure_realloc(void *old_ptr, size_t old_size, size_t new_size)
     }
 
     memcpy(new_ptr, old_ptr, (new_size < old_size) ? new_size : old_size);
-    mmpm_free(old_ptr);
+    ms_free(old_ptr);
 
 end:
     return new_ptr;
@@ -39,22 +39,22 @@ end:
 
 static ACNode *create_ac_node()
 {
-    ACNode *node = (ACNode *)mmpm_calloc(1, sizeof(ACNode));
+    ACNode *node = (ACNode *)ms_calloc(1, sizeof(ACNode));
     return node;
 }
 
 int ac_automaton_init(ACAutomaton *automaton)
 {
     if (automaton == NULL)
-        return MMPM_INVALID_PARA;
+        return MS_INVALID_PARA;
     automaton->generation = 0;
     automaton->root = create_ac_node();
     if (automaton->root == NULL)
-        return MMPM_MALLOC_FAIL;
+        return MS_MALLOC_FAIL;
 
     automaton->root->node_idx = 0;  
     automaton->pattern_count = 0;
-    automaton->id_count = MMPM_AC_AUTOMATON_INITIAL_ID;
+    automaton->id_count = MS_AC_AUTOMATON_INITIAL_ID;
     automaton->table = NULL;
     automaton->output = NULL;
     return 0;
@@ -72,23 +72,23 @@ static void do_ac_node_free(ACNode *node)
             do_ac_node_free(node->children[i]);
     }
     if (node->id_set != NULL) {
-        mmpm_free(node->id_set);
+        ms_free(node->id_set);
     }
     if (node->output != NULL) {
-        mmpm_free(node->output);
+        ms_free(node->output);
     }
 
     memset(node, 0, sizeof(ACNode));
-    mmpm_free(node);
+    ms_free(node);
 }
 
 int ac_automaton_destroy(ACAutomaton *automaton)
 {
     if (automaton == NULL)
-        return MMPM_INVALID_PARA;
-    mmpm_free(automaton->table);
+        return MS_INVALID_PARA;
+    ms_free(automaton->table);
     if (automaton->output != NULL) {
-        mmpm_free(automaton->output);
+        ms_free(automaton->output);
     }
 
     do_ac_node_free(automaton->root);
@@ -99,7 +99,7 @@ int ac_automaton_destroy(ACAutomaton *automaton)
     automaton->pattern_count = 0;
     automaton->id_count = 0;
 
-    return MMPM_SUCCESS;
+    return MS_SUCCESS;
 }
 
 int ac_automaton_insert(ACAutomaton *automaton, uint32_t alias, const uint8_t *pattern, uint32_t len)
@@ -108,7 +108,7 @@ int ac_automaton_insert(ACAutomaton *automaton, uint32_t alias, const uint8_t *p
     int *ptr = NULL;
 
     if (automaton->root == NULL) {
-        return MMPM_INVALID_PARA;
+        return MS_INVALID_PARA;
     }
 
     for (uint32_t i = 0; i < len; i++) {
@@ -116,7 +116,7 @@ int ac_automaton_insert(ACAutomaton *automaton, uint32_t alias, const uint8_t *p
             node->children[pattern[i]] = create_ac_node();
             if (node->children[pattern[i]] == NULL) {
                 automaton->id_count = 0;
-                return MMPM_MALLOC_FAIL;
+                return MS_MALLOC_FAIL;
             }
             node->children[pattern[i]]->node_idx = automaton->id_count;
             automaton->id_count++;
@@ -128,11 +128,11 @@ int ac_automaton_insert(ACAutomaton *automaton, uint32_t alias, const uint8_t *p
     }
 
     if (node->id_size == INT_MAX) {
-        return MMPM_MALLOC_FAIL;
+        return MS_MALLOC_FAIL;
     }
     ptr = secure_realloc(node->id_set, node->id_size * sizeof(int), (node->id_size + 1) * sizeof(int));
     if (ptr == NULL)
-        return MMPM_MALLOC_FAIL;
+        return MS_MALLOC_FAIL;
     node->id_set = ptr;
 
     node->id_set[node->id_size++] = (int)alias;
@@ -158,7 +158,7 @@ static int *merge_arrays(const int *a, int a_size, const int *b, int b_size, int
         goto end;
     }
 
-    res = (int *)mmpm_malloc(size_sum * sizeof(int));
+    res = (int *)ms_malloc(size_sum * sizeof(int));
     if (res == NULL) {
         goto end;
     }
@@ -193,7 +193,7 @@ static int *merge_arrays(const int *a, int a_size, const int *b, int b_size, int
 
     ptr = secure_realloc(res, k * sizeof(int), cnt * sizeof(int));
     if (ptr == NULL) {
-        mmpm_free(res);
+        ms_free(res);
         res = NULL;
         cnt = 0;
         goto end;
@@ -211,26 +211,26 @@ static int node_output_integrate(ACNode *node)
     int *merged = NULL;
 
     if (node == NULL) {
-        return MMPM_INVALID_PARA;
+        return MS_INVALID_PARA;
     }
 
     if (node->id_set == 0 && node->fail->out_size == 0) {
-        return MMPM_SUCCESS;
+        return MS_SUCCESS;
     }
 
     merged = merge_arrays(node->id_set, node->id_size, node->fail->output, node->fail->out_size, &merged_size);
     if (merged == NULL) {
-        return MMPM_MALLOC_FAIL;
+        return MS_MALLOC_FAIL;
     }
     
     if (node->output) {
-        mmpm_free(node->output);
+        ms_free(node->output);
     }
 
     node->output = merged;
     node->out_size = merged_size;
 
-    return MMPM_SUCCESS;
+    return MS_SUCCESS;
 }
 
 static int node_output_integrate_for_root_child(ACNode *node)
@@ -238,14 +238,14 @@ static int node_output_integrate_for_root_child(ACNode *node)
     int merged_size = 0;
     int *merged = merge_arrays(node->id_set, node->id_size, NULL, 0, &merged_size);
     if (merged == NULL) {
-        return MMPM_MALLOC_FAIL;
+        return MS_MALLOC_FAIL;
     }
     if (node->output) {
-        mmpm_free(node->output);
+        ms_free(node->output);
     }
     node->output = merged;
     node->out_size = merged_size;
-    return MMPM_SUCCESS;
+    return MS_SUCCESS;
 }
 
 static int do_ac_table_build(uint32_t *table, int **output, ACNode *node, uint32_t id_count)
@@ -253,16 +253,16 @@ static int do_ac_table_build(uint32_t *table, int **output, ACNode *node, uint32
     uint32_t i;
 
     if (node == NULL) {
-        return MMPM_SUCCESS;
+        return MS_SUCCESS;
     }
 
     if (node->node_idx >= id_count) {
-        return MMPM_INVALID_PARA;
+        return MS_INVALID_PARA;
     }
 
     for (i = 0; i < BYTE_MAX_SIZE; i++) {
         if (node->children[i]->node_idx >= id_count) {
-            return MMPM_INVALID_PARA;
+            return MS_INVALID_PARA;
         }
         table[(size_t)node->node_idx * BYTE_MAX_SIZE + i] = node->children[i]->node_idx;
     }
@@ -272,60 +272,60 @@ static int do_ac_table_build(uint32_t *table, int **output, ACNode *node, uint32
     for (i = 0; i < BYTE_MAX_SIZE; i++) {
         if (node->is_non_child_node[i] == false) {
             int ret = do_ac_table_build(table, output, node->children[i], id_count);
-            if (ret != MMPM_SUCCESS) {
+            if (ret != MS_SUCCESS) {
                 return ret;
             }
         }
     }
-    return MMPM_SUCCESS;
+    return MS_SUCCESS;
 }
 
 static int ac_table_build(ACAutomaton *automaton)
 {
     if (automaton->id_count != 0 &&
         (SIZE_MAX / automaton->id_count) < BYTE_MAX_SIZE * sizeof(uint32_t)) {
-        return MMPM_MALLOC_FAIL;
+        return MS_MALLOC_FAIL;
     }
-    automaton->table = (uint32_t *)mmpm_malloc(sizeof(uint32_t) * automaton->id_count * BYTE_MAX_SIZE);
+    automaton->table = (uint32_t *)ms_malloc(sizeof(uint32_t) * automaton->id_count * BYTE_MAX_SIZE);
     if (automaton->table == NULL) {
-        return MMPM_MALLOC_FAIL;
+        return MS_MALLOC_FAIL;
     }
 
     if (automaton->id_count != 0 && (SIZE_MAX / automaton->id_count) < sizeof(int *)) {
-        return MMPM_MALLOC_FAIL;
+        return MS_MALLOC_FAIL;
     }
-    automaton->output = (int **)mmpm_malloc(sizeof(int *) * automaton->id_count);
+    automaton->output = (int **)ms_malloc(sizeof(int *) * automaton->id_count);
     if (automaton->output == NULL) {
-        return MMPM_MALLOC_FAIL;
+        return MS_MALLOC_FAIL;
     }
     memset(automaton->output, 0, sizeof(int *) * automaton->id_count);
 
     // fill the change table content.
     int ret = do_ac_table_build(automaton->table, automaton->output, automaton->root, automaton->id_count);
-    if (ret != MMPM_SUCCESS) {
+    if (ret != MS_SUCCESS) {
         return ret;
     }
 
-    return MMPM_SUCCESS;
+    return MS_SUCCESS;
 }
 
 int ac_automaton_build(ACAutomaton *automaton)
 {
     if (automaton->root == NULL) {
-        return MMPM_INVALID_PARA;
+        return MS_INVALID_PARA;
     }
     ACNode *root = automaton->root;
     ACNode *child, *fail;
-    ACNode **queue = (ACNode **)mmpm_calloc(automaton->id_count, sizeof(ACNode *));
+    ACNode **queue = (ACNode **)ms_calloc(automaton->id_count, sizeof(ACNode *));
     int front = 0, rear = 0;
     int ret = 0;
     if (queue == NULL) {
-        return MMPM_MALLOC_FAIL;
+        return MS_MALLOC_FAIL;
     }
 
     for (int i = 0; i < BYTE_MAX_SIZE; i++) {
         if ((uint32_t)rear >= automaton->id_count) {
-            ret = MMPM_MALLOC_FAIL;
+            ret = MS_MALLOC_FAIL;
             goto end;
         }
         if (root->children[i]) {
@@ -345,7 +345,7 @@ int ac_automaton_build(ACAutomaton *automaton)
 
     while (front < rear) {
         if (((uint32_t)rear >= automaton->id_count) || ((uint32_t)front >= automaton->id_count)) {
-            ret = MMPM_MALLOC_FAIL;
+            ret = MS_MALLOC_FAIL;
             goto end;
         }
         ACNode *cur = queue[front++];
@@ -378,13 +378,13 @@ int ac_automaton_build(ACAutomaton *automaton)
     }
     /* Translate the pre-tree to query-table. */
     ret = ac_table_build(automaton);
-    if (ret == MMPM_SUCCESS) {
+    if (ret == MS_SUCCESS) {
         automaton->generation++;
     }
 
 end:
     if (queue != NULL) {
-        mmpm_free(queue);
+        ms_free(queue);
     }
 
     return ret;
@@ -412,14 +412,14 @@ static void free_ac_node_simple(ACNode *node)
     }
 
     if (node->id_set != NULL) {
-        mmpm_free(node->id_set);
+        ms_free(node->id_set);
     }
     if (node->output != NULL) {
-        mmpm_free(node->output);
+        ms_free(node->output);
     }
 
     memset(node, 0, sizeof(ACNode));
-    mmpm_free(node);
+    ms_free(node);
 }
 
 static int find_deleted_node_index(const DeletedNodeInfo *deleted_infos, uint32_t deleted_cnt, const ACNode *node)
@@ -475,12 +475,12 @@ static void prune_empty_nodes_collect(ACAutomaton *automaton, ACNode *node,
 static int update_fail_pointers_local(ACAutomaton *automaton, const DeletedNodeInfo *deleted_infos, uint32_t deleted_cnt)
 {
     if (deleted_cnt == 0) {
-        return MMPM_SUCCESS;
+        return MS_SUCCESS;
     }
 
-    ACNode **queue = (ACNode **)mmpm_calloc(automaton->id_count, sizeof(ACNode *));
+    ACNode **queue = (ACNode **)ms_calloc(automaton->id_count, sizeof(ACNode *));
     if (queue == NULL) {
-        return MMPM_MALLOC_FAIL;
+        return MS_MALLOC_FAIL;
     }
 
     int front = 0, rear = 0;
@@ -503,15 +503,15 @@ static int update_fail_pointers_local(ACAutomaton *automaton, const DeletedNodeI
         }
     }
 
-    mmpm_free(queue);
-    return MMPM_SUCCESS;
+    ms_free(queue);
+    return MS_SUCCESS;
 }
 
 static int clear_virtual_edges_and_reindex(ACAutomaton *automaton)
 {
-    ACNode **queue = (ACNode **)mmpm_calloc(automaton->id_count, sizeof(ACNode *));
+    ACNode **queue = (ACNode **)ms_calloc(automaton->id_count, sizeof(ACNode *));
     if (queue == NULL) {
-        return MMPM_MALLOC_FAIL;
+        return MS_MALLOC_FAIL;
     }
 
     int front = 0, rear = 0;
@@ -523,7 +523,7 @@ static int clear_virtual_edges_and_reindex(ACAutomaton *automaton)
         cur->node_idx = new_id++;
 
         if (cur->output != NULL) {
-            mmpm_free(cur->output);
+            ms_free(cur->output);
             cur->output = NULL;
         }
         cur->out_size = 0;
@@ -543,19 +543,19 @@ static int clear_virtual_edges_and_reindex(ACAutomaton *automaton)
     }
 
     automaton->id_count = new_id;
-    mmpm_free(queue);
-    return MMPM_SUCCESS;
+    ms_free(queue);
+    return MS_SUCCESS;
 }
 
 static int rebuild_output_with_current_fail(ACAutomaton *automaton)
 {
-    ACNode **queue = (ACNode **)mmpm_calloc(automaton->id_count, sizeof(ACNode *));
+    ACNode **queue = (ACNode **)ms_calloc(automaton->id_count, sizeof(ACNode *));
     if (queue == NULL) {
-        return MMPM_MALLOC_FAIL;
+        return MS_MALLOC_FAIL;
     }
 
     int front = 0, rear = 0;
-    int ret = MMPM_SUCCESS;
+    int ret = MS_SUCCESS;
     queue[rear++] = automaton->root;
 
     while (front < rear) {
@@ -565,13 +565,13 @@ static int rebuild_output_with_current_fail(ACAutomaton *automaton)
             if (cur->parent == automaton->root) {
                 if (cur->id_size > 0) {
                     ret = node_output_integrate_for_root_child(cur);
-                    if (ret != MMPM_SUCCESS) {
+                    if (ret != MS_SUCCESS) {
                         break;
                     }
                 }
             } else {
                 ret = node_output_integrate(cur);
-                if (ret != MMPM_SUCCESS) {
+                if (ret != MS_SUCCESS) {
                     break;
                 }
             }
@@ -584,15 +584,15 @@ static int rebuild_output_with_current_fail(ACAutomaton *automaton)
         }
     }
 
-    mmpm_free(queue);
+    ms_free(queue);
     return ret;
 }
 
 static int fill_virtual_edges_by_current_fail(ACAutomaton *automaton)
 {
-    ACNode **queue = (ACNode **)mmpm_calloc(automaton->id_count, sizeof(ACNode *));
+    ACNode **queue = (ACNode **)ms_calloc(automaton->id_count, sizeof(ACNode *));
     if (queue == NULL) {
-        return MMPM_MALLOC_FAIL;
+        return MS_MALLOC_FAIL;
     }
 
     ACNode *root = automaton->root;
@@ -632,31 +632,31 @@ static int fill_virtual_edges_by_current_fail(ACAutomaton *automaton)
         }
     }
 
-    mmpm_free(queue);
-    return MMPM_SUCCESS;
+    ms_free(queue);
+    return MS_SUCCESS;
 }
 
 static int rebuild_table_output_after_local_fail(ACAutomaton *automaton)
 {
-    mmpm_free(automaton->table);
+    ms_free(automaton->table);
     automaton->table = NULL;
     if (automaton->output != NULL) {
-        mmpm_free(automaton->output);
+        ms_free(automaton->output);
         automaton->output = NULL;
     }
 
     int ret = clear_virtual_edges_and_reindex(automaton);
-    if (ret != MMPM_SUCCESS) {
+    if (ret != MS_SUCCESS) {
         return ret;
     }
 
     ret = rebuild_output_with_current_fail(automaton);
-    if (ret != MMPM_SUCCESS) {
+    if (ret != MS_SUCCESS) {
         return ret;
     }
 
     ret = fill_virtual_edges_by_current_fail(automaton);
-    if (ret != MMPM_SUCCESS) {
+    if (ret != MS_SUCCESS) {
         return ret;
     }
 
@@ -666,23 +666,23 @@ static int rebuild_table_output_after_local_fail(ACAutomaton *automaton)
 int ac_automaton_remove(ACAutomaton *automaton, uint32_t alias, const uint8_t *pattern, uint32_t len)
 {
     if (automaton == NULL || pattern == NULL || len == 0) {
-        return MMPM_INVALID_PARA;
+        return MS_INVALID_PARA;
     }
 
     if (automaton->root == NULL) {
-        return MMPM_INVALID_PARA;
+        return MS_INVALID_PARA;
     }
 
     ACNode *node = automaton->root;
     for (uint32_t i = 0; i < len; i++) {
         if (node->children[pattern[i]] == NULL || node->is_non_child_node[pattern[i]]) {
-            return MMPM_FIND_FAIL;
+            return MS_FIND_FAIL;
         }
         node = node->children[pattern[i]];
     }
 
     if (node->id_size == 0) {
-        return MMPM_FIND_FAIL;
+        return MS_FIND_FAIL;
     }
 
     int alias_idx = -1;
@@ -693,16 +693,16 @@ int ac_automaton_remove(ACAutomaton *automaton, uint32_t alias, const uint8_t *p
         }
     }
     if (alias_idx == -1) {
-        return MMPM_FIND_FAIL;
+        return MS_FIND_FAIL;
     }
 
     memmove(&node->id_set[alias_idx], &node->id_set[alias_idx + 1],
         (size_t)(node->id_size - alias_idx - 1) * sizeof(int));
     node->id_size--;
 
-    DeletedNodeInfo *deleted_infos = (DeletedNodeInfo *)mmpm_calloc(automaton->id_count, sizeof(DeletedNodeInfo));
+    DeletedNodeInfo *deleted_infos = (DeletedNodeInfo *)ms_calloc(automaton->id_count, sizeof(DeletedNodeInfo));
     if (deleted_infos == NULL) {
-        return MMPM_MALLOC_FAIL;
+        return MS_MALLOC_FAIL;
     }
     uint32_t deleted_cnt = 0;
 
@@ -710,12 +710,12 @@ int ac_automaton_remove(ACAutomaton *automaton, uint32_t alias, const uint8_t *p
 
     int ret = update_fail_pointers_local(automaton, deleted_infos, deleted_cnt);
     free(deleted_infos);
-    if (ret != MMPM_SUCCESS) {
+    if (ret != MS_SUCCESS) {
         return ret;
     }
 
     ret = rebuild_table_output_after_local_fail(automaton);
-    if (ret != MMPM_SUCCESS) {
+    if (ret != MS_SUCCESS) {
         return ret;
     }
 
@@ -724,7 +724,7 @@ int ac_automaton_remove(ACAutomaton *automaton, uint32_t alias, const uint8_t *p
     }
 
     automaton->generation++;
-    return MMPM_SUCCESS;
+    return MS_SUCCESS;
 }
 
 int ac_automaton_match_state(ACAutomaton *automaton,
@@ -733,11 +733,11 @@ int ac_automaton_match_state(ACAutomaton *automaton,
                              uint32_t *node_index)
 {
     uint8_t idx;
-    int table_ret = MMPM_FIND_FAIL;
+    int table_ret = MS_FIND_FAIL;
 
     if (automaton == NULL || automaton->table == NULL ||
         automaton->output == NULL || data == NULL || node_index == NULL) {
-        return MMPM_INVALID_PARA;
+        return MS_INVALID_PARA;
     }
 
     uint32_t state = *node_index;
@@ -745,7 +745,7 @@ int ac_automaton_match_state(ACAutomaton *automaton,
         idx = data[i];
         state = automaton->table[(uint64_t)state * BYTE_MAX_SIZE + idx];
         if (automaton->output[state] != NULL) {
-            table_ret = MMPM_SUCCESS;
+            table_ret = MS_SUCCESS;
         }
     }
 
