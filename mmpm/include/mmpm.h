@@ -156,6 +156,24 @@ int mmpm_open_stream(mmpm_handler_t *handler, ms_stream_t **stream);
 int mmpm_scan_stream(ms_stream_t *stream, const uint8_t *data, uint32_t len);
 
 /**
+ * Scan data on an opened AC stream with expression-style reporting.
+ *
+ * Plain rule state and combination state are accumulated across chunks for the
+ * lifetime of the stream until reset. This API reports only the IDs newly
+ * produced by the current chunk.
+ *
+ * @stream: Opened stream handle.
+ * @data: Pending matching data.
+ * @len: Length of pending matching data.
+ * @ids: Output IDs. May be NULL only when @id_capacity is zero.
+ * @id_count: Output ID count or required count on capacity failure.
+ * @id_capacity: Capacity of @ids.
+ * @return: 0 for success, MMPM_FIND_FAIL for no reported IDs, or an error code.
+ */
+int mmpm_scan_expr_stream(ms_stream_t *stream, const uint8_t *data, uint32_t len,
+                          uint32_t *ids, uint32_t *id_count, uint32_t id_capacity);
+
+/**
  * Reset an opened AC stream to initial state.
  *
  * @stream: Opened stream handle.

@@ -355,6 +355,160 @@ static void test_expr_api_scan_expr_deduplicates_plain_matches(void)
     EXPECT_EQ(mmpm_handler_destroy(&handler), MMPM_SUCCESS);
 }
 
+static void test_expr_api_scan_expr_stream_accumulates_combination(void)
+{
+    mmpm_handler_t handler = {0};
+    ms_stream_t *stream = NULL;
+    const char *expr[] = {"abc", "def", "101&102"};
+    uint32_t ids[] = {101, 102, 1001};
+    uint32_t flags[] = {MMPM_FLAG_QUIET, MMPM_FLAG_QUIET, MMPM_FLAG_COMBINATION};
+    uint32_t out_ids[1] = {0};
+    uint32_t out_count = 0;
+
+    EXPECT_EQ(mmpm_handler_init(&handler, MMPM_MATCHER_TYPE_AC, 0, 0), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_compile_multi(&handler, expr, flags, ids, 3), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_open_stream(&handler, &stream), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_scan_expr_stream(stream, (const uint8_t *)"xxabc", 5,
+                                    out_ids, &out_count, 1), MMPM_FIND_FAIL);
+    EXPECT_EQ(out_count, 0U);
+    EXPECT_EQ(mmpm_scan_expr_stream(stream, (const uint8_t *)"yydef", 5,
+                                    out_ids, &out_count, 1), MMPM_SUCCESS);
+    EXPECT_EQ(out_count, 1U);
+    EXPECT_EQ(out_ids[0], 1001U);
+    EXPECT_EQ(mmpm_close_stream(stream), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_handler_destroy(&handler), MMPM_SUCCESS);
+}
+
+static void test_expr_api_scan_expr_stream_reports_plain_and_then_combination(void)
+{
+    mmpm_handler_t handler = {0};
+    ms_stream_t *stream = NULL;
+    const char *expr[] = {"abc", "def", "101&102"};
+    uint32_t ids[] = {101, 102, 1001};
+    uint32_t flags[] = {MMPM_FLAG_NONE, MMPM_FLAG_QUIET, MMPM_FLAG_COMBINATION};
+    uint32_t out_ids[2] = {0};
+    uint32_t out_count = 0;
+
+    EXPECT_EQ(mmpm_handler_init(&handler, MMPM_MATCHER_TYPE_AC, 0, 0), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_compile_multi(&handler, expr, flags, ids, 3), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_open_stream(&handler, &stream), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_scan_expr_stream(stream, (const uint8_t *)"xxabc", 5,
+                                    out_ids, &out_count, 2), MMPM_SUCCESS);
+    EXPECT_EQ(out_count, 1U);
+    EXPECT_EQ(out_ids[0], 101U);
+    EXPECT_EQ(mmpm_scan_expr_stream(stream, (const uint8_t *)"yydef", 5,
+                                    out_ids, &out_count, 2), MMPM_SUCCESS);
+    EXPECT_EQ(out_count, 1U);
+    EXPECT_EQ(out_ids[0], 1001U);
+    EXPECT_EQ(mmpm_close_stream(stream), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_handler_destroy(&handler), MMPM_SUCCESS);
+}
+
+static void test_expr_api_scan_expr_stream_deduplicates_combination_reports(void)
+{
+    mmpm_handler_t handler = {0};
+    ms_stream_t *stream = NULL;
+    const char *expr[] = {"abc", "def", "101&102"};
+    uint32_t ids[] = {101, 102, 1001};
+    uint32_t flags[] = {MMPM_FLAG_QUIET, MMPM_FLAG_QUIET, MMPM_FLAG_COMBINATION};
+    uint32_t out_ids[1] = {0};
+    uint32_t out_count = 0;
+
+    EXPECT_EQ(mmpm_handler_init(&handler, MMPM_MATCHER_TYPE_AC, 0, 0), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_compile_multi(&handler, expr, flags, ids, 3), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_open_stream(&handler, &stream), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_scan_expr_stream(stream, (const uint8_t *)"abc", 3,
+                                    out_ids, &out_count, 1), MMPM_FIND_FAIL);
+    EXPECT_EQ(mmpm_scan_expr_stream(stream, (const uint8_t *)"def", 3,
+                                    out_ids, &out_count, 1), MMPM_SUCCESS);
+    EXPECT_EQ(out_ids[0], 1001U);
+    EXPECT_EQ(mmpm_scan_expr_stream(stream, (const uint8_t *)"zzzdef", 6,
+                                    out_ids, &out_count, 1), MMPM_FIND_FAIL);
+    EXPECT_EQ(out_count, 0U);
+    EXPECT_EQ(mmpm_close_stream(stream), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_handler_destroy(&handler), MMPM_SUCCESS);
+}
+
+static void test_expr_api_scan_expr_stream_reset_clears_logical_state(void)
+{
+    mmpm_handler_t handler = {0};
+    ms_stream_t *stream = NULL;
+    const char *expr[] = {"abc", "def", "101&102"};
+    uint32_t ids[] = {101, 102, 1001};
+    uint32_t flags[] = {MMPM_FLAG_QUIET, MMPM_FLAG_QUIET, MMPM_FLAG_COMBINATION};
+    uint32_t out_ids[1] = {0};
+    uint32_t out_count = 0;
+
+    EXPECT_EQ(mmpm_handler_init(&handler, MMPM_MATCHER_TYPE_AC, 0, 0), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_compile_multi(&handler, expr, flags, ids, 3), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_open_stream(&handler, &stream), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_scan_expr_stream(stream, (const uint8_t *)"abc", 3,
+                                    out_ids, &out_count, 1), MMPM_FIND_FAIL);
+    EXPECT_EQ(mmpm_reset_stream(stream), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_scan_expr_stream(stream, (const uint8_t *)"def", 3,
+                                    out_ids, &out_count, 1), MMPM_FIND_FAIL);
+    EXPECT_EQ(mmpm_scan_expr_stream(stream, (const uint8_t *)"abc", 3,
+                                    out_ids, &out_count, 1), MMPM_FIND_FAIL);
+    EXPECT_EQ(mmpm_scan_expr_stream(stream, (const uint8_t *)"def", 3,
+                                    out_ids, &out_count, 1), MMPM_SUCCESS);
+    EXPECT_EQ(out_ids[0], 1001U);
+    EXPECT_EQ(mmpm_close_stream(stream), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_handler_destroy(&handler), MMPM_SUCCESS);
+}
+
+static void test_expr_api_scan_expr_stream_capacity_retry_preserves_state(void)
+{
+    mmpm_handler_t handler = {0};
+    ms_stream_t *stream = NULL;
+    const char *expr[] = {"abc", "def", "101&102"};
+    uint32_t ids[] = {101, 102, 1001};
+    uint32_t flags[] = {MMPM_FLAG_NONE, MMPM_FLAG_QUIET, MMPM_FLAG_COMBINATION};
+    uint32_t out_ids[2] = {0};
+    uint32_t out_count = 0;
+
+    EXPECT_EQ(mmpm_handler_init(&handler, MMPM_MATCHER_TYPE_AC, 0, 0), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_compile_multi(&handler, expr, flags, ids, 3), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_open_stream(&handler, &stream), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_scan_expr_stream(stream, (const uint8_t *)"xxabcdefyy", 10,
+                                    out_ids, &out_count, 1), MMPM_INVALID_PARA);
+    EXPECT_EQ(out_count, 2U);
+    EXPECT_EQ(mmpm_scan_expr_stream(stream, (const uint8_t *)"xxabcdefyy", 10,
+                                    out_ids, &out_count, 2), MMPM_SUCCESS);
+    EXPECT_EQ(out_count, 2U);
+    EXPECT_EQ(out_ids[0], 101U);
+    EXPECT_EQ(out_ids[1], 1001U);
+    EXPECT_EQ(mmpm_close_stream(stream), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_handler_destroy(&handler), MMPM_SUCCESS);
+}
+
+static void test_expr_api_scan_expr_stream_stale_reset_rebuilds_expr_state(void)
+{
+    mmpm_handler_t handler = {0};
+    ms_stream_t *stream = NULL;
+    const char *expr[] = {"abc", "def", "101&102"};
+    uint32_t ids[] = {101, 102, 1001};
+    uint32_t flags[] = {MMPM_FLAG_QUIET, MMPM_FLAG_QUIET, MMPM_FLAG_COMBINATION};
+    uint32_t out_ids[1] = {0};
+    uint32_t out_count = 0;
+    mmpm_rule_t remove_rule = make_expr_query("abc");
+
+    remove_rule.alias = 101;
+
+    EXPECT_EQ(mmpm_handler_init(&handler, MMPM_MATCHER_TYPE_AC, 0, 0), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_compile_multi(&handler, expr, flags, ids, 3), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_open_stream(&handler, &stream), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_scan_expr_stream(stream, (const uint8_t *)"abc", 3,
+                                    out_ids, &out_count, 1), MMPM_FIND_FAIL);
+    EXPECT_EQ(mmpm_remove_rule(&handler, &remove_rule, 1), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_scan_expr_stream(stream, (const uint8_t *)"def", 3,
+                                    out_ids, &out_count, 1), MMPM_STREAM_STALE);
+    EXPECT_EQ(mmpm_reset_stream(stream), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_scan_expr_stream(stream, (const uint8_t *)"def", 3,
+                                    out_ids, &out_count, 1), MMPM_FIND_FAIL);
+    EXPECT_EQ(mmpm_close_stream(stream), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_handler_destroy(&handler), MMPM_SUCCESS);
+}
+
 KTEST_ADD_TEST_CASE(SuiteExprApi, test_expr_api_hash_adds_plain_exprs);
 KTEST_ADD_TEST_CASE(SuiteExprApi, test_expr_api_ac_adds_plain_exprs);
 KTEST_ADD_TEST_CASE(SuiteExprApi, test_expr_api_compiles_combination);
@@ -376,3 +530,9 @@ KTEST_ADD_TEST_CASE(SuiteExprApi, test_expr_api_scan_expr_reports_plain_and_comb
 KTEST_ADD_TEST_CASE(SuiteExprApi, test_expr_api_scan_expr_quiet_only_no_report);
 KTEST_ADD_TEST_CASE(SuiteExprApi, test_expr_api_scan_expr_capacity_too_small);
 KTEST_ADD_TEST_CASE(SuiteExprApi, test_expr_api_scan_expr_deduplicates_plain_matches);
+KTEST_ADD_TEST_CASE(SuiteExprApi, test_expr_api_scan_expr_stream_accumulates_combination);
+KTEST_ADD_TEST_CASE(SuiteExprApi, test_expr_api_scan_expr_stream_reports_plain_and_then_combination);
+KTEST_ADD_TEST_CASE(SuiteExprApi, test_expr_api_scan_expr_stream_deduplicates_combination_reports);
+KTEST_ADD_TEST_CASE(SuiteExprApi, test_expr_api_scan_expr_stream_reset_clears_logical_state);
+KTEST_ADD_TEST_CASE(SuiteExprApi, test_expr_api_scan_expr_stream_capacity_retry_preserves_state);
+KTEST_ADD_TEST_CASE(SuiteExprApi, test_expr_api_scan_expr_stream_stale_reset_rebuilds_expr_state);

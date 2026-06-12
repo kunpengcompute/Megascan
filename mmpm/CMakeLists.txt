@@ -1,6 +1,7 @@
 add_library(mmpm SHARED
     src/mmpm.c
-    src/mmpm_expr.c
+    src/expr/mmpm_expr_compile.c
+    src/expr/mmpm_expr_scan.c
     src/mmpm_hash.c
     src/mmpm_ac.c
     src/mmpm_logical.c
@@ -9,6 +10,7 @@ add_library(mmpm SHARED
 
 target_include_directories(mmpm PRIVATE
     include
+    src/expr
 )
 
 target_compile_options(mmpm PRIVATE -Wall -Werror -fvisibility=hidden -fstack-protector-strong -D_FORTIFY_SOURCE=2 -O2 -fpie -fpic -ftrapv)
