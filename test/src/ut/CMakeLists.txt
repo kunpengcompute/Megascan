@@ -3,7 +3,7 @@ set(target testdemo_ut)
 
 LINK_DIRECTORIES(
     ${PROJECT_LINK_DIR}
-    ${CMAKE_SOURCE_DIR}/output/lib
+    ${CMAKE_SOURCE_DIR}/../output/lib
 )
 
 FILE(GLOB testcode_source ${CMAKE_CURRENT_SOURCE_DIR}/*.c ${CMAKE_CU})
@@ -16,7 +16,7 @@ add_executable(${target} ${testcode_source})
 target_include_directories(${target}
     PUBLIC
     ${PROJECT_INCLUDE_DIR}
-    ${CMAKE_SOURCE_DIR}/mmpm/include  # 添加 mmpm 头文件路径
+    ${CMAKE_SOURCE_DIR}/../mmpm/include  # 添加 mmpm 头文件路径
 )
 
 #设置测试码需要连接的库

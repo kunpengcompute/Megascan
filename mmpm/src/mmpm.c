@@ -8,6 +8,7 @@
 #include "mmpm_hash.h"
 #include "mmpm_ac.h"
 #include "mmpm.h"
+#include "mmpm_expr.h"
 #include "mmpm_allocator.h"
 
 #define HASH_DEFAULT_BUCKET_SIZE 100000
@@ -70,6 +71,8 @@ int mmpm_handler_destroy(mmpm_handler_t *handler)
         pthread_mutex_unlock(&mutex);
         return MMPM_INVALID_PARA;
     }
+
+    mmpm_compile_context_destroy(handler);
 
     if (handler->mmpm_matcher == NULL) {
         pthread_mutex_unlock(&mutex);
