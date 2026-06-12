@@ -6,17 +6,9 @@
 #include <string.h>
 
 #include "mmpm.h"
-#include "mmpm_ac.h"
 #include "mmpm_allocator.h"
-#include "mmpm_expr.h"
 #include "mmpm_expr_internal.h"
 #include "mmpm_logical.h"
-
-typedef struct {
-    uint32_t *aliases;
-    uint32_t count;
-    uint32_t capacity;
-} mmpm_compile_alias_capture_t;
 
 typedef struct {
     uint32_t *ids;
@@ -64,7 +56,7 @@ static int mmpm_compile_bitset_set(uint8_t *vector, uint32_t count, uint32_t key
     return MMPM_SUCCESS;
 }
 
-static int mmpm_compile_alias_capture_reserve(mmpm_compile_alias_capture_t *capture)
+int mmpm_compile_alias_capture_reserve(mmpm_compile_alias_capture_t *capture)
 {
     uint32_t *aliases = NULL;
     uint32_t new_capacity;
@@ -89,7 +81,7 @@ static int mmpm_compile_alias_capture_reserve(mmpm_compile_alias_capture_t *capt
     return MMPM_SUCCESS;
 }
 
-static int mmpm_compile_capture_alias(uint32_t alias, void *ctx)
+int mmpm_compile_capture_alias(uint32_t alias, void *ctx)
 {
     mmpm_compile_alias_capture_t *capture = (mmpm_compile_alias_capture_t *)ctx;
     int ret;
@@ -108,7 +100,7 @@ static int mmpm_compile_capture_alias(uint32_t alias, void *ctx)
     return MMPM_SUCCESS;
 }
 
-static int mmpm_compile_capture_alias_unique(uint32_t alias, void *ctx)
+int mmpm_compile_capture_alias_unique(uint32_t alias, void *ctx)
 {
     mmpm_compile_alias_capture_t *capture = (mmpm_compile_alias_capture_t *)ctx;
     uint32_t i;
@@ -255,6 +247,68 @@ int mmpm_compile_mark_aliases(const mmpm_compile_context_t *ctx,
     return MMPM_SUCCESS;
 }
 
+int mmpm_compile_stream_state_init(mmpm_handler_t *handler,
+                                   uint8_t **logical_vector,
+                                   uint32_t *logical_count,
+                                   uint8_t **combination_vector,
+                                   uint32_t *combination_count)
+{
+    mmpm_compile_context_t *ctx;
+    uint32_t logical_bytes = 0;
+    uint32_t combination_bytes = 0;
+
+    if (handler == NULL || logical_vector == NULL || logical_count == NULL ||
+        combination_vector == NULL || combination_count == NULL) {
+        return MMPM_INVALID_PARA;
+    }
+
+    *logical_vector = NULL;
+    *logical_count = 0;
+    *combination_vector = NULL;
+    *combination_count = 0;
+
+    ctx = (mmpm_compile_context_t *)handler->mmpm_compile_ctx;
+    if (ctx == NULL) {
+        return MMPM_SUCCESS;
+    }
+
+    *logical_count = ctx->logical_count;
+    *combination_count = ctx->comb_count;
+    logical_bytes = mmpm_compile_logical_byte_count(ctx->logical_count);
+    combination_bytes = mmpm_compile_logical_byte_count(ctx->comb_count);
+
+    if (logical_bytes != 0) {
+        *logical_vector = (uint8_t *)mmpm_calloc(logical_bytes, sizeof(uint8_t));
+        if (*logical_vector == NULL) {
+            return MMPM_MALLOC_FAIL;
+        }
+    }
+
+    if (combination_bytes != 0) {
+        *combination_vector = (uint8_t *)mmpm_calloc(combination_bytes, sizeof(uint8_t));
+        if (*combination_vector == NULL) {
+            if (*logical_vector != NULL) {
+                mmpm_free(*logical_vector);
+                *logical_vector = NULL;
+            }
+            return MMPM_MALLOC_FAIL;
+        }
+    }
+
+    return MMPM_SUCCESS;
+}
+
+void mmpm_compile_stream_state_destroy(uint8_t *logical_vector,
+                                       uint8_t *combination_vector)
+{
+    if (logical_vector != NULL) {
+        mmpm_free(logical_vector);
+    }
+    if (combination_vector != NULL) {
+        mmpm_free(combination_vector);
+    }
+}
+
 __attribute__((visibility("default")))
 int mmpm_compile_eval_combinations(mmpm_handler_t *handler,
                                    const uint32_t *aliases,
@@ -323,68 +377,6 @@ end:
         mmpm_free(logical_vector);
     }
     return ret;
-}
-
-int mmpm_compile_stream_state_init(mmpm_handler_t *handler,
-                                   uint8_t **logical_vector,
-                                   uint32_t *logical_count,
-                                   uint8_t **combination_vector,
-                                   uint32_t *combination_count)
-{
-    mmpm_compile_context_t *ctx;
-    uint32_t logical_bytes = 0;
-    uint32_t combination_bytes = 0;
-
-    if (handler == NULL || logical_vector == NULL || logical_count == NULL ||
-        combination_vector == NULL || combination_count == NULL) {
-        return MMPM_INVALID_PARA;
-    }
-
-    *logical_vector = NULL;
-    *logical_count = 0;
-    *combination_vector = NULL;
-    *combination_count = 0;
-
-    ctx = (mmpm_compile_context_t *)handler->mmpm_compile_ctx;
-    if (ctx == NULL) {
-        return MMPM_SUCCESS;
-    }
-
-    *logical_count = ctx->logical_count;
-    *combination_count = ctx->comb_count;
-    logical_bytes = mmpm_compile_logical_byte_count(ctx->logical_count);
-    combination_bytes = mmpm_compile_logical_byte_count(ctx->comb_count);
-
-    if (logical_bytes != 0) {
-        *logical_vector = (uint8_t *)mmpm_calloc(logical_bytes, sizeof(uint8_t));
-        if (*logical_vector == NULL) {
-            return MMPM_MALLOC_FAIL;
-        }
-    }
-
-    if (combination_bytes != 0) {
-        *combination_vector = (uint8_t *)mmpm_calloc(combination_bytes, sizeof(uint8_t));
-        if (*combination_vector == NULL) {
-            if (*logical_vector != NULL) {
-                mmpm_free(*logical_vector);
-                *logical_vector = NULL;
-            }
-            return MMPM_MALLOC_FAIL;
-        }
-    }
-
-    return MMPM_SUCCESS;
-}
-
-void mmpm_compile_stream_state_destroy(uint8_t *logical_vector,
-                                       uint8_t *combination_vector)
-{
-    if (logical_vector != NULL) {
-        mmpm_free(logical_vector);
-    }
-    if (combination_vector != NULL) {
-        mmpm_free(combination_vector);
-    }
 }
 
 int mmpm_compile_eval_stream_matches(mmpm_handler_t *handler,
@@ -494,208 +486,6 @@ end:
     }
     if (result.ids != NULL) {
         mmpm_free(result.ids);
-    }
-    return ret;
-}
-
-__attribute__((visibility("default")))
-int mmpm_compile_scan_ac_combinations(mmpm_handler_t *handler,
-                                      const uint8_t *data,
-                                      uint32_t len,
-                                      uint32_t *comb_ids,
-                                      uint32_t *comb_count,
-                                      uint32_t comb_capacity)
-{
-    mmpm_compile_alias_capture_t capture = {0};
-    uint32_t node_index = 0;
-    int scan_ret;
-    int ret;
-
-    if (handler == NULL || data == NULL || comb_count == NULL ||
-        handler->type != MMPM_MATCHER_TYPE_AC ||
-        handler->mmpm_matcher == NULL || !handler->is_built) {
-        return MMPM_INVALID_PARA;
-    }
-
-    *comb_count = 0;
-    scan_ret = ac_automaton_match_state_cb((ACAutomaton *)handler->mmpm_matcher,
-                                           data, len, &node_index,
-                                           mmpm_compile_capture_alias,
-                                           &capture);
-    if (scan_ret != MMPM_SUCCESS && scan_ret != MMPM_FIND_FAIL) {
-        ret = scan_ret;
-        goto end;
-    }
-
-    ret = mmpm_compile_eval_combinations(handler, capture.aliases, capture.count,
-                                         comb_ids, comb_count, comb_capacity);
-    if (ret != MMPM_SUCCESS) {
-        goto end;
-    }
-
-    ret = (*comb_count == 0) ? MMPM_FIND_FAIL : MMPM_SUCCESS;
-
-end:
-    if (capture.aliases != NULL) {
-        mmpm_free(capture.aliases);
-    }
-    return ret;
-}
-
-__attribute__((visibility("default")))
-int mmpm_scan_expr(mmpm_handler_t *handler, const uint8_t *data, uint32_t len,
-                   uint32_t *ids, uint32_t *id_count, uint32_t id_capacity)
-{
-    mmpm_compile_context_t *ctx = NULL;
-    mmpm_compile_alias_capture_t capture = {0};
-    uint8_t *logical_vector = NULL;
-    uint8_t *combination_vector = NULL;
-    uint32_t logical_count = 0;
-    uint32_t combination_count = 0;
-    uint32_t node_index = 0;
-    int scan_ret;
-    int ret;
-
-    if (handler == NULL || data == NULL || id_count == NULL ||
-        (id_capacity != 0 && ids == NULL) ||
-        handler->type != MMPM_MATCHER_TYPE_AC ||
-        handler->mmpm_matcher == NULL || !handler->is_built) {
-        return MMPM_INVALID_PARA;
-    }
-
-    *id_count = 0;
-    ctx = (mmpm_compile_context_t *)handler->mmpm_compile_ctx;
-    if (ctx == NULL) {
-        return MMPM_INVALID_PARA;
-    }
-
-    scan_ret = ac_automaton_match_state_cb((ACAutomaton *)handler->mmpm_matcher,
-                                           data, len, &node_index,
-                                           mmpm_compile_capture_alias,
-                                           &capture);
-    if (scan_ret != MMPM_SUCCESS && scan_ret != MMPM_FIND_FAIL) {
-        ret = scan_ret;
-        goto end;
-    }
-
-    ret = mmpm_compile_stream_state_init(handler,
-                                         &logical_vector,
-                                         &logical_count,
-                                         &combination_vector,
-                                         &combination_count);
-    if (ret != MMPM_SUCCESS) {
-        goto end;
-    }
-
-    ret = mmpm_compile_eval_stream_matches(handler,
-                                           capture.aliases,
-                                           capture.count,
-                                           logical_vector,
-                                           logical_count,
-                                           combination_vector,
-                                           combination_count,
-                                           ids,
-                                           id_count,
-                                           id_capacity);
-
-end:
-    mmpm_compile_stream_state_destroy(logical_vector, combination_vector);
-    if (capture.aliases != NULL) {
-        mmpm_free(capture.aliases);
-    }
-    return ret;
-}
-
-int mmpm_expr_scan_stream(mmpm_handler_t *handler,
-                          ACAutomaton *automaton,
-                          uint32_t *node_index,
-                          uint8_t *logical_vector,
-                          uint32_t logical_count,
-                          uint8_t *combination_vector,
-                          uint32_t combination_count,
-                          uint64_t *offset,
-                          const uint8_t *data,
-                          uint32_t len,
-                          uint32_t *ids,
-                          uint32_t *id_count,
-                          uint32_t id_capacity)
-{
-    mmpm_compile_alias_capture_t capture = {0};
-    uint32_t next_node_index;
-    uint8_t *logical_vector_copy = NULL;
-    uint8_t *combination_vector_copy = NULL;
-    uint32_t logical_bytes;
-    uint32_t combination_bytes;
-    int scan_ret;
-    int ret;
-
-    if (handler == NULL || automaton == NULL || node_index == NULL || offset == NULL ||
-        data == NULL || id_count == NULL || (id_capacity != 0 && ids == NULL)) {
-        return MMPM_INVALID_PARA;
-    }
-
-    next_node_index = *node_index;
-    logical_bytes = mmpm_compile_logical_byte_count(logical_count);
-    combination_bytes = mmpm_compile_logical_byte_count(combination_count);
-    if (logical_bytes != 0) {
-        logical_vector_copy = (uint8_t *)mmpm_calloc(logical_bytes, sizeof(uint8_t));
-        if (logical_vector_copy == NULL) {
-            ret = MMPM_MALLOC_FAIL;
-            goto end;
-        }
-        (void)memcpy(logical_vector_copy, logical_vector, logical_bytes);
-    }
-    if (combination_bytes != 0) {
-        combination_vector_copy = (uint8_t *)mmpm_calloc(combination_bytes, sizeof(uint8_t));
-        if (combination_vector_copy == NULL) {
-            ret = MMPM_MALLOC_FAIL;
-            goto end;
-        }
-        (void)memcpy(combination_vector_copy, combination_vector, combination_bytes);
-    }
-
-    *id_count = 0;
-    scan_ret = ac_automaton_match_state_cb(automaton,
-                                           data,
-                                           len,
-                                           &next_node_index,
-                                           mmpm_compile_capture_alias_unique,
-                                           &capture);
-    if (scan_ret != MMPM_SUCCESS && scan_ret != MMPM_FIND_FAIL) {
-        ret = scan_ret;
-        goto end;
-    }
-
-    ret = mmpm_compile_eval_stream_matches(handler,
-                                           capture.aliases,
-                                           capture.count,
-                                           logical_vector_copy,
-                                           logical_count,
-                                           combination_vector_copy,
-                                           combination_count,
-                                           ids,
-                                           id_count,
-                                           id_capacity);
-    if (ret == MMPM_SUCCESS || ret == MMPM_FIND_FAIL) {
-        *node_index = next_node_index;
-        *offset += len;
-        if (logical_bytes != 0) {
-            (void)memcpy(logical_vector, logical_vector_copy, logical_bytes);
-        }
-        if (combination_bytes != 0) {
-            (void)memcpy(combination_vector, combination_vector_copy, combination_bytes);
-        }
-    }
-
-end:
-    if (logical_vector_copy != NULL) {
-        mmpm_free(logical_vector_copy);
-    }
-    if (combination_vector_copy != NULL) {
-        mmpm_free(combination_vector_copy);
-    }
-    if (capture.aliases != NULL) {
-        mmpm_free(capture.aliases);
     }
     return ret;
 }

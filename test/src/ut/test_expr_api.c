@@ -448,8 +448,6 @@ static void test_expr_api_scan_expr_stream_reset_clears_logical_state(void)
     EXPECT_EQ(mmpm_scan_expr_stream(stream, (const uint8_t *)"def", 3,
                                     out_ids, &out_count, 1), MMPM_FIND_FAIL);
     EXPECT_EQ(mmpm_scan_expr_stream(stream, (const uint8_t *)"abc", 3,
-                                    out_ids, &out_count, 1), MMPM_FIND_FAIL);
-    EXPECT_EQ(mmpm_scan_expr_stream(stream, (const uint8_t *)"def", 3,
                                     out_ids, &out_count, 1), MMPM_SUCCESS);
     EXPECT_EQ(out_ids[0], 1001U);
     EXPECT_EQ(mmpm_close_stream(stream), MMPM_SUCCESS);

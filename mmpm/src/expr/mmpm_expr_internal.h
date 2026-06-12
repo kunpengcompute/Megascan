@@ -33,6 +33,12 @@ typedef struct {
     uint32_t logical_count;
 } mmpm_compile_context_t;
 
+typedef struct {
+    uint32_t *aliases;
+    uint32_t count;
+    uint32_t capacity;
+} mmpm_compile_alias_capture_t;
+
 bool mmpm_compile_is_combination(const uint32_t *flags, uint32_t index);
 bool mmpm_compile_context_has_id(const mmpm_compile_context_t *ctx, uint32_t id);
 int mmpm_compile_context_find_lkey(const mmpm_compile_context_t *ctx,
@@ -47,6 +53,9 @@ int mmpm_compile_mark_aliases(const mmpm_compile_context_t *ctx,
                               uint8_t *logical_vector,
                               uint32_t logical_count);
 void mmpm_compile_context_free(mmpm_compile_context_t *ctx);
+int mmpm_compile_alias_capture_reserve(mmpm_compile_alias_capture_t *capture);
+int mmpm_compile_capture_alias(uint32_t alias, void *ctx);
+int mmpm_compile_capture_alias_unique(uint32_t alias, void *ctx);
 
 int mmpm_compile_stream_state_init(mmpm_handler_t *handler,
                                    uint8_t **logical_vector,
@@ -55,6 +64,12 @@ int mmpm_compile_stream_state_init(mmpm_handler_t *handler,
                                    uint32_t *combination_count);
 void mmpm_compile_stream_state_destroy(uint8_t *logical_vector,
                                        uint8_t *combination_vector);
+int mmpm_compile_eval_combinations(mmpm_handler_t *handler,
+                                   const uint32_t *aliases,
+                                   uint32_t alias_count,
+                                   uint32_t *comb_ids,
+                                   uint32_t *comb_count,
+                                   uint32_t comb_capacity);
 int mmpm_compile_eval_stream_matches(mmpm_handler_t *handler,
                                      const uint32_t *aliases,
                                      uint32_t alias_count,
