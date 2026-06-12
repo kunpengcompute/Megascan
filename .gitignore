@@ -2,3 +2,6 @@ demo
 opensource
 build
 build_ninja
+output/
+tmp/
+unpack_open_source/

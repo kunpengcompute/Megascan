@@ -18,6 +18,10 @@
 #define MMPM_NOT_SUPPORTED      (-7)
 #define MMPM_STREAM_STALE       (-8)
 
+#define MMPM_FLAG_NONE          0u
+#define MMPM_FLAG_COMBINATION   1u
+#define MMPM_FLAG_QUIET         2u
+
 typedef uint32_t (*hash_calc_func)(const uint8_t *key, uint32_t key_len);
 
 typedef enum {
@@ -35,6 +39,7 @@ typedef struct {
 
 typedef struct {
     void *mmpm_matcher;
+    void *mmpm_compile_ctx;
     mmpm_matcher_type type;
     
     /* mark whether the ac automation has been built. */
@@ -73,6 +78,27 @@ int mmpm_set_hash_func(mmpm_handler_t *handler, hash_calc_func hash_func);
 int mmpm_add_rule(mmpm_handler_t *handler, mmpm_rule_t *rule, uint32_t rule_num);
 
 /**
+ * Compile multiple expression-style rules.
+ *
+ * @handler: Matching engine handle.
+ * @expressions: NULL-terminated expressions to be compiled.
+ * @flags: Flags associated with each expression. NULL means all flags are zero.
+ * @ids: IDs associated with each expression. NULL means all IDs are zero.
+ * @elements: Number of expressions.
+ * @return: 0 for success, an error code(negative number) for failure.
+ */
+int mmpm_compile_multi(mmpm_handler_t *handler, const char *const *expressions, const uint32_t *flags,
+                       const uint32_t *ids, uint32_t elements);
+
+/**
+ * Import expression-style rules.
+ *
+ * This is a compatibility wrapper around mmpm_compile_multi().
+ */
+int mmpm_add_exprs(mmpm_handler_t *handler, const char *const *expr, const uint32_t *ids,
+                   const uint32_t *flags, uint32_t elements);
+
+/**
  * Delete target rules.
  *
  * @handler: Matching engine handle.
@@ -90,6 +116,25 @@ int mmpm_remove_rule(mmpm_handler_t *handler, mmpm_rule_t *rule, uint32_t rule_n
  * @return: 0 for success, an error code(negative number) for failure.
  */
 int mmpm_find_rule(mmpm_handler_t *handler, mmpm_rule_t *rule);
+
+/**
+ * Scan data with expression-style rules.
+ *
+ * Non-quiet plain rules and matched combination rules are written to @ids.
+ * Quiet plain rules participate in combination evaluation but are not written.
+ * If @id_capacity is too small, @id_count is set to the required count and
+ * MMPM_INVALID_PARA is returned.
+ *
+ * @handler: Matching engine handle. Only AC handlers are supported currently.
+ * @data: Pending matching data.
+ * @len: Length of pending matching data.
+ * @ids: Output IDs. May be NULL only when @id_capacity is zero.
+ * @id_count: Output ID count or required count on capacity failure.
+ * @id_capacity: Capacity of @ids.
+ * @return: 0 for success, MMPM_FIND_FAIL for no reported IDs, or an error code.
+ */
+int mmpm_scan_expr(mmpm_handler_t *handler, const uint8_t *data, uint32_t len,
+                   uint32_t *ids, uint32_t *id_count, uint32_t id_capacity);
 
 /**
  * Open a stream for AC matching.
