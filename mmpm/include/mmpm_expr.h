@@ -6,7 +6,7 @@
 
 #include "mmpm.h"
 
-#define MMPM_EXPR_SUPPORTED_FLAGS (MMPM_FLAG_COMBINATION | MMPM_FLAG_QUIET)
+#define MMPM_EXPR_SUPPORTED_FLAGS (MMPM_FLAG_COMBINATION | MMPM_FLAG_QUIET | MMPM_FLAG_SINGLEMATCH)
 
 int mmpm_compile_eval_combinations(mmpm_handler_t *handler,
                                    const uint32_t *aliases,

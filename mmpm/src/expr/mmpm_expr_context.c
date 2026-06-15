@@ -172,35 +172,34 @@ static int mmpm_compile_context_collect_comb_lkeys(const mmpm_logical_tree_t *tr
                                                    uint32_t *lkey_result)
 {
     uint32_t i;
-    uint32_t min_lkey = UINT32_MAX;
+    uint32_t min_op_lkey = UINT32_MAX;
 
     if (tree == NULL || lkey_start == NULL || lkey_result == NULL) {
         return MMPM_INVALID_PARA;
     }
 
     for (i = 0; i < tree->op_count; i++) {
-        if ((tree->ops[i].right & MMPM_LOGICAL_OP_REF) == 0 && tree->ops[i].right < min_lkey) {
-            min_lkey = tree->ops[i].right;
+        if ((tree->ops[i].id & MMPM_LOGICAL_OP_REF) != 0) {
+            return MMPM_INVALID_PARA;
         }
-        if (tree->ops[i].op != MMPM_LOGICAL_OP_NOT &&
-            (tree->ops[i].left & MMPM_LOGICAL_OP_REF) == 0 &&
-            tree->ops[i].left < min_lkey) {
-            min_lkey = tree->ops[i].left;
+        if (tree->ops[i].id < min_op_lkey) {
+            min_op_lkey = tree->ops[i].id;
         }
     }
 
-    if ((tree->result & MMPM_LOGICAL_OP_REF) == 0 && tree->result < min_lkey) {
-        min_lkey = tree->result;
+    if (min_op_lkey == UINT32_MAX || (tree->result & MMPM_LOGICAL_OP_REF) != 0) {
+        return MMPM_INVALID_PARA;
     }
 
-    *lkey_start = min_lkey;
+    *lkey_start = min_op_lkey;
     *lkey_result = tree->result;
     return MMPM_SUCCESS;
 }
 
 static int mmpm_compile_context_add_comb_relations(mmpm_compile_context_t *ctx,
                                                    const mmpm_logical_tree_t *tree,
-                                                   uint32_t ckey)
+                                                   uint32_t ckey,
+                                                   uint32_t op_lkey_start)
 {
     uint32_t i;
     int ret;
@@ -210,7 +209,8 @@ static int mmpm_compile_context_add_comb_relations(mmpm_compile_context_t *ctx,
     }
 
     for (i = 0; i < tree->op_count; i++) {
-        if ((tree->ops[i].right & MMPM_LOGICAL_OP_REF) == 0) {
+        if ((tree->ops[i].right & MMPM_LOGICAL_OP_REF) == 0 &&
+            tree->ops[i].right < op_lkey_start) {
             ret = mmpm_compile_context_add_lkey_relation(ctx, tree->ops[i].right, ckey);
             if (ret != MMPM_SUCCESS) {
                 return ret;
@@ -218,6 +218,9 @@ static int mmpm_compile_context_add_comb_relations(mmpm_compile_context_t *ctx,
         }
         if (tree->ops[i].op != MMPM_LOGICAL_OP_NOT &&
             (tree->ops[i].left & MMPM_LOGICAL_OP_REF) == 0) {
+            if (tree->ops[i].left >= op_lkey_start) {
+                continue;
+            }
             ret = mmpm_compile_context_add_lkey_relation(ctx, tree->ops[i].left, ckey);
             if (ret != MMPM_SUCCESS) {
                 return ret;
@@ -225,13 +228,65 @@ static int mmpm_compile_context_add_comb_relations(mmpm_compile_context_t *ctx,
         }
     }
 
-    if ((tree->result & MMPM_LOGICAL_OP_REF) == 0) {
-        ret = mmpm_compile_context_add_lkey_relation(ctx, tree->result, ckey);
-        if (ret != MMPM_SUCCESS) {
-            return ret;
+    return MMPM_SUCCESS;
+}
+
+static int mmpm_compile_context_reserve_tree_lkeys(mmpm_compile_context_t *ctx,
+                                                   const mmpm_logical_tree_t *tree)
+{
+    uint32_t i;
+    uint32_t max_lkey;
+
+    if (ctx == NULL || tree == NULL || tree->op_count == 0) {
+        return MMPM_INVALID_PARA;
+    }
+
+    max_lkey = tree->result;
+    for (i = 0; i < tree->op_count; i++) {
+        if ((tree->ops[i].id & MMPM_LOGICAL_OP_REF) != 0 ||
+            (tree->ops[i].left & MMPM_LOGICAL_OP_REF) != 0 ||
+            (tree->ops[i].right & MMPM_LOGICAL_OP_REF) != 0) {
+            return MMPM_INVALID_PARA;
+        }
+        if (tree->ops[i].id > max_lkey) {
+            max_lkey = tree->ops[i].id;
         }
     }
 
+    return mmpm_compile_context_reserve_lkey_relations(ctx, max_lkey + 1);
+}
+
+static int mmpm_compile_context_detect_pure_negative(const mmpm_compile_context_t *ctx,
+                                                     const mmpm_logical_tree_t *tree,
+                                                     bool *can_match)
+{
+    uint8_t *logical_vector = NULL;
+    uint8_t matched = 0;
+    uint32_t bytes;
+    int ret;
+
+    if (ctx == NULL || tree == NULL || can_match == NULL) {
+        return MMPM_INVALID_PARA;
+    }
+
+    *can_match = false;
+    bytes = mmpm_compile_logical_byte_count(ctx->logical_count);
+    if (bytes != 0) {
+        logical_vector = (uint8_t *)mmpm_calloc(bytes, sizeof(uint8_t));
+        if (logical_vector == NULL) {
+            return MMPM_MALLOC_FAIL;
+        }
+    }
+
+    ret = mmpm_logical_eval_inplace(tree, logical_vector, ctx->logical_count, &matched);
+    if (logical_vector != NULL) {
+        mmpm_free(logical_vector);
+    }
+    if (ret != MMPM_SUCCESS) {
+        return ret;
+    }
+
+    *can_match = matched ? true : false;
     return MMPM_SUCCESS;
 }
 
@@ -311,12 +366,18 @@ int mmpm_compile_context_add_expr(mmpm_compile_context_t *ctx,
 
 int mmpm_compile_context_add_comb(mmpm_compile_context_t *ctx,
                                   uint32_t id,
+                                  uint32_t flags,
+                                  const mmpm_expr_ext_t *ext,
                                   mmpm_logical_tree_t *tree)
 {
     int ret = mmpm_compile_context_reserve_combs(ctx);
     uint32_t lkey_start;
     uint32_t lkey_result;
     uint32_t ckey = ctx->comb_count;
+    uint32_t ekey = UINT32_MAX;
+    uint64_t min_offset = 0;
+    uint64_t max_offset = UINT64_MAX;
+    bool can_match_without_active_lkey = false;
 
     if (ret != MMPM_SUCCESS) {
         return ret;
@@ -327,17 +388,47 @@ int mmpm_compile_context_add_comb(mmpm_compile_context_t *ctx,
         return ret;
     }
 
+    ret = mmpm_compile_context_reserve_tree_lkeys(ctx, tree);
+    if (ret != MMPM_SUCCESS) {
+        return ret;
+    }
+
+    ret = mmpm_compile_context_detect_pure_negative(ctx, tree, &can_match_without_active_lkey);
+    if (ret != MMPM_SUCCESS) {
+        return ret;
+    }
+
+    if ((flags & MMPM_FLAG_SINGLEMATCH) != 0) {
+        ekey = ctx->ekey_count++;
+    }
+
+    if (ext != NULL) {
+        if ((ext->flags & MMPM_EXT_FLAG_MIN_OFFSET) != 0) {
+            min_offset = ext->min_offset;
+        }
+        if ((ext->flags & MMPM_EXT_FLAG_MAX_OFFSET) != 0) {
+            max_offset = ext->max_offset;
+        }
+    }
+
     ctx->combs[ctx->comb_count].id = id;
+    ctx->combs[ctx->comb_count].flags = flags;
     ctx->combs[ctx->comb_count].ckey = ckey;
-    ctx->combs[ctx->comb_count].ekey = UINT32_MAX;
+    ctx->combs[ctx->comb_count].ekey = ekey;
     ctx->combs[ctx->comb_count].lkey_start = lkey_start;
     ctx->combs[ctx->comb_count].lkey_result = lkey_result;
     ctx->combs[ctx->comb_count].result = tree->result;
+    ctx->combs[ctx->comb_count].min_offset = min_offset;
+    ctx->combs[ctx->comb_count].max_offset = max_offset;
+    ctx->combs[ctx->comb_count].can_match_without_active_lkey = can_match_without_active_lkey;
     ctx->combs[ctx->comb_count].tree = *tree;
     ctx->comb_count++;
-    ret = mmpm_compile_context_add_comb_relations(ctx, tree, ckey);
+    ret = mmpm_compile_context_add_comb_relations(ctx, tree, ckey, lkey_start);
     if (ret != MMPM_SUCCESS) {
         ctx->comb_count--;
+        if (ekey != UINT32_MAX && ctx->ekey_count != 0) {
+            ctx->ekey_count--;
+        }
         return ret;
     }
     (void)memset(tree, 0, sizeof(*tree));
@@ -371,7 +462,15 @@ int mmpm_compile_append_context(mmpm_handler_t *handler,
     }
 
     for (i = 0; i < new_ctx->comb_count; i++) {
-        ret = mmpm_compile_context_add_comb(ctx, new_ctx->combs[i].id, &new_ctx->combs[i].tree);
+        mmpm_expr_ext_t ext = {0};
+
+        ext.flags = MMPM_EXT_FLAG_MIN_OFFSET | MMPM_EXT_FLAG_MAX_OFFSET;
+        ext.min_offset = new_ctx->combs[i].min_offset;
+        ext.max_offset = new_ctx->combs[i].max_offset;
+        ret = mmpm_compile_context_add_comb(ctx, new_ctx->combs[i].id,
+                                            new_ctx->combs[i].flags,
+                                            &ext,
+                                            &new_ctx->combs[i].tree);
         if (ret != MMPM_SUCCESS) {
             return ret;
         }

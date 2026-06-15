@@ -15,6 +15,8 @@ int mmpm_expr_scan_stream(mmpm_handler_t *handler,
                           uint32_t logical_count,
                           uint8_t *combination_vector,
                           uint32_t combination_count,
+                          uint8_t *exhaustion_vector,
+                          uint32_t exhaustion_count,
                           uint64_t *offset,
                           const uint8_t *data,
                           uint32_t len,
@@ -26,8 +28,10 @@ int mmpm_expr_scan_stream(mmpm_handler_t *handler,
     uint32_t next_node_index;
     uint8_t *logical_vector_copy = NULL;
     uint8_t *combination_vector_copy = NULL;
+    uint8_t *exhaustion_vector_copy = NULL;
     uint32_t logical_bytes;
     uint32_t combination_bytes;
+    uint32_t exhaustion_bytes;
     int scan_ret;
     int ret;
 
@@ -39,6 +43,7 @@ int mmpm_expr_scan_stream(mmpm_handler_t *handler,
     next_node_index = *node_index;
     logical_bytes = mmpm_compile_logical_byte_count(logical_count);
     combination_bytes = mmpm_compile_logical_byte_count(combination_count);
+    exhaustion_bytes = mmpm_compile_logical_byte_count(exhaustion_count);
     if (logical_bytes != 0) {
         logical_vector_copy = (uint8_t *)mmpm_calloc(logical_bytes, sizeof(uint8_t));
         if (logical_vector_copy == NULL) {
@@ -54,6 +59,14 @@ int mmpm_expr_scan_stream(mmpm_handler_t *handler,
             goto end;
         }
         (void)memcpy(combination_vector_copy, combination_vector, combination_bytes);
+    }
+    if (exhaustion_bytes != 0) {
+        exhaustion_vector_copy = (uint8_t *)mmpm_calloc(exhaustion_bytes, sizeof(uint8_t));
+        if (exhaustion_vector_copy == NULL) {
+            ret = MMPM_MALLOC_FAIL;
+            goto end;
+        }
+        (void)memcpy(exhaustion_vector_copy, exhaustion_vector, exhaustion_bytes);
     }
 
     *id_count = 0;
@@ -75,6 +88,10 @@ int mmpm_expr_scan_stream(mmpm_handler_t *handler,
                                            logical_count,
                                            combination_vector_copy,
                                            combination_count,
+                                           exhaustion_vector_copy,
+                                           exhaustion_count,
+                                           *offset + len,
+                                           false,
                                            ids,
                                            id_count,
                                            id_capacity);
@@ -87,6 +104,9 @@ int mmpm_expr_scan_stream(mmpm_handler_t *handler,
         if (combination_bytes != 0) {
             (void)memcpy(combination_vector, combination_vector_copy, combination_bytes);
         }
+        if (exhaustion_bytes != 0) {
+            (void)memcpy(exhaustion_vector, exhaustion_vector_copy, exhaustion_bytes);
+        }
     }
 
 end:
@@ -96,8 +116,103 @@ end:
     if (combination_vector_copy != NULL) {
         mmpm_free(combination_vector_copy);
     }
+    if (exhaustion_vector_copy != NULL) {
+        mmpm_free(exhaustion_vector_copy);
+    }
     if (capture.aliases != NULL) {
         mmpm_free(capture.aliases);
+    }
+    return ret;
+}
+
+int mmpm_expr_flush_stream(mmpm_handler_t *handler,
+                           uint8_t *logical_vector,
+                           uint32_t logical_count,
+                           uint8_t *combination_vector,
+                           uint32_t combination_count,
+                           uint8_t *exhaustion_vector,
+                           uint32_t exhaustion_count,
+                           uint64_t offset,
+                           uint32_t *ids,
+                           uint32_t *id_count,
+                           uint32_t id_capacity)
+{
+    uint8_t *logical_vector_copy = NULL;
+    uint8_t *combination_vector_copy = NULL;
+    uint8_t *exhaustion_vector_copy = NULL;
+    uint32_t logical_bytes;
+    uint32_t combination_bytes;
+    uint32_t exhaustion_bytes;
+    int ret;
+
+    if (handler == NULL || id_count == NULL || (id_capacity != 0 && ids == NULL)) {
+        return MMPM_INVALID_PARA;
+    }
+
+    logical_bytes = mmpm_compile_logical_byte_count(logical_count);
+    combination_bytes = mmpm_compile_logical_byte_count(combination_count);
+    exhaustion_bytes = mmpm_compile_logical_byte_count(exhaustion_count);
+
+    if (logical_bytes != 0) {
+        logical_vector_copy = (uint8_t *)mmpm_calloc(logical_bytes, sizeof(uint8_t));
+        if (logical_vector_copy == NULL) {
+            ret = MMPM_MALLOC_FAIL;
+            goto end;
+        }
+        (void)memcpy(logical_vector_copy, logical_vector, logical_bytes);
+    }
+    if (combination_bytes != 0) {
+        combination_vector_copy = (uint8_t *)mmpm_calloc(combination_bytes, sizeof(uint8_t));
+        if (combination_vector_copy == NULL) {
+            ret = MMPM_MALLOC_FAIL;
+            goto end;
+        }
+        (void)memcpy(combination_vector_copy, combination_vector, combination_bytes);
+    }
+    if (exhaustion_bytes != 0) {
+        exhaustion_vector_copy = (uint8_t *)mmpm_calloc(exhaustion_bytes, sizeof(uint8_t));
+        if (exhaustion_vector_copy == NULL) {
+            ret = MMPM_MALLOC_FAIL;
+            goto end;
+        }
+        (void)memcpy(exhaustion_vector_copy, exhaustion_vector, exhaustion_bytes);
+    }
+
+    ret = mmpm_compile_eval_stream_matches(handler,
+                                           NULL,
+                                           0,
+                                           logical_vector_copy,
+                                           logical_count,
+                                           combination_vector_copy,
+                                           combination_count,
+                                           exhaustion_vector_copy,
+                                           exhaustion_count,
+                                           offset,
+                                           true,
+                                           ids,
+                                           id_count,
+                                           id_capacity);
+    if (ret == MMPM_SUCCESS || ret == MMPM_FIND_FAIL) {
+        if (logical_bytes != 0) {
+            (void)memcpy(logical_vector, logical_vector_copy, logical_bytes);
+        }
+        if (combination_bytes != 0) {
+            (void)memcpy(combination_vector, combination_vector_copy, combination_bytes);
+        }
+        if (exhaustion_bytes != 0) {
+            (void)memcpy(exhaustion_vector, exhaustion_vector_copy, exhaustion_bytes);
+        }
+    }
+
+end:
+    if (logical_vector_copy != NULL) {
+        mmpm_free(logical_vector_copy);
+    }
+    if (combination_vector_copy != NULL) {
+        mmpm_free(combination_vector_copy);
+    }
+    if (exhaustion_vector_copy != NULL) {
+        mmpm_free(exhaustion_vector_copy);
     }
     return ret;
 }

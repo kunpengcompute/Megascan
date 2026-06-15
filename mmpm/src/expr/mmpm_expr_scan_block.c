@@ -62,8 +62,10 @@ int mmpm_scan_expr(mmpm_handler_t *handler, const uint8_t *data, uint32_t len,
     mmpm_compile_alias_capture_t capture = {0};
     uint8_t *logical_vector = NULL;
     uint8_t *combination_vector = NULL;
+    uint8_t *exhaustion_vector = NULL;
     uint32_t logical_count = 0;
     uint32_t combination_count = 0;
+    uint32_t exhaustion_count = 0;
     uint32_t node_index = 0;
     int scan_ret;
     int ret;
@@ -94,7 +96,9 @@ int mmpm_scan_expr(mmpm_handler_t *handler, const uint8_t *data, uint32_t len,
                                          &logical_vector,
                                          &logical_count,
                                          &combination_vector,
-                                         &combination_count);
+                                         &combination_count,
+                                         &exhaustion_vector,
+                                         &exhaustion_count);
     if (ret != MMPM_SUCCESS) {
         goto end;
     }
@@ -106,12 +110,16 @@ int mmpm_scan_expr(mmpm_handler_t *handler, const uint8_t *data, uint32_t len,
                                            logical_count,
                                            combination_vector,
                                            combination_count,
+                                           exhaustion_vector,
+                                           exhaustion_count,
+                                           len,
+                                           true,
                                            ids,
                                            id_count,
                                            id_capacity);
 
 end:
-    mmpm_compile_stream_state_destroy(logical_vector, combination_vector);
+    mmpm_compile_stream_state_destroy(logical_vector, combination_vector, exhaustion_vector);
     if (capture.aliases != NULL) {
         mmpm_free(capture.aliases);
     }

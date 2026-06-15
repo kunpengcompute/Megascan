@@ -19,11 +19,15 @@ typedef struct {
 
 typedef struct {
     uint32_t id;
+    uint32_t flags;
     uint32_t ckey;
     uint32_t ekey;
     uint32_t lkey_start;
     uint32_t lkey_result;
     uint32_t result;
+    uint64_t min_offset;
+    uint64_t max_offset;
+    bool can_match_without_active_lkey;
     mmpm_logical_tree_t tree;
 } mmpm_compile_comb_t;
 
@@ -38,6 +42,7 @@ typedef struct {
     uint32_t *lkey_to_ckey_counts;
     uint32_t *lkey_to_ckey_capacities;
     uint32_t logical_count;
+    uint32_t ekey_count;
 } mmpm_compile_context_t;
 
 typedef struct {
@@ -72,6 +77,8 @@ int mmpm_compile_context_add_expr(mmpm_compile_context_t *ctx,
                                   uint32_t lkey);
 int mmpm_compile_context_add_comb(mmpm_compile_context_t *ctx,
                                   uint32_t id,
+                                  uint32_t flags,
+                                  const mmpm_expr_ext_t *ext,
                                   mmpm_logical_tree_t *tree);
 int mmpm_compile_append_context(mmpm_handler_t *handler,
                                 mmpm_compile_context_t *new_ctx);
@@ -103,9 +110,23 @@ int mmpm_compile_eval_active_combinations(const mmpm_compile_context_t *ctx,
                                           uint32_t logical_count,
                                           uint8_t *combination_vector,
                                           uint32_t combination_count,
+                                          uint8_t *exhaustion_vector,
+                                          uint32_t exhaustion_count,
+                                          uint64_t end_offset,
                                           mmpm_compile_result_t *result,
                                           mmpm_compile_index_list_t *new_combinations,
                                           bool use_combination_vector);
+int mmpm_compile_eval_final_combinations(const mmpm_compile_context_t *ctx,
+                                         uint8_t *logical_vector,
+                                         uint32_t logical_count,
+                                         uint8_t *combination_vector,
+                                         uint32_t combination_count,
+                                         uint8_t *exhaustion_vector,
+                                         uint32_t exhaustion_count,
+                                         uint64_t end_offset,
+                                         mmpm_compile_result_t *result,
+                                         mmpm_compile_index_list_t *new_combinations,
+                                         bool use_combination_vector);
 void mmpm_compile_context_free(mmpm_compile_context_t *ctx);
 int mmpm_compile_alias_capture_reserve(mmpm_compile_alias_capture_t *capture);
 int mmpm_compile_capture_alias(uint32_t alias, void *ctx);
@@ -115,9 +136,12 @@ int mmpm_compile_stream_state_init(mmpm_handler_t *handler,
                                    uint8_t **logical_vector,
                                    uint32_t *logical_count,
                                    uint8_t **combination_vector,
-                                   uint32_t *combination_count);
+                                   uint32_t *combination_count,
+                                   uint8_t **exhaustion_vector,
+                                   uint32_t *exhaustion_count);
 void mmpm_compile_stream_state_destroy(uint8_t *logical_vector,
-                                       uint8_t *combination_vector);
+                                       uint8_t *combination_vector,
+                                       uint8_t *exhaustion_vector);
 int mmpm_compile_eval_combinations(mmpm_handler_t *handler,
                                    const uint32_t *aliases,
                                    uint32_t alias_count,
@@ -131,6 +155,10 @@ int mmpm_compile_eval_stream_matches(mmpm_handler_t *handler,
                                      uint32_t logical_count,
                                      uint8_t *combination_vector,
                                      uint32_t combination_count,
+                                     uint8_t *exhaustion_vector,
+                                     uint32_t exhaustion_count,
+                                     uint64_t end_offset,
+                                     bool final_flush,
                                      uint32_t *ids,
                                      uint32_t *id_count,
                                      uint32_t id_capacity);
@@ -141,11 +169,24 @@ int mmpm_expr_scan_stream(mmpm_handler_t *handler,
                           uint32_t logical_count,
                           uint8_t *combination_vector,
                           uint32_t combination_count,
+                          uint8_t *exhaustion_vector,
+                          uint32_t exhaustion_count,
                           uint64_t *offset,
                           const uint8_t *data,
                           uint32_t len,
                           uint32_t *ids,
                           uint32_t *id_count,
                           uint32_t id_capacity);
+int mmpm_expr_flush_stream(mmpm_handler_t *handler,
+                           uint8_t *logical_vector,
+                           uint32_t logical_count,
+                           uint8_t *combination_vector,
+                           uint32_t combination_count,
+                           uint8_t *exhaustion_vector,
+                           uint32_t exhaustion_count,
+                           uint64_t offset,
+                           uint32_t *ids,
+                           uint32_t *id_count,
+                           uint32_t id_capacity);
 
 #endif

@@ -38,5 +38,9 @@ int mmpm_logical_get(const uint8_t *logical_vector, uint32_t logical_count,
 int mmpm_logical_clear(uint8_t *logical_vector, uint32_t logical_count);
 int mmpm_logical_eval(const mmpm_logical_tree_t *tree, uint8_t *logical_vector,
                       uint32_t logical_count, uint8_t *matched);
+int mmpm_logical_eval_inplace(const mmpm_logical_tree_t *tree,
+                              uint8_t *logical_vector,
+                              uint32_t logical_count,
+                              uint8_t *matched);
 
 #endif

@@ -515,3 +515,68 @@ end:
     mmpm_free(op_values);
     return ret;
 }
+
+__attribute__((visibility("default")))
+int mmpm_logical_eval_inplace(const mmpm_logical_tree_t *tree,
+                              uint8_t *logical_vector,
+                              uint32_t logical_count,
+                              uint8_t *matched)
+{
+    uint32_t i;
+    int ret;
+
+    if (tree == NULL || logical_vector == NULL || matched == NULL ||
+        tree->ops == NULL || tree->op_count == 0) {
+        return MMPM_INVALID_PARA;
+    }
+
+    for (i = 0; i < tree->op_count; i++) {
+        uint8_t left = 0;
+        uint8_t right = 0;
+        uint8_t value = 0;
+        const mmpm_logical_op_t *op = &tree->ops[i];
+
+        if ((op->id & MMPM_LOGICAL_OP_REF) != 0 ||
+            (op->left & MMPM_LOGICAL_OP_REF) != 0 ||
+            (op->right & MMPM_LOGICAL_OP_REF) != 0) {
+            return MMPM_INVALID_PARA;
+        }
+
+        if (op->op != MMPM_LOGICAL_OP_NOT) {
+            ret = mmpm_logical_get(logical_vector, logical_count, op->left, &left);
+            if (ret != MMPM_SUCCESS) {
+                return ret;
+            }
+        }
+
+        ret = mmpm_logical_get(logical_vector, logical_count, op->right, &right);
+        if (ret != MMPM_SUCCESS) {
+            return ret;
+        }
+
+        switch ((mmpm_logical_op_type)op->op) {
+            case MMPM_LOGICAL_OP_NOT:
+                value = right ? 0u : 1u;
+                break;
+            case MMPM_LOGICAL_OP_AND:
+                value = (left && right) ? 1u : 0u;
+                break;
+            case MMPM_LOGICAL_OP_OR:
+                value = (left || right) ? 1u : 0u;
+                break;
+            default:
+                return MMPM_INVALID_PARA;
+        }
+
+        ret = mmpm_logical_set(logical_vector, logical_count, op->id, value);
+        if (ret != MMPM_SUCCESS) {
+            return ret;
+        }
+    }
+
+    if ((tree->result & MMPM_LOGICAL_OP_REF) != 0) {
+        return MMPM_INVALID_PARA;
+    }
+
+    return mmpm_logical_get(logical_vector, logical_count, tree->result, matched);
+}

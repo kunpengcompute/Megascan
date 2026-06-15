@@ -27,6 +27,8 @@ struct ms_stream {
     uint32_t logical_count;
     uint8_t *combination_vector;
     uint32_t combination_count;
+    uint8_t *exhaustion_vector;
+    uint32_t exhaustion_count;
 };
 
 __attribute__((visibility("default")))
@@ -271,7 +273,9 @@ int mmpm_open_stream(mmpm_handler_t *handler, ms_stream_t **stream)
                                          &s->logical_vector,
                                          &s->logical_count,
                                          &s->combination_vector,
-                                         &s->combination_count);
+                                         &s->combination_count,
+                                         &s->exhaustion_vector,
+                                         &s->exhaustion_count);
     if (ret != MMPM_SUCCESS) {
         mmpm_free(s);
         return ret;
@@ -323,12 +327,42 @@ int mmpm_scan_expr_stream(ms_stream_t *stream, const uint8_t *data, uint32_t len
                                  stream->logical_count,
                                  stream->combination_vector,
                                  stream->combination_count,
+                                 stream->exhaustion_vector,
+                                 stream->exhaustion_count,
                                  &stream->offset,
                                  data,
                                  len,
                                  ids,
                                  id_count,
                                  id_capacity);
+}
+
+__attribute__((visibility("default")))
+int mmpm_scan_expr_stream_flush(ms_stream_t *stream,
+                                uint32_t *ids,
+                                uint32_t *id_count,
+                                uint32_t id_capacity)
+{
+    if (stream == NULL || stream->automaton == NULL || stream->handler == NULL ||
+        id_count == NULL || (id_capacity != 0 && ids == NULL)) {
+        return MMPM_INVALID_PARA;
+    }
+
+    if (stream->generation != stream->automaton->generation) {
+        return MMPM_STREAM_STALE;
+    }
+
+    return mmpm_expr_flush_stream(stream->handler,
+                                  stream->logical_vector,
+                                  stream->logical_count,
+                                  stream->combination_vector,
+                                  stream->combination_count,
+                                  stream->exhaustion_vector,
+                                  stream->exhaustion_count,
+                                  stream->offset,
+                                  ids,
+                                  id_count,
+                                  id_capacity);
 }
 
 __attribute__((visibility("default")))
@@ -344,16 +378,22 @@ int mmpm_reset_stream(ms_stream_t *stream)
     stream->offset = 0;
     stream->generation = stream->automaton->generation;
 
-    mmpm_compile_stream_state_destroy(stream->logical_vector, stream->combination_vector);
+    mmpm_compile_stream_state_destroy(stream->logical_vector,
+                                      stream->combination_vector,
+                                      stream->exhaustion_vector);
     stream->logical_vector = NULL;
     stream->logical_count = 0;
     stream->combination_vector = NULL;
     stream->combination_count = 0;
+    stream->exhaustion_vector = NULL;
+    stream->exhaustion_count = 0;
     ret = mmpm_compile_stream_state_init(stream->handler,
                                          &stream->logical_vector,
                                          &stream->logical_count,
                                          &stream->combination_vector,
-                                         &stream->combination_count);
+                                         &stream->combination_count,
+                                         &stream->exhaustion_vector,
+                                         &stream->exhaustion_count);
     if (ret != MMPM_SUCCESS) {
         return ret;
     }
@@ -368,7 +408,9 @@ int mmpm_close_stream(ms_stream_t *stream)
         return MMPM_INVALID_PARA;
     }
 
-    mmpm_compile_stream_state_destroy(stream->logical_vector, stream->combination_vector);
+    mmpm_compile_stream_state_destroy(stream->logical_vector,
+                                      stream->combination_vector,
+                                      stream->exhaustion_vector);
     mmpm_free(stream);
     return MMPM_SUCCESS;
 }

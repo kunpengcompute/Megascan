@@ -21,6 +21,10 @@
 #define MMPM_FLAG_NONE          0u
 #define MMPM_FLAG_COMBINATION   1u
 #define MMPM_FLAG_QUIET         2u
+#define MMPM_FLAG_SINGLEMATCH   4u
+
+#define MMPM_EXT_FLAG_MIN_OFFSET 1u
+#define MMPM_EXT_FLAG_MAX_OFFSET 2u
 
 typedef uint32_t (*hash_calc_func)(const uint8_t *key, uint32_t key_len);
 
@@ -36,6 +40,12 @@ typedef struct {
     uint32_t key_len;
     uint8_t *key;
 } mmpm_rule_t;
+
+typedef struct {
+    uint32_t flags;
+    uint64_t min_offset;
+    uint64_t max_offset;
+} mmpm_expr_ext_t;
 
 typedef struct {
     void *mmpm_matcher;
@@ -89,6 +99,19 @@ int mmpm_add_rule(mmpm_handler_t *handler, mmpm_rule_t *rule, uint32_t rule_num)
  */
 int mmpm_compile_multi(mmpm_handler_t *handler, const char *const *expressions, const uint32_t *flags,
                        const uint32_t *ids, uint32_t elements);
+
+/**
+ * Compile multiple expression-style rules with extended options.
+ *
+ * Offset bounds apply to combination rules and use the scan-call end offset.
+ * In stream mode, the offset is cumulative across chunks.
+ */
+int mmpm_compile_multi_ext(mmpm_handler_t *handler,
+                           const char *const *expressions,
+                           const uint32_t *flags,
+                           const uint32_t *ids,
+                           const mmpm_expr_ext_t *ext,
+                           uint32_t elements);
 
 /**
  * Import expression-style rules.
@@ -172,6 +195,18 @@ int mmpm_scan_stream(ms_stream_t *stream, const uint8_t *data, uint32_t len);
  */
 int mmpm_scan_expr_stream(ms_stream_t *stream, const uint8_t *data, uint32_t len,
                           uint32_t *ids, uint32_t *id_count, uint32_t id_capacity);
+
+/**
+ * Flush an expression stream at end of data.
+ *
+ * This reports combinations that can match without a positive sub-expression
+ * hit in the current chunk, such as !101, using the stream's accumulated
+ * logical state.
+ */
+int mmpm_scan_expr_stream_flush(ms_stream_t *stream,
+                                uint32_t *ids,
+                                uint32_t *id_count,
+                                uint32_t id_capacity);
 
 /**
  * Reset an opened AC stream to initial state.
