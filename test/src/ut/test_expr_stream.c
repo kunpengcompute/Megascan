@@ -285,6 +285,11 @@ static void test_expr_stream_offset_bounds_use_cumulative_offset(void)
     EXPECT_EQ(out_ids[0], 1001U);
     EXPECT_EQ(mmpm_reset_stream(stream), MMPM_SUCCESS);
     EXPECT_EQ(mmpm_scan_expr_stream(stream, (const uint8_t *)"abcdefxxxxx", 11,
+                                    out_ids, &out_count, 1), MMPM_SUCCESS);
+    EXPECT_EQ(out_count, 1U);
+    EXPECT_EQ(out_ids[0], 1001U);
+    EXPECT_EQ(mmpm_reset_stream(stream), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_scan_expr_stream(stream, (const uint8_t *)"abcxxxxxdef", 11,
                                     out_ids, &out_count, 1), MMPM_FIND_FAIL);
     EXPECT_EQ(out_count, 0U);
     EXPECT_EQ(mmpm_close_stream(stream), MMPM_SUCCESS);

@@ -74,7 +74,7 @@ int mmpm_expr_scan_stream(mmpm_handler_t *handler,
                                            data,
                                            len,
                                            &next_node_index,
-                                           mmpm_compile_capture_alias_unique,
+                                           mmpm_compile_capture_alias,
                                            &capture);
     if (scan_ret != MMPM_SUCCESS && scan_ret != MMPM_FIND_FAIL) {
         ret = scan_ret;
@@ -83,6 +83,7 @@ int mmpm_expr_scan_stream(mmpm_handler_t *handler,
 
     ret = mmpm_compile_eval_stream_matches(handler,
                                            capture.aliases,
+                                           capture.offsets,
                                            capture.count,
                                            logical_vector_copy,
                                            logical_count,
@@ -90,7 +91,9 @@ int mmpm_expr_scan_stream(mmpm_handler_t *handler,
                                            combination_count,
                                            exhaustion_vector_copy,
                                            exhaustion_count,
+                                           *offset,
                                            *offset + len,
+                                           false,
                                            false,
                                            ids,
                                            id_count,
@@ -121,6 +124,9 @@ end:
     }
     if (capture.aliases != NULL) {
         mmpm_free(capture.aliases);
+    }
+    if (capture.offsets != NULL) {
+        mmpm_free(capture.offsets);
     }
     return ret;
 }
@@ -180,6 +186,7 @@ int mmpm_expr_flush_stream(mmpm_handler_t *handler,
 
     ret = mmpm_compile_eval_stream_matches(handler,
                                            NULL,
+                                           NULL,
                                            0,
                                            logical_vector_copy,
                                            logical_count,
@@ -188,7 +195,9 @@ int mmpm_expr_flush_stream(mmpm_handler_t *handler,
                                            exhaustion_vector_copy,
                                            exhaustion_count,
                                            offset,
+                                           offset,
                                            true,
+                                           false,
                                            ids,
                                            id_count,
                                            id_capacity);

@@ -90,6 +90,10 @@ int mmpm_add_rule(mmpm_handler_t *handler, mmpm_rule_t *rule, uint32_t rule_num)
 /**
  * Compile multiple expression-style rules.
  *
+ * Combination rules marked with MMPM_FLAG_QUIET are accepted and skipped:
+ * they are not compiled as reported combinations and are not added as plain
+ * fixed-string rules.
+ *
  * @handler: Matching engine handle.
  * @expressions: NULL-terminated expressions to be compiled.
  * @flags: Flags associated with each expression. NULL means all flags are zero.
@@ -103,8 +107,9 @@ int mmpm_compile_multi(mmpm_handler_t *handler, const char *const *expressions, 
 /**
  * Compile multiple expression-style rules with extended options.
  *
- * Offset bounds apply to combination rules and use the scan-call end offset.
- * In stream mode, the offset is cumulative across chunks.
+ * Offset bounds apply to combination rules. Megascan is fixed-string based, so
+ * bounds are checked against the fixed-string match end offset that makes the
+ * combination true. In stream mode, that offset is cumulative across chunks.
  */
 int mmpm_compile_multi_ext(mmpm_handler_t *handler,
                            const char *const *expressions,
@@ -145,6 +150,7 @@ int mmpm_find_rule(mmpm_handler_t *handler, mmpm_rule_t *rule);
  *
  * Non-quiet plain rules and matched combination rules are written to @ids.
  * Quiet plain rules participate in combination evaluation but are not written.
+ * Quiet combination rules are accepted at compile time and skipped.
  * If @id_capacity is too small, @id_count is set to the required count and
  * MMPM_INVALID_PARA is returned.
  *

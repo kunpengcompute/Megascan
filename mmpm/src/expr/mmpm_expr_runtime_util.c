@@ -214,6 +214,7 @@ static int mmpm_compile_eval_one_combination(const mmpm_compile_context_t *ctx,
                                              uint8_t *exhaustion_vector,
                                              uint32_t exhaustion_count,
                                              uint64_t end_offset,
+                                             uint8_t *final_logical_vector,
                                              mmpm_compile_result_t *result,
                                              mmpm_compile_index_list_t *new_combinations,
                                              mmpm_compile_index_list_t *new_exhaustions,
@@ -242,6 +243,13 @@ static int mmpm_compile_eval_one_combination(const mmpm_compile_context_t *ctx,
                                     logical_count, &matched);
     if (ret != MMPM_SUCCESS || !matched) {
         return ret;
+    }
+    if (final_logical_vector != NULL) {
+        ret = mmpm_logical_eval_inplace(&comb->tree, final_logical_vector,
+                                        logical_count, &matched);
+        if (ret != MMPM_SUCCESS || !matched) {
+            return ret;
+        }
     }
 
     ret = mmpm_compile_comb_was_reported(comb,
@@ -398,6 +406,7 @@ int mmpm_compile_eval_active_combinations(const mmpm_compile_context_t *ctx,
                                           uint8_t *exhaustion_vector,
                                           uint32_t exhaustion_count,
                                           uint64_t end_offset,
+                                          uint8_t *final_logical_vector,
                                           mmpm_compile_result_t *result,
                                           mmpm_compile_index_list_t *new_combinations,
                                           bool use_combination_vector)
@@ -431,6 +440,7 @@ int mmpm_compile_eval_active_combinations(const mmpm_compile_context_t *ctx,
                                                 exhaustion_vector,
                                                 exhaustion_count,
                                                 end_offset,
+                                                final_logical_vector,
                                                 result,
                                                 new_combinations,
                                                 &new_exhaustions,
@@ -495,6 +505,7 @@ int mmpm_compile_eval_final_combinations(const mmpm_compile_context_t *ctx,
                                                 exhaustion_vector,
                                                 exhaustion_count,
                                                 end_offset,
+                                                NULL,
                                                 result,
                                                 new_combinations,
                                                 &new_exhaustions,

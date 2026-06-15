@@ -32,7 +32,7 @@ typedef struct {
     int *output_size;
 } ACAutomaton;
 
-typedef int (*mmpm_ac_match_cb)(uint32_t alias, void *ctx);
+typedef int (*mmpm_ac_match_cb)(uint32_t alias, uint64_t end_offset, void *ctx);
 
 int ac_automaton_init(ACAutomaton *automaton);
 int ac_automaton_destroy(ACAutomaton *automaton);

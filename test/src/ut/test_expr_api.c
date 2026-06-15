@@ -98,15 +98,18 @@ static void test_expr_api_rejects_duplicate_ids(void)
     EXPECT_EQ(mmpm_handler_destroy(&handler), MMPM_SUCCESS);
 }
 
-static void test_expr_api_rejects_combination_quiet(void)
+static void test_expr_api_skips_quiet_combination(void)
 {
     mmpm_handler_t handler = {0};
     const char *expr[] = {"abc", "101"};
     uint32_t ids[] = {101, 1001};
     uint32_t flags[] = {MMPM_FLAG_NONE, MMPM_FLAG_COMBINATION | MMPM_FLAG_QUIET};
+    mmpm_rule_t query = make_expr_query("abc");
 
     EXPECT_EQ(mmpm_handler_init(&handler, MMPM_MATCHER_TYPE_HASH, 0, 0), MMPM_SUCCESS);
-    EXPECT_EQ(mmpm_compile_multi(&handler, expr, flags, ids, 2), MMPM_INVALID_PARA);
+    EXPECT_EQ(mmpm_compile_multi(&handler, expr, flags, ids, 2), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_find_rule(&handler, &query), MMPM_SUCCESS);
+    EXPECT_EQ(query.alias, 101U);
     EXPECT_EQ(mmpm_handler_destroy(&handler), MMPM_SUCCESS);
 }
 
@@ -475,6 +478,10 @@ static void test_expr_api_scan_expr_offset_bounds(void)
     EXPECT_EQ(out_count, 1U);
     EXPECT_EQ(out_ids[0], 1001U);
     EXPECT_EQ(mmpm_scan_expr(&handler, (const uint8_t *)"abcdefxxxxx", 11,
+                             out_ids, &out_count, 1), MMPM_SUCCESS);
+    EXPECT_EQ(out_count, 1U);
+    EXPECT_EQ(out_ids[0], 1001U);
+    EXPECT_EQ(mmpm_scan_expr(&handler, (const uint8_t *)"abcxxxxxdef", 11,
                              out_ids, &out_count, 1), MMPM_FIND_FAIL);
     EXPECT_EQ(out_count, 0U);
     EXPECT_EQ(mmpm_handler_destroy(&handler), MMPM_SUCCESS);
@@ -486,7 +493,7 @@ KTEST_ADD_TEST_CASE(SuiteExprApi, test_expr_api_compiles_combination);
 KTEST_ADD_TEST_CASE(SuiteExprApi, test_expr_api_rejects_unknown_combination_id);
 KTEST_ADD_TEST_CASE(SuiteExprApi, test_expr_api_rejects_combination_of_combination);
 KTEST_ADD_TEST_CASE(SuiteExprApi, test_expr_api_rejects_duplicate_ids);
-KTEST_ADD_TEST_CASE(SuiteExprApi, test_expr_api_rejects_combination_quiet);
+KTEST_ADD_TEST_CASE(SuiteExprApi, test_expr_api_skips_quiet_combination);
 KTEST_ADD_TEST_CASE(SuiteExprApi, test_expr_api_combination_can_reference_previous_compile);
 KTEST_ADD_TEST_CASE(SuiteExprApi, test_expr_api_eval_combination_and_true);
 KTEST_ADD_TEST_CASE(SuiteExprApi, test_expr_api_eval_combination_and_false);

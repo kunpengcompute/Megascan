@@ -33,9 +33,6 @@ static int mmpm_compile_validate(const char *const *expressions, const uint32_t 
         if ((flag & MMPM_FLAG_COMBINATION) && ids == NULL) {
             return MMPM_INVALID_PARA;
         }
-        if ((flag & MMPM_FLAG_COMBINATION) && (flag & MMPM_FLAG_QUIET)) {
-            return MMPM_INVALID_PARA;
-        }
         if ((flag & MMPM_FLAG_SINGLEMATCH) && ((flag & MMPM_FLAG_COMBINATION) == 0)) {
             return MMPM_INVALID_PARA;
         }
@@ -292,6 +289,9 @@ static int mmpm_compile_parse_combinations(mmpm_compile_context_t *ctx,
         mmpm_logical_tree_t tree;
 
         if (!mmpm_compile_is_combination(flags, i)) {
+            continue;
+        }
+        if (flags && ((flags[i] & MMPM_FLAG_QUIET) != 0)) {
             continue;
         }
 

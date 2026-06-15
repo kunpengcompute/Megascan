@@ -779,7 +779,7 @@ int ac_automaton_match_state_cb(ACAutomaton *automaton,
                 if (cb == NULL) {
                     continue;
                 }
-                ret = cb((uint32_t)automaton->output[state][j], ctx);
+                ret = cb((uint32_t)automaton->output[state][j], (uint64_t)i + 1, ctx);
                 if (ret != MMPM_SUCCESS) {
                     *node_index = state;
                     return ret;
