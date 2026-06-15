@@ -1,7 +1,9 @@
 add_library(mmpm SHARED
     src/mmpm.c
     src/expr/mmpm_expr_compile.c
+    src/expr/mmpm_expr_context.c
     src/expr/mmpm_expr_runtime.c
+    src/expr/mmpm_expr_runtime_util.c
     src/expr/mmpm_expr_scan_block.c
     src/expr/mmpm_expr_scan_stream.c
     src/mmpm_hash.c

@@ -83,7 +83,7 @@ int mmpm_scan_expr(mmpm_handler_t *handler, const uint8_t *data, uint32_t len,
 
     scan_ret = ac_automaton_match_state_cb((ACAutomaton *)handler->mmpm_matcher,
                                            data, len, &node_index,
-                                           mmpm_compile_capture_alias,
+                                           mmpm_compile_capture_alias_unique,
                                            &capture);
     if (scan_ret != MMPM_SUCCESS && scan_ret != MMPM_FIND_FAIL) {
         ret = scan_ret;

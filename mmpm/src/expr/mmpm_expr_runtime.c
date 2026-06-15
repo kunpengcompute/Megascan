@@ -1,7 +1,6 @@
 /*
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  */
-#include <stdbool.h>
 #include <stdint.h>
 #include <string.h>
 
@@ -9,52 +8,6 @@
 #include "mmpm_allocator.h"
 #include "mmpm_expr_internal.h"
 #include "mmpm_logical.h"
-
-typedef struct {
-    uint32_t *ids;
-    uint32_t count;
-    uint32_t capacity;
-} mmpm_compile_result_t;
-
-typedef struct {
-    uint32_t *indexes;
-    uint32_t count;
-    uint32_t capacity;
-} mmpm_compile_index_list_t;
-
-static int mmpm_compile_bitset_get(const uint8_t *vector, uint32_t count, uint32_t key, uint8_t *value)
-{
-    uint32_t byte_index;
-    uint32_t bit_index;
-
-    if (vector == NULL || value == NULL || key >= count) {
-        return MMPM_INVALID_PARA;
-    }
-
-    byte_index = key / 8u;
-    bit_index = key % 8u;
-    *value = (vector[byte_index] & (uint8_t)(1u << bit_index)) ? 1u : 0u;
-    return MMPM_SUCCESS;
-}
-
-static int mmpm_compile_bitset_set(uint8_t *vector, uint32_t count, uint32_t key, uint8_t value)
-{
-    uint32_t byte_index;
-    uint32_t bit_index;
-
-    if (vector == NULL || key >= count) {
-        return MMPM_INVALID_PARA;
-    }
-
-    byte_index = key / 8u;
-    bit_index = key % 8u;
-    if (value != 0) {
-        vector[byte_index] |= (uint8_t)(1u << bit_index);
-    } else {
-        vector[byte_index] &= (uint8_t)(~(1u << bit_index));
-    }
-    return MMPM_SUCCESS;
-}
 
 int mmpm_compile_alias_capture_reserve(mmpm_compile_alias_capture_t *capture)
 {
@@ -123,93 +76,6 @@ int mmpm_compile_capture_alias_unique(uint32_t alias, void *ctx)
 
     capture->aliases[capture->count] = alias;
     capture->count++;
-    return MMPM_SUCCESS;
-}
-
-static bool mmpm_compile_result_has_id(const mmpm_compile_result_t *result, uint32_t id)
-{
-    uint32_t i;
-
-    if (result == NULL) {
-        return false;
-    }
-
-    for (i = 0; i < result->count; i++) {
-        if (result->ids[i] == id) {
-            return true;
-        }
-    }
-
-    return false;
-}
-
-static int mmpm_compile_result_reserve(mmpm_compile_result_t *result)
-{
-    uint32_t *ids = NULL;
-    uint32_t new_capacity;
-
-    if (result->count < result->capacity) {
-        return MMPM_SUCCESS;
-    }
-
-    new_capacity = result->capacity ? result->capacity * 2 : 4;
-    ids = (uint32_t *)mmpm_calloc(new_capacity, sizeof(uint32_t));
-    if (ids == NULL) {
-        return MMPM_MALLOC_FAIL;
-    }
-
-    if (result->ids != NULL) {
-        (void)memcpy(ids, result->ids, result->count * sizeof(uint32_t));
-        mmpm_free(result->ids);
-    }
-
-    result->ids = ids;
-    result->capacity = new_capacity;
-    return MMPM_SUCCESS;
-}
-
-static int mmpm_compile_result_add(mmpm_compile_result_t *result, uint32_t id)
-{
-    int ret;
-
-    if (result == NULL || mmpm_compile_result_has_id(result, id)) {
-        return MMPM_SUCCESS;
-    }
-
-    ret = mmpm_compile_result_reserve(result);
-    if (ret != MMPM_SUCCESS) {
-        return ret;
-    }
-
-    result->ids[result->count] = id;
-    result->count++;
-    return MMPM_SUCCESS;
-}
-
-static int mmpm_compile_index_list_add(mmpm_compile_index_list_t *list, uint32_t index)
-{
-    uint32_t *indexes;
-    uint32_t new_capacity;
-
-    if (list == NULL) {
-        return MMPM_INVALID_PARA;
-    }
-
-    if (list->count >= list->capacity) {
-        new_capacity = list->capacity ? list->capacity * 2 : 4;
-        indexes = (uint32_t *)mmpm_calloc(new_capacity, sizeof(uint32_t));
-        if (indexes == NULL) {
-            return MMPM_MALLOC_FAIL;
-        }
-        if (list->indexes != NULL) {
-            (void)memcpy(indexes, list->indexes, list->count * sizeof(uint32_t));
-            mmpm_free(list->indexes);
-        }
-        list->indexes = indexes;
-        list->capacity = new_capacity;
-    }
-
-    list->indexes[list->count++] = index;
     return MMPM_SUCCESS;
 }
 
@@ -319,8 +185,9 @@ int mmpm_compile_eval_combinations(mmpm_handler_t *handler,
 {
     mmpm_compile_context_t *ctx = NULL;
     uint8_t *logical_vector = NULL;
-    uint32_t i;
-    uint32_t matched_count = 0;
+    uint32_t *active_ckeys = NULL;
+    uint32_t active_ckey_count = 0;
+    mmpm_compile_result_t result = {0};
     int ret = MMPM_SUCCESS;
 
     if (handler == NULL || comb_count == NULL ||
@@ -349,30 +216,34 @@ int mmpm_compile_eval_combinations(mmpm_handler_t *handler,
         goto end;
     }
 
-    for (i = 0; i < ctx->comb_count; i++) {
-        uint8_t matched = 0;
-
-        ret = mmpm_logical_eval(&ctx->combs[i].tree, logical_vector, ctx->logical_count, &matched);
-        if (ret != MMPM_SUCCESS) {
-            goto end;
-        }
-
-        if (!matched) {
-            continue;
-        }
-
-        if (matched_count < comb_capacity) {
-            comb_ids[matched_count] = ctx->combs[i].id;
-        }
-        matched_count++;
+    ret = mmpm_compile_context_get_ckeys_for_aliases(ctx, aliases, alias_count,
+                                                     &active_ckeys,
+                                                     &active_ckey_count);
+    if (ret != MMPM_SUCCESS) {
+        goto end;
     }
 
-    *comb_count = matched_count;
-    if (matched_count > comb_capacity) {
+    ret = mmpm_compile_eval_active_combinations(ctx, active_ckeys,
+                                                active_ckey_count,
+                                                logical_vector,
+                                                ctx->logical_count,
+                                                NULL, 0, &result, NULL, false);
+    if (ret != MMPM_SUCCESS) {
+        goto end;
+    }
+
+    *comb_count = result.count;
+    if (result.count > comb_capacity) {
         ret = MMPM_INVALID_PARA;
+    } else if (result.count != 0 && comb_ids != NULL) {
+        (void)memcpy(comb_ids, result.ids, result.count * sizeof(uint32_t));
     }
 
 end:
+    if (active_ckeys != NULL) {
+        mmpm_free(active_ckeys);
+    }
+    mmpm_compile_result_destroy(&result);
     if (logical_vector != NULL) {
         mmpm_free(logical_vector);
     }
@@ -393,6 +264,8 @@ int mmpm_compile_eval_stream_matches(mmpm_handler_t *handler,
     mmpm_compile_context_t *ctx;
     mmpm_compile_result_t result = {0};
     mmpm_compile_index_list_t new_combinations = {0};
+    uint32_t *active_ckeys = NULL;
+    uint32_t active_ckey_count = 0;
     uint32_t i;
     int ret = MMPM_SUCCESS;
 
@@ -432,35 +305,24 @@ int mmpm_compile_eval_stream_matches(mmpm_handler_t *handler,
         goto end;
     }
 
-    for (i = 0; i < ctx->comb_count; i++) {
-        uint8_t matched = 0;
-        uint8_t reported = 0;
+    ret = mmpm_compile_context_get_ckeys_for_aliases(ctx, aliases, alias_count,
+                                                     &active_ckeys,
+                                                     &active_ckey_count);
+    if (ret != MMPM_SUCCESS) {
+        goto end;
+    }
 
-        ret = mmpm_logical_eval(&ctx->combs[i].tree, logical_vector, logical_count, &matched);
-        if (ret != MMPM_SUCCESS) {
-            goto end;
-        }
-        if (!matched) {
-            continue;
-        }
-
-        ret = mmpm_compile_bitset_get(combination_vector, combination_count, i, &reported);
-        if (ret != MMPM_SUCCESS) {
-            goto end;
-        }
-        if (reported) {
-            continue;
-        }
-
-        ret = mmpm_compile_result_add(&result, ctx->combs[i].id);
-        if (ret != MMPM_SUCCESS) {
-            goto end;
-        }
-
-        ret = mmpm_compile_index_list_add(&new_combinations, i);
-        if (ret != MMPM_SUCCESS) {
-            goto end;
-        }
+    ret = mmpm_compile_eval_active_combinations(ctx, active_ckeys,
+                                                active_ckey_count,
+                                                logical_vector,
+                                                logical_count,
+                                                combination_vector,
+                                                combination_count,
+                                                &result,
+                                                &new_combinations,
+                                                true);
+    if (ret != MMPM_SUCCESS) {
+        goto end;
     }
 
     *id_count = result.count;
@@ -481,11 +343,10 @@ int mmpm_compile_eval_stream_matches(mmpm_handler_t *handler,
     }
 
 end:
-    if (new_combinations.indexes != NULL) {
-        mmpm_free(new_combinations.indexes);
+    if (active_ckeys != NULL) {
+        mmpm_free(active_ckeys);
     }
-    if (result.ids != NULL) {
-        mmpm_free(result.ids);
-    }
+    mmpm_compile_index_list_destroy(&new_combinations);
+    mmpm_compile_result_destroy(&result);
     return ret;
 }
