@@ -436,6 +436,199 @@ int mmpm_compile_context_add_comb(mmpm_compile_context_t *ctx,
     return MMPM_SUCCESS;
 }
 
+static bool mmpm_compile_tree_uses_lkey(const mmpm_logical_tree_t *tree, uint32_t lkey)
+{
+    uint32_t i;
+
+    if (tree == NULL) {
+        return false;
+    }
+
+    for (i = 0; i < tree->op_count; i++) {
+        if ((tree->ops[i].right & MMPM_LOGICAL_OP_REF) == 0 &&
+            tree->ops[i].right == lkey) {
+            return true;
+        }
+        if (tree->ops[i].op != MMPM_LOGICAL_OP_NOT &&
+            (tree->ops[i].left & MMPM_LOGICAL_OP_REF) == 0 &&
+            tree->ops[i].left == lkey) {
+            return true;
+        }
+    }
+
+    return (tree->result & MMPM_LOGICAL_OP_REF) == 0 && tree->result == lkey;
+}
+
+static void mmpm_compile_context_reassign_comb_keys(mmpm_compile_context_t *ctx)
+{
+    uint32_t i;
+    uint32_t ekey = 0;
+
+    if (ctx == NULL) {
+        return;
+    }
+
+    for (i = 0; i < ctx->comb_count; i++) {
+        ctx->combs[i].ckey = i;
+        if ((ctx->combs[i].flags & MMPM_FLAG_SINGLEMATCH) != 0) {
+            ctx->combs[i].ekey = ekey++;
+        } else {
+            ctx->combs[i].ekey = UINT32_MAX;
+        }
+    }
+
+    ctx->ekey_count = ekey;
+}
+
+static void mmpm_compile_context_clear_lkey_relations(mmpm_compile_context_t *ctx)
+{
+    uint32_t i;
+
+    if (ctx == NULL) {
+        return;
+    }
+
+    if (ctx->lkey_to_ckeys != NULL) {
+        for (i = 0; i < ctx->logical_count; i++) {
+            if (ctx->lkey_to_ckeys[i] != NULL) {
+                mmpm_free(ctx->lkey_to_ckeys[i]);
+                ctx->lkey_to_ckeys[i] = NULL;
+            }
+        }
+    }
+    if (ctx->lkey_to_ckey_counts != NULL) {
+        (void)memset(ctx->lkey_to_ckey_counts, 0, ctx->logical_count * sizeof(uint32_t));
+    }
+    if (ctx->lkey_to_ckey_capacities != NULL) {
+        (void)memset(ctx->lkey_to_ckey_capacities, 0, ctx->logical_count * sizeof(uint32_t));
+    }
+}
+
+static int mmpm_compile_context_rebuild_comb_relations(mmpm_compile_context_t *ctx)
+{
+    uint32_t i;
+    int ret;
+
+    if (ctx == NULL) {
+        return MMPM_INVALID_PARA;
+    }
+
+    mmpm_compile_context_clear_lkey_relations(ctx);
+    mmpm_compile_context_reassign_comb_keys(ctx);
+    for (i = 0; i < ctx->comb_count; i++) {
+        ret = mmpm_compile_context_add_comb_relations(ctx, &ctx->combs[i].tree,
+                                                      i, ctx->combs[i].lkey_start);
+        if (ret != MMPM_SUCCESS) {
+            return ret;
+        }
+    }
+
+    return MMPM_SUCCESS;
+}
+
+static void mmpm_compile_context_remove_comb_at(mmpm_compile_context_t *ctx, uint32_t index)
+{
+    uint32_t i;
+
+    if (ctx == NULL || index >= ctx->comb_count) {
+        return;
+    }
+
+    mmpm_logical_tree_destroy(&ctx->combs[index].tree);
+    for (i = index + 1; i < ctx->comb_count; i++) {
+        ctx->combs[i - 1] = ctx->combs[i];
+    }
+    ctx->comb_count--;
+    (void)memset(&ctx->combs[ctx->comb_count], 0, sizeof(ctx->combs[ctx->comb_count]));
+}
+
+int mmpm_compile_context_remove_comb_id(mmpm_compile_context_t *ctx, uint32_t id)
+{
+    uint32_t i;
+
+    if (ctx == NULL) {
+        return MMPM_INVALID_PARA;
+    }
+
+    for (i = 0; i < ctx->comb_count; i++) {
+        if (ctx->combs[i].id == id) {
+            mmpm_compile_context_remove_comb_at(ctx, i);
+            return mmpm_compile_context_rebuild_comb_relations(ctx);
+        }
+    }
+
+    return MMPM_FIND_FAIL;
+}
+
+static int mmpm_compile_context_remove_combs_using_lkey(mmpm_compile_context_t *ctx, uint32_t lkey)
+{
+    uint32_t i;
+
+    if (ctx == NULL) {
+        return MMPM_INVALID_PARA;
+    }
+
+    for (i = ctx->comb_count; i > 0; i--) {
+        if (mmpm_compile_tree_uses_lkey(&ctx->combs[i - 1].tree, lkey)) {
+            mmpm_compile_context_remove_comb_at(ctx, i - 1);
+        }
+    }
+
+    return mmpm_compile_context_rebuild_comb_relations(ctx);
+}
+
+static int mmpm_compile_context_remove_expr_id(mmpm_compile_context_t *ctx, uint32_t id)
+{
+    uint32_t i;
+    uint32_t lkey;
+    int ret;
+
+    if (ctx == NULL) {
+        return MMPM_INVALID_PARA;
+    }
+
+    for (i = 0; i < ctx->expr_count; i++) {
+        if (ctx->exprs[i].id != id) {
+            continue;
+        }
+
+        lkey = ctx->exprs[i].lkey;
+        ret = mmpm_compile_context_remove_combs_using_lkey(ctx, lkey);
+        if (ret != MMPM_SUCCESS) {
+            return ret;
+        }
+
+        if (i + 1 < ctx->expr_count) {
+            (void)memmove(&ctx->exprs[i], &ctx->exprs[i + 1],
+                          (ctx->expr_count - i - 1) * sizeof(ctx->exprs[i]));
+        }
+        ctx->expr_count--;
+        (void)memset(&ctx->exprs[ctx->expr_count], 0, sizeof(ctx->exprs[ctx->expr_count]));
+        return MMPM_SUCCESS;
+    }
+
+    return MMPM_FIND_FAIL;
+}
+
+int mmpm_compile_context_remove_id(mmpm_compile_context_t *ctx, uint32_t id)
+{
+    int ret;
+
+    if (ctx == NULL) {
+        return MMPM_FIND_FAIL;
+    }
+
+    ret = mmpm_compile_context_remove_expr_id(ctx, id);
+    if (ret == MMPM_SUCCESS) {
+        return MMPM_SUCCESS;
+    }
+    if (ret != MMPM_FIND_FAIL) {
+        return ret;
+    }
+
+    return mmpm_compile_context_remove_comb_id(ctx, id);
+}
+
 int mmpm_compile_append_context(mmpm_handler_t *handler,
                                 mmpm_compile_context_t *new_ctx)
 {

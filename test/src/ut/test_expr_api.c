@@ -487,6 +487,57 @@ static void test_expr_api_scan_offset_bounds(void)
     EXPECT_EQ(mmpm_handler_destroy(&handler), MMPM_SUCCESS);
 }
 
+static void test_expr_api_remove_combination_by_id(void)
+{
+    mmpm_handler_t handler = {0};
+    const char *expr[] = {"abc", "def", "101&102"};
+    uint32_t ids[] = {101, 102, 1001};
+    uint32_t flags[] = {MMPM_FLAG_QUIET, MMPM_FLAG_QUIET, MMPM_FLAG_COMBINATION};
+    mmpm_rule_t remove_comb = {0};
+    uint32_t out_ids[1] = {0};
+    uint32_t out_count = 0;
+
+    remove_comb.alias = 1001;
+
+    EXPECT_EQ(mmpm_handler_init(&handler, MMPM_MATCHER_TYPE_AC, 0, 0), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_compile_multi(&handler, expr, flags, ids, 3), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_scan_expr(&handler, (const uint8_t *)"abcdef", 6,
+                             out_ids, &out_count, 1), MMPM_SUCCESS);
+    EXPECT_EQ(out_count, 1U);
+    EXPECT_EQ(out_ids[0], 1001U);
+    EXPECT_EQ(mmpm_remove_rule(&handler, &remove_comb, 1), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_scan_expr(&handler, (const uint8_t *)"abcdef", 6,
+                             out_ids, &out_count, 1), MMPM_FIND_FAIL);
+    EXPECT_EQ(out_count, 0U);
+    EXPECT_EQ(mmpm_compile_multi(&handler, &expr[2], &flags[2], &ids[2], 1), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_handler_destroy(&handler), MMPM_SUCCESS);
+}
+
+static void test_expr_api_remove_plain_removes_dependent_combination(void)
+{
+    mmpm_handler_t handler = {0};
+    const char *expr[] = {"abc", "def", "101&102"};
+    uint32_t ids[] = {101, 102, 1001};
+    uint32_t flags[] = {MMPM_FLAG_QUIET, MMPM_FLAG_QUIET, MMPM_FLAG_COMBINATION};
+    mmpm_rule_t remove_plain = make_expr_query("abc");
+    uint32_t out_ids[1] = {0};
+    uint32_t out_count = 0;
+
+    remove_plain.alias = 101;
+
+    EXPECT_EQ(mmpm_handler_init(&handler, MMPM_MATCHER_TYPE_AC, 0, 0), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_compile_multi(&handler, expr, flags, ids, 3), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_scan_expr(&handler, (const uint8_t *)"abcdef", 6,
+                             out_ids, &out_count, 1), MMPM_SUCCESS);
+    EXPECT_EQ(out_count, 1U);
+    EXPECT_EQ(out_ids[0], 1001U);
+    EXPECT_EQ(mmpm_remove_rule(&handler, &remove_plain, 1), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_scan_expr(&handler, (const uint8_t *)"abcdef", 6,
+                             out_ids, &out_count, 1), MMPM_FIND_FAIL);
+    EXPECT_EQ(out_count, 0U);
+    EXPECT_EQ(mmpm_handler_destroy(&handler), MMPM_SUCCESS);
+}
+
 KTEST_ADD_TEST_CASE(SuiteExprApi, test_expr_api_hash_adds_plain_exprs);
 KTEST_ADD_TEST_CASE(SuiteExprApi, test_expr_api_ac_adds_plain_exprs);
 KTEST_ADD_TEST_CASE(SuiteExprApi, test_expr_api_compiles_combination);
@@ -514,3 +565,5 @@ KTEST_ADD_TEST_CASE(SuiteExprApi, test_expr_api_scan_inplace_logical_ops_nested)
 KTEST_ADD_TEST_CASE(SuiteExprApi, test_expr_api_scan_final_flush_pure_negative);
 KTEST_ADD_TEST_CASE(SuiteExprApi, test_expr_api_rejects_plain_singlematch);
 KTEST_ADD_TEST_CASE(SuiteExprApi, test_expr_api_scan_offset_bounds);
+KTEST_ADD_TEST_CASE(SuiteExprApi, test_expr_api_remove_combination_by_id);
+KTEST_ADD_TEST_CASE(SuiteExprApi, test_expr_api_remove_plain_removes_dependent_combination);

@@ -81,6 +81,8 @@ int mmpm_compile_context_add_comb(mmpm_compile_context_t *ctx,
                                   uint32_t flags,
                                   const mmpm_expr_ext_t *ext,
                                   mmpm_logical_tree_t *tree);
+int mmpm_compile_context_remove_comb_id(mmpm_compile_context_t *ctx, uint32_t id);
+int mmpm_compile_context_remove_id(mmpm_compile_context_t *ctx, uint32_t id);
 int mmpm_compile_append_context(mmpm_handler_t *handler,
                                 mmpm_compile_context_t *new_ctx);
 int mmpm_compile_mark_aliases(const mmpm_compile_context_t *ctx,

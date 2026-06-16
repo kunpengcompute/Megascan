@@ -10,6 +10,7 @@
 #include "mmpm_expr.h"
 #include "mmpm_expr_internal.h"
 #include "mmpm_logical.h"
+#include "../mmpm_rule_internal.h"
 
 static int mmpm_compile_validate(const char *const *expressions, const uint32_t *flags,
                                  const uint32_t *ids, const mmpm_expr_ext_t *ext,
@@ -362,7 +363,7 @@ static int mmpm_compile_add_plain_rules(mmpm_handler_t *handler,
         plain_count++;
     }
 
-    ret = plain_count ? mmpm_add_rule(handler, rules, plain_count) : MMPM_SUCCESS;
+    ret = plain_count ? mmpm_rule_add_direct(handler, rules, plain_count) : MMPM_SUCCESS;
     mmpm_free(rules);
     return ret;
 }

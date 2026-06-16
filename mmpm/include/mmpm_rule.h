@@ -26,7 +26,11 @@ int mmpm_set_hash_func(mmpm_handler_t *handler, hash_calc_func hash_func);
 int mmpm_add_rule(mmpm_handler_t *handler, mmpm_rule_t *rule, uint32_t rule_num);
 
 /**
- * Delete target fixed-string rules.
+ * Delete target rules.
+ *
+ * Fixed-string rules are removed by key/key_len and alias. Combination rules
+ * have no fixed-string key; pass their alias with key set to NULL and key_len
+ * set to 0.
  *
  * @handler: Matching engine handle.
  * @rule: Rules to be deleted.
@@ -36,7 +40,10 @@ int mmpm_add_rule(mmpm_handler_t *handler, mmpm_rule_t *rule, uint32_t rule_num)
 int mmpm_remove_rule(mmpm_handler_t *handler, mmpm_rule_t *rule, uint32_t rule_num);
 
 /**
- * Match fixed-string rules against one complete block.
+ * Match rules against one complete block.
+ *
+ * For AC handlers, this uses the expression runtime so plain and combination
+ * reporting follows the same semantics as mmpm_scan_expr().
  *
  * @handler: Matching engine handle.
  * @rule: Pending matching rule.
@@ -45,7 +52,10 @@ int mmpm_remove_rule(mmpm_handler_t *handler, mmpm_rule_t *rule, uint32_t rule_n
 int mmpm_find_rule(mmpm_handler_t *handler, mmpm_rule_t *rule);
 
 /**
- * Scan data on an opened AC stream with fixed-string rules.
+ * Scan data on an opened AC stream.
+ *
+ * This is a compatibility wrapper around the expression stream runtime. It
+ * returns whether the current chunk produced any reported rule ID.
  *
  * @stream: Opened stream handle.
  * @data: Pending matching data.

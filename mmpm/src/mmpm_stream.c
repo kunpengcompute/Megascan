@@ -6,6 +6,7 @@
 #include "mmpm.h"
 #include "mmpm_ac.h"
 #include "mmpm_allocator.h"
+#include "mmpm_rule_internal.h"
 #include "expr/mmpm_expr_internal.h"
 
 struct ms_stream {
@@ -66,8 +67,7 @@ int mmpm_open_stream(mmpm_handler_t *handler, ms_stream_t **stream)
     return MMPM_SUCCESS;
 }
 
-__attribute__((visibility("default")))
-int mmpm_scan_stream(ms_stream_t *stream, const uint8_t *data, uint32_t len)
+int mmpm_stream_scan_direct(ms_stream_t *stream, const uint8_t *data, uint32_t len)
 {
     int ret;
 
@@ -87,6 +87,43 @@ int mmpm_scan_stream(ms_stream_t *stream, const uint8_t *data, uint32_t len)
         stream->offset += len;
     }
 
+    return ret;
+}
+
+__attribute__((visibility("default")))
+int mmpm_scan_stream(ms_stream_t *stream, const uint8_t *data, uint32_t len)
+{
+    mmpm_compile_context_t *ctx;
+    uint32_t *ids = NULL;
+    uint32_t id_count = 0;
+    uint32_t id_capacity;
+    int ret;
+
+    if (stream == NULL || stream->automaton == NULL || data == NULL) {
+        return MMPM_INVALID_PARA;
+    }
+
+    if (stream->generation != stream->automaton->generation) {
+        return MMPM_STREAM_STALE;
+    }
+
+    if (stream->handler == NULL || stream->handler->mmpm_compile_ctx == NULL) {
+        return MMPM_INVALID_PARA;
+    }
+
+    ctx = (mmpm_compile_context_t *)stream->handler->mmpm_compile_ctx;
+    id_capacity = ctx->expr_count + ctx->comb_count;
+    if (id_capacity != 0) {
+        ids = (uint32_t *)mmpm_calloc(id_capacity, sizeof(uint32_t));
+        if (ids == NULL) {
+            return MMPM_MALLOC_FAIL;
+        }
+    }
+
+    ret = mmpm_scan_expr_stream(stream, data, len, ids, &id_count, id_capacity);
+    if (ids != NULL) {
+        mmpm_free(ids);
+    }
     return ret;
 }
 

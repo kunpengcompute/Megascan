@@ -327,6 +327,51 @@ static void test_expr_stream_combination_singlematch_flag(void)
     EXPECT_EQ(mmpm_handler_destroy(&handler), MMPM_SUCCESS);
 }
 
+static void test_expr_stream_rule_scan_uses_expression_runtime(void)
+{
+    mmpm_handler_t handler = {0};
+    ms_stream_t *stream = NULL;
+    const char *expr[] = {"abc", "def", "101&102"};
+    uint32_t ids[] = {101, 102, 1001};
+    uint32_t flags[] = {MMPM_FLAG_QUIET, MMPM_FLAG_QUIET, MMPM_FLAG_COMBINATION};
+
+    EXPECT_EQ(mmpm_handler_init(&handler, MMPM_MATCHER_TYPE_AC, 0, 0), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_compile_multi(&handler, expr, flags, ids, 3), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_open_stream(&handler, &stream), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_scan_stream(stream, (const uint8_t *)"abc", 3), MMPM_FIND_FAIL);
+    EXPECT_EQ(mmpm_scan_stream(stream, (const uint8_t *)"def", 3), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_close_stream(stream), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_handler_destroy(&handler), MMPM_SUCCESS);
+}
+
+static void test_expr_stream_remove_combination_marks_stream_stale(void)
+{
+    mmpm_handler_t handler = {0};
+    ms_stream_t *stream = NULL;
+    const char *expr[] = {"abc", "def", "101&102"};
+    uint32_t ids[] = {101, 102, 1001};
+    uint32_t flags[] = {MMPM_FLAG_QUIET, MMPM_FLAG_QUIET, MMPM_FLAG_COMBINATION};
+    mmpm_rule_t remove_comb = {0};
+    uint32_t out_ids[1] = {0};
+    uint32_t out_count = 0;
+
+    remove_comb.alias = 1001;
+
+    EXPECT_EQ(mmpm_handler_init(&handler, MMPM_MATCHER_TYPE_AC, 0, 0), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_compile_multi(&handler, expr, flags, ids, 3), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_open_stream(&handler, &stream), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_scan_expr_stream(stream, (const uint8_t *)"abc", 3,
+                                    out_ids, &out_count, 1), MMPM_FIND_FAIL);
+    EXPECT_EQ(mmpm_remove_rule(&handler, &remove_comb, 1), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_scan_expr_stream(stream, (const uint8_t *)"def", 3,
+                                    out_ids, &out_count, 1), MMPM_STREAM_STALE);
+    EXPECT_EQ(mmpm_reset_stream(stream), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_scan_expr_stream(stream, (const uint8_t *)"abcdef", 6,
+                                    out_ids, &out_count, 1), MMPM_FIND_FAIL);
+    EXPECT_EQ(mmpm_close_stream(stream), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_handler_destroy(&handler), MMPM_SUCCESS);
+}
+
 KTEST_ADD_TEST_CASE(SuiteExprStream, test_expr_stream_accumulates_combination);
 KTEST_ADD_TEST_CASE(SuiteExprStream, test_expr_stream_reports_plain_and_then_combination);
 KTEST_ADD_TEST_CASE(SuiteExprStream, test_expr_stream_deduplicates_combination_reports);
@@ -338,3 +383,5 @@ KTEST_ADD_TEST_CASE(SuiteExprStream, test_expr_stream_inplace_logical_ops_nested
 KTEST_ADD_TEST_CASE(SuiteExprStream, test_expr_stream_flush_reports_pure_negative_once);
 KTEST_ADD_TEST_CASE(SuiteExprStream, test_expr_stream_offset_bounds_use_cumulative_offset);
 KTEST_ADD_TEST_CASE(SuiteExprStream, test_expr_stream_combination_singlematch_flag);
+KTEST_ADD_TEST_CASE(SuiteExprStream, test_expr_stream_rule_scan_uses_expression_runtime);
+KTEST_ADD_TEST_CASE(SuiteExprStream, test_expr_stream_remove_combination_marks_stream_stale);
