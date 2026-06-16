@@ -5,7 +5,7 @@
 #define MMPM_HASH_H
 #include <stdint.h>
 #include <pthread.h>
-#include "mmpm.h"
+#include "mmpm_common.h"
 
 typedef struct __mmpm_hash_node {
     struct __mmpm_hash_node *link_pre, *link_next;

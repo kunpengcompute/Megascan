@@ -5,7 +5,9 @@
 #define MMPM_AC_H
 
 #include <stdbool.h>
-#include "mmpm.h"
+#include <stdint.h>
+
+#include "mmpm_common.h"
 
 #define BYTE_MAX_SIZE 256  // number of state transition conditions in bytes
 

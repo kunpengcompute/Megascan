@@ -1,5 +1,6 @@
 add_library(mmpm SHARED
     src/mmpm.c
+    src/mmpm_rule.c
     src/expr/mmpm_expr_compile.c
     src/expr/mmpm_expr_context.c
     src/expr/mmpm_expr_runtime.c
@@ -8,6 +9,7 @@ add_library(mmpm SHARED
     src/expr/mmpm_expr_scan_stream.c
     src/mmpm_hash.c
     src/mmpm_ac.c
+    src/mmpm_stream.c
     src/mmpm_logical.c
     src/mmpm_allocator.c
 )
@@ -31,6 +33,10 @@ add_custom_command(TARGET mmpm POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_SOURCE_DIR}/output/include
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
             ${CMAKE_CURRENT_SOURCE_DIR}/include/mmpm.h
+            ${CMAKE_CURRENT_SOURCE_DIR}/include/mmpm_common.h
+            ${CMAKE_CURRENT_SOURCE_DIR}/include/mmpm_rule.h
+            ${CMAKE_CURRENT_SOURCE_DIR}/include/mmpm_compile.h
+            ${CMAKE_CURRENT_SOURCE_DIR}/include/mmpm_runtime.h
             ${CMAKE_CURRENT_SOURCE_DIR}/include/mmpm_expr.h
             ${CMAKE_CURRENT_SOURCE_DIR}/include/mmpm_logical.h
             ${CMAKE_CURRENT_SOURCE_DIR}/include/mmpm_allocator.h

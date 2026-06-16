@@ -5,7 +5,8 @@
 #define MMPM_LOGICAL_H
 
 #include <stdint.h>
-#include "mmpm.h"
+
+#include "mmpm_common.h"
 
 #define MMPM_LOGICAL_OP_REF 0x80000000u
 

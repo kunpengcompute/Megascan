@@ -4,7 +4,7 @@
 #ifndef MMPM_EXPR_H
 #define MMPM_EXPR_H
 
-#include "mmpm.h"
+#include "mmpm_common.h"
 
 #define MMPM_EXPR_SUPPORTED_FLAGS (MMPM_FLAG_COMBINATION | MMPM_FLAG_QUIET | MMPM_FLAG_SINGLEMATCH)
 

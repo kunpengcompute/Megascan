@@ -287,7 +287,7 @@ static void test_expr_api_scan_ac_combination_capacity_too_small(void)
     EXPECT_EQ(mmpm_handler_destroy(&handler), MMPM_SUCCESS);
 }
 
-static void test_expr_api_scan_expr_reports_plain_and_combination(void)
+static void test_expr_api_scan_reports_plain_and_combination(void)
 {
     mmpm_handler_t handler = {0};
     const char *expr[] = {"abc", "def", "101&102"};
@@ -306,7 +306,7 @@ static void test_expr_api_scan_expr_reports_plain_and_combination(void)
     EXPECT_EQ(mmpm_handler_destroy(&handler), MMPM_SUCCESS);
 }
 
-static void test_expr_api_scan_expr_quiet_only_no_report(void)
+static void test_expr_api_scan_quiet_only_no_report(void)
 {
     mmpm_handler_t handler = {0};
     const char *expr[] = {"abc"};
@@ -323,7 +323,7 @@ static void test_expr_api_scan_expr_quiet_only_no_report(void)
     EXPECT_EQ(mmpm_handler_destroy(&handler), MMPM_SUCCESS);
 }
 
-static void test_expr_api_scan_expr_capacity_too_small(void)
+static void test_expr_api_scan_capacity_too_small(void)
 {
     mmpm_handler_t handler = {0};
     const char *expr[] = {"abc", "def", "101&102"};
@@ -341,7 +341,7 @@ static void test_expr_api_scan_expr_capacity_too_small(void)
     EXPECT_EQ(mmpm_handler_destroy(&handler), MMPM_SUCCESS);
 }
 
-static void test_expr_api_scan_expr_deduplicates_plain_matches(void)
+static void test_expr_api_scan_deduplicates_plain_matches(void)
 {
     mmpm_handler_t handler = {0};
     const char *expr[] = {"abc"};
@@ -358,7 +358,7 @@ static void test_expr_api_scan_expr_deduplicates_plain_matches(void)
     EXPECT_EQ(mmpm_handler_destroy(&handler), MMPM_SUCCESS);
 }
 
-static void test_expr_api_scan_expr_active_ckey_skips_unrelated_combinations(void)
+static void test_expr_api_scan_active_ckey_skips_unrelated_combinations(void)
 {
     mmpm_handler_t handler = {0};
     const char *expr[] = {"abc", "def", "foo", "bar", "101&102", "201&202"};
@@ -379,7 +379,7 @@ static void test_expr_api_scan_expr_active_ckey_skips_unrelated_combinations(voi
     EXPECT_EQ(mmpm_handler_destroy(&handler), MMPM_SUCCESS);
 }
 
-static void test_expr_api_scan_expr_active_ckey_shared_lkey(void)
+static void test_expr_api_scan_active_ckey_shared_lkey(void)
 {
     mmpm_handler_t handler = {0};
     const char *expr[] = {"abc", "def", "ghi", "101&102", "101&103"};
@@ -400,7 +400,7 @@ static void test_expr_api_scan_expr_active_ckey_shared_lkey(void)
     EXPECT_EQ(mmpm_handler_destroy(&handler), MMPM_SUCCESS);
 }
 
-static void test_expr_api_scan_expr_inplace_logical_ops_nested(void)
+static void test_expr_api_scan_inplace_logical_ops_nested(void)
 {
     mmpm_handler_t handler = {0};
     const char *expr[] = {"a", "b", "c", "(101|102)&!103"};
@@ -424,7 +424,7 @@ static void test_expr_api_scan_expr_inplace_logical_ops_nested(void)
     EXPECT_EQ(mmpm_handler_destroy(&handler), MMPM_SUCCESS);
 }
 
-static void test_expr_api_scan_expr_final_flush_pure_negative(void)
+static void test_expr_api_scan_final_flush_pure_negative(void)
 {
     mmpm_handler_t handler = {0};
     const char *expr[] = {"abc", "!101"};
@@ -457,7 +457,7 @@ static void test_expr_api_rejects_plain_singlematch(void)
     EXPECT_EQ(mmpm_handler_destroy(&handler), MMPM_SUCCESS);
 }
 
-static void test_expr_api_scan_expr_offset_bounds(void)
+static void test_expr_api_scan_offset_bounds(void)
 {
     mmpm_handler_t handler = {0};
     const char *expr[] = {"abc", "def", "101&102"};
@@ -504,13 +504,13 @@ KTEST_ADD_TEST_CASE(SuiteExprApi, test_expr_api_scan_ac_combination_true);
 KTEST_ADD_TEST_CASE(SuiteExprApi, test_expr_api_scan_ac_combination_false);
 KTEST_ADD_TEST_CASE(SuiteExprApi, test_expr_api_scan_ac_combination_not_true);
 KTEST_ADD_TEST_CASE(SuiteExprApi, test_expr_api_scan_ac_combination_capacity_too_small);
-KTEST_ADD_TEST_CASE(SuiteExprApi, test_expr_api_scan_expr_reports_plain_and_combination);
-KTEST_ADD_TEST_CASE(SuiteExprApi, test_expr_api_scan_expr_quiet_only_no_report);
-KTEST_ADD_TEST_CASE(SuiteExprApi, test_expr_api_scan_expr_capacity_too_small);
-KTEST_ADD_TEST_CASE(SuiteExprApi, test_expr_api_scan_expr_deduplicates_plain_matches);
-KTEST_ADD_TEST_CASE(SuiteExprApi, test_expr_api_scan_expr_active_ckey_skips_unrelated_combinations);
-KTEST_ADD_TEST_CASE(SuiteExprApi, test_expr_api_scan_expr_active_ckey_shared_lkey);
-KTEST_ADD_TEST_CASE(SuiteExprApi, test_expr_api_scan_expr_inplace_logical_ops_nested);
-KTEST_ADD_TEST_CASE(SuiteExprApi, test_expr_api_scan_expr_final_flush_pure_negative);
+KTEST_ADD_TEST_CASE(SuiteExprApi, test_expr_api_scan_reports_plain_and_combination);
+KTEST_ADD_TEST_CASE(SuiteExprApi, test_expr_api_scan_quiet_only_no_report);
+KTEST_ADD_TEST_CASE(SuiteExprApi, test_expr_api_scan_capacity_too_small);
+KTEST_ADD_TEST_CASE(SuiteExprApi, test_expr_api_scan_deduplicates_plain_matches);
+KTEST_ADD_TEST_CASE(SuiteExprApi, test_expr_api_scan_active_ckey_skips_unrelated_combinations);
+KTEST_ADD_TEST_CASE(SuiteExprApi, test_expr_api_scan_active_ckey_shared_lkey);
+KTEST_ADD_TEST_CASE(SuiteExprApi, test_expr_api_scan_inplace_logical_ops_nested);
+KTEST_ADD_TEST_CASE(SuiteExprApi, test_expr_api_scan_final_flush_pure_negative);
 KTEST_ADD_TEST_CASE(SuiteExprApi, test_expr_api_rejects_plain_singlematch);
-KTEST_ADD_TEST_CASE(SuiteExprApi, test_expr_api_scan_expr_offset_bounds);
+KTEST_ADD_TEST_CASE(SuiteExprApi, test_expr_api_scan_offset_bounds);
