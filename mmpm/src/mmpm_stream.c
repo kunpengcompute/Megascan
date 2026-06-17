@@ -67,6 +67,16 @@ int mmpm_open_stream(mmpm_handler_t *handler, ms_stream_t **stream)
     return MMPM_SUCCESS;
 }
 
+__attribute__((visibility("default")))
+int MMPM_CDECL mmpm_open_database_stream(const mmpm_database_t *db, ms_stream_t **stream)
+{
+    if (db == NULL) {
+        return MMPM_INVALID_PARA;
+    }
+
+    return mmpm_open_stream(mmpm_database_get_handler((mmpm_database_t *)db), stream);
+}
+
 int mmpm_stream_scan_direct(ms_stream_t *stream, const uint8_t *data, uint32_t len)
 {
     int ret;

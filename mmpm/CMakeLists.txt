@@ -13,6 +13,7 @@ add_library(mmpm SHARED
     src/mmpm_logical.c
     src/mmpm_allocator.c
     src/mmpm_database.c
+    src/mmpm_scratch.c
 )
 
 target_include_directories(mmpm PRIVATE

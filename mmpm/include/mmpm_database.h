@@ -128,6 +128,18 @@ int MMPM_CDECL mmpm_scan_database(const mmpm_database_t *db,
                                   uint32_t id_capacity);
 
 /**
+ * @brief 基于 database 打开 stream
+ *
+ * 当前仅支持 AC database。stream 对象及其跨 chunk 状态内存走 Stream
+ * 分配器。旧 mmpm_open_stream() 后续应收敛为该完整入口的简化封装。
+ *
+ * @param db 已编译的 AC database
+ * @param stream 输出 stream 指针，调用前必须指向 NULL
+ * @return MMPM_SUCCESS 表示成功，否则返回错误码
+ */
+int MMPM_CDECL mmpm_open_database_stream(const mmpm_database_t *db, ms_stream_t **stream);
+
+/**
  * @brief 获取 database 内部兼容 handler
  *
  * 该接口仅用于迁移期兼容旧 API。最终方向是让旧 handler API 成为
