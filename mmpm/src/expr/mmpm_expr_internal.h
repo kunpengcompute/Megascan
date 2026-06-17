@@ -146,6 +146,16 @@ int mmpm_compile_stream_state_init(mmpm_handler_t *handler,
 void mmpm_compile_stream_state_destroy(uint8_t *logical_vector,
                                        uint8_t *combination_vector,
                                        uint8_t *exhaustion_vector);
+int mmpm_compile_scratch_state_init(mmpm_handler_t *handler,
+                                    uint8_t **logical_vector,
+                                    uint32_t *logical_count,
+                                    uint8_t **combination_vector,
+                                    uint32_t *combination_count,
+                                    uint8_t **exhaustion_vector,
+                                    uint32_t *exhaustion_count);
+void mmpm_compile_scratch_state_destroy(uint8_t *logical_vector,
+                                        uint8_t *combination_vector,
+                                        uint8_t *exhaustion_vector);
 int mmpm_compile_eval_combinations(mmpm_handler_t *handler,
                                    const uint32_t *aliases,
                                    uint32_t alias_count,

@@ -129,13 +129,15 @@ int mmpm_compile_mark_aliases(const mmpm_compile_context_t *ctx,
     return MMPM_SUCCESS;
 }
 
-int mmpm_compile_stream_state_init(mmpm_handler_t *handler,
-                                   uint8_t **logical_vector,
-                                   uint32_t *logical_count,
-                                   uint8_t **combination_vector,
-                                   uint32_t *combination_count,
-                                   uint8_t **exhaustion_vector,
-                                   uint32_t *exhaustion_count)
+static int mmpm_compile_state_init_with_allocator(mmpm_handler_t *handler,
+                                                  uint8_t **logical_vector,
+                                                  uint32_t *logical_count,
+                                                  uint8_t **combination_vector,
+                                                  uint32_t *combination_count,
+                                                  uint8_t **exhaustion_vector,
+                                                  uint32_t *exhaustion_count,
+                                                  mmpm_calloc_t calloc_func,
+                                                  mmpm_free_t free_func)
 {
     mmpm_compile_context_t *ctx;
     uint32_t logical_bytes = 0;
@@ -168,17 +170,17 @@ int mmpm_compile_stream_state_init(mmpm_handler_t *handler,
     exhaustion_bytes = mmpm_compile_logical_byte_count(ctx->ekey_count);
 
     if (logical_bytes != 0) {
-        *logical_vector = (uint8_t *)mmpm_stream_calloc(logical_bytes, sizeof(uint8_t));
+        *logical_vector = (uint8_t *)calloc_func(logical_bytes, sizeof(uint8_t));
         if (*logical_vector == NULL) {
             return MMPM_MALLOC_FAIL;
         }
     }
 
     if (combination_bytes != 0) {
-        *combination_vector = (uint8_t *)mmpm_stream_calloc(combination_bytes, sizeof(uint8_t));
+        *combination_vector = (uint8_t *)calloc_func(combination_bytes, sizeof(uint8_t));
         if (*combination_vector == NULL) {
             if (*logical_vector != NULL) {
-                mmpm_stream_free(*logical_vector);
+                free_func(*logical_vector);
                 *logical_vector = NULL;
             }
             return MMPM_MALLOC_FAIL;
@@ -186,14 +188,14 @@ int mmpm_compile_stream_state_init(mmpm_handler_t *handler,
     }
 
     if (exhaustion_bytes != 0) {
-        *exhaustion_vector = (uint8_t *)mmpm_stream_calloc(exhaustion_bytes, sizeof(uint8_t));
+        *exhaustion_vector = (uint8_t *)calloc_func(exhaustion_bytes, sizeof(uint8_t));
         if (*exhaustion_vector == NULL) {
             if (*logical_vector != NULL) {
-                mmpm_stream_free(*logical_vector);
+                free_func(*logical_vector);
                 *logical_vector = NULL;
             }
             if (*combination_vector != NULL) {
-                mmpm_stream_free(*combination_vector);
+                free_func(*combination_vector);
                 *combination_vector = NULL;
             }
             return MMPM_MALLOC_FAIL;
@@ -203,19 +205,78 @@ int mmpm_compile_stream_state_init(mmpm_handler_t *handler,
     return MMPM_SUCCESS;
 }
 
+static void mmpm_compile_state_destroy_with_allocator(uint8_t *logical_vector,
+                                                      uint8_t *combination_vector,
+                                                      uint8_t *exhaustion_vector,
+                                                      mmpm_free_t free_func)
+{
+    if (logical_vector != NULL) {
+        free_func(logical_vector);
+    }
+    if (combination_vector != NULL) {
+        free_func(combination_vector);
+    }
+    if (exhaustion_vector != NULL) {
+        free_func(exhaustion_vector);
+    }
+}
+
+int mmpm_compile_stream_state_init(mmpm_handler_t *handler,
+                                   uint8_t **logical_vector,
+                                   uint32_t *logical_count,
+                                   uint8_t **combination_vector,
+                                   uint32_t *combination_count,
+                                   uint8_t **exhaustion_vector,
+                                   uint32_t *exhaustion_count)
+{
+    return mmpm_compile_state_init_with_allocator(handler,
+                                                  logical_vector,
+                                                  logical_count,
+                                                  combination_vector,
+                                                  combination_count,
+                                                  exhaustion_vector,
+                                                  exhaustion_count,
+                                                  mmpm_stream_calloc,
+                                                  mmpm_stream_free);
+}
+
 void mmpm_compile_stream_state_destroy(uint8_t *logical_vector,
                                        uint8_t *combination_vector,
                                        uint8_t *exhaustion_vector)
 {
-    if (logical_vector != NULL) {
-        mmpm_stream_free(logical_vector);
-    }
-    if (combination_vector != NULL) {
-        mmpm_stream_free(combination_vector);
-    }
-    if (exhaustion_vector != NULL) {
-        mmpm_stream_free(exhaustion_vector);
-    }
+    mmpm_compile_state_destroy_with_allocator(logical_vector,
+                                              combination_vector,
+                                              exhaustion_vector,
+                                              mmpm_stream_free);
+}
+
+int mmpm_compile_scratch_state_init(mmpm_handler_t *handler,
+                                    uint8_t **logical_vector,
+                                    uint32_t *logical_count,
+                                    uint8_t **combination_vector,
+                                    uint32_t *combination_count,
+                                    uint8_t **exhaustion_vector,
+                                    uint32_t *exhaustion_count)
+{
+    return mmpm_compile_state_init_with_allocator(handler,
+                                                  logical_vector,
+                                                  logical_count,
+                                                  combination_vector,
+                                                  combination_count,
+                                                  exhaustion_vector,
+                                                  exhaustion_count,
+                                                  mmpm_scratch_calloc,
+                                                  mmpm_scratch_free);
+}
+
+void mmpm_compile_scratch_state_destroy(uint8_t *logical_vector,
+                                        uint8_t *combination_vector,
+                                        uint8_t *exhaustion_vector)
+{
+    mmpm_compile_state_destroy_with_allocator(logical_vector,
+                                              combination_vector,
+                                              exhaustion_vector,
+                                              mmpm_scratch_free);
 }
 
 __attribute__((visibility("default")))

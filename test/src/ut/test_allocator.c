@@ -16,6 +16,7 @@ typedef struct {
 } allocator_counter_t;
 
 static allocator_counter_t g_db_counter;
+static allocator_counter_t g_scratch_counter;
 static allocator_counter_t g_stream_counter;
 static allocator_counter_t g_all_counter;
 
@@ -27,6 +28,7 @@ static void reset_counter(allocator_counter_t *counter)
 static void reset_all_counters(void)
 {
     reset_counter(&g_db_counter);
+    reset_counter(&g_scratch_counter);
     reset_counter(&g_stream_counter);
     reset_counter(&g_all_counter);
 }
@@ -62,6 +64,21 @@ static void *db_calloc(size_t nmemb, size_t size)
 static void db_free(void *ptr)
 {
     counter_free(&g_db_counter, ptr);
+}
+
+static void *scratch_alloc(size_t size)
+{
+    return counter_alloc(&g_scratch_counter, size);
+}
+
+static void *scratch_calloc(size_t nmemb, size_t size)
+{
+    return counter_calloc(&g_scratch_counter, nmemb, size);
+}
+
+static void scratch_free(void *ptr)
+{
+    counter_free(&g_scratch_counter, ptr);
 }
 
 static void *stream_alloc(size_t size)
@@ -188,7 +205,34 @@ static void test_allocator_database_lifecycle_uses_database_allocator(void)
     reset_allocators();
 }
 
+static void test_allocator_scratch_uses_scratch_allocator(void)
+{
+    mmpm_database_t *db = NULL;
+    mmpm_scratch_t *scratch = NULL;
+    const char *expr[] = {"abc", "def", "101&102"};
+    uint32_t ids[] = {101, 102, 1001};
+    uint32_t flags[] = {MMPM_FLAG_QUIET, MMPM_FLAG_QUIET, MMPM_FLAG_COMBINATION};
+
+    reset_all_counters();
+    reset_allocators();
+    EXPECT_EQ(mmpm_compile_database_multi(&db, MMPM_MATCHER_TYPE_AC, 0, 0,
+                                          expr, flags, ids, 3), MMPM_SUCCESS);
+    EXPECT_TRUE(db != NULL);
+
+    EXPECT_EQ(mmpm_set_scratch_allocator(scratch_alloc, scratch_calloc, scratch_free), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_alloc_scratch(db, &scratch), MMPM_SUCCESS);
+    EXPECT_TRUE(scratch != NULL);
+    EXPECT_EQ(mmpm_free_scratch(scratch), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_free_database(db), MMPM_SUCCESS);
+
+    EXPECT_NE(g_scratch_counter.calloc_count, 0U);
+    EXPECT_NE(g_scratch_counter.free_count, 0U);
+    EXPECT_EQ(g_stream_counter.alloc_count + g_stream_counter.calloc_count, 0U);
+    reset_allocators();
+}
+
 KTEST_ADD_TEST_CASE(SuiteAllocator, test_allocator_set_all_covers_database_and_stream_paths);
 KTEST_ADD_TEST_CASE(SuiteAllocator, test_allocator_hash_uses_database_allocator);
 KTEST_ADD_TEST_CASE(SuiteAllocator, test_allocator_stream_uses_stream_allocator);
 KTEST_ADD_TEST_CASE(SuiteAllocator, test_allocator_database_lifecycle_uses_database_allocator);
+KTEST_ADD_TEST_CASE(SuiteAllocator, test_allocator_scratch_uses_scratch_allocator);
