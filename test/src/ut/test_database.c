@@ -1,0 +1,81 @@
+/*
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * Description: database API unit tests
+ */
+#include <stdint.h>
+#include <string.h>
+
+#include "ktest.h"
+#include "../../../mmpm/include/mmpm.h"
+
+static mmpm_rule_t make_database_query(uint32_t alias, const char *s)
+{
+    mmpm_rule_t rule;
+
+    rule.alias = alias;
+    rule.key = (uint8_t *)s;
+    rule.key_len = (uint32_t)strlen(s);
+
+    return rule;
+}
+
+static void test_database_compile_ac_combination_and_scan(void)
+{
+    mmpm_database_t *db = NULL;
+    mmpm_handler_t *handler;
+    const char *expr[] = {"abc", "def", "101&102"};
+    uint32_t ids[] = {101, 102, 1001};
+    uint32_t flags[] = {MMPM_FLAG_QUIET, MMPM_FLAG_QUIET, MMPM_FLAG_COMBINATION};
+    uint32_t out_ids[1] = {0};
+    uint32_t out_count = 0;
+
+    EXPECT_EQ(mmpm_compile_database_multi(&db, MMPM_MATCHER_TYPE_AC, 0, 0,
+                                          expr, flags, ids, 3), MMPM_SUCCESS);
+    EXPECT_TRUE(db != NULL);
+
+    handler = mmpm_database_get_handler(db);
+    EXPECT_TRUE(handler != NULL);
+    EXPECT_EQ(mmpm_scan_expr(handler, (const uint8_t *)"abcdef", 6,
+                             out_ids, &out_count, 1), MMPM_SUCCESS);
+    EXPECT_EQ(out_count, 1U);
+    EXPECT_EQ(out_ids[0], 1001U);
+
+    EXPECT_EQ(mmpm_free_database(db), MMPM_SUCCESS);
+}
+
+static void test_database_compile_hash_plain_and_find(void)
+{
+    mmpm_database_t *db = NULL;
+    mmpm_handler_t *handler;
+    const char *expr[] = {"0123456789abcdef"};
+    uint32_t ids[] = {2001};
+    uint32_t flags[] = {MMPM_FLAG_NONE};
+    mmpm_rule_t query = make_database_query(0, "0123456789abcdef");
+
+    EXPECT_EQ(mmpm_compile_database_multi(&db, MMPM_MATCHER_TYPE_HASH, 16, 8,
+                                          expr, flags, ids, 1), MMPM_SUCCESS);
+    EXPECT_TRUE(db != NULL);
+
+    handler = mmpm_database_get_handler(db);
+    EXPECT_TRUE(handler != NULL);
+    EXPECT_EQ(mmpm_find_rule(handler, &query), MMPM_SUCCESS);
+    EXPECT_EQ(query.alias, 2001U);
+
+    EXPECT_EQ(mmpm_free_database(db), MMPM_SUCCESS);
+}
+
+static void test_database_rejects_hash_combination(void)
+{
+    mmpm_database_t *db = NULL;
+    const char *expr[] = {"abc", "def", "101&102"};
+    uint32_t ids[] = {101, 102, 1001};
+    uint32_t flags[] = {MMPM_FLAG_NONE, MMPM_FLAG_NONE, MMPM_FLAG_COMBINATION};
+
+    EXPECT_EQ(mmpm_compile_database_multi(&db, MMPM_MATCHER_TYPE_HASH, 16, 8,
+                                          expr, flags, ids, 3), MMPM_NOT_SUPPORTED);
+    EXPECT_TRUE(db == NULL);
+}
+
+KTEST_ADD_TEST_CASE(SuiteDatabase, test_database_compile_ac_combination_and_scan);
+KTEST_ADD_TEST_CASE(SuiteDatabase, test_database_compile_hash_plain_and_find);
+KTEST_ADD_TEST_CASE(SuiteDatabase, test_database_rejects_hash_combination);

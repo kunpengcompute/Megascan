@@ -5,7 +5,6 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
-#include <errno.h>
 #include "mmpm_hash.h"
 #include "mmpm_allocator.h"
 
@@ -30,7 +29,6 @@ static uint32_t hash_func_djb2_hash32(const uint8_t *key, uint32_t key_len)
 
 int hash_table_create(mmpm_hash **hash_table, uint32_t buckets, uint16_t key_size)
 {
-    int ret;
     mmpm_hash *table = NULL;
 
     if (hash_table == NULL || buckets == 0) {
@@ -39,8 +37,8 @@ int hash_table_create(mmpm_hash **hash_table, uint32_t buckets, uint16_t key_siz
 
     *hash_table = NULL;
 
-    ret = posix_memalign((void **)(&(table)), ALIGN_SIZE, sizeof(mmpm_hash));
-    if (ret || table == NULL) {
+    table = (mmpm_hash *)mmpm_database_aligned_alloc(sizeof(mmpm_hash), ALIGN_SIZE);
+    if (table == NULL) {
         return MMPM_MALLOC_FAIL;
     }
 
@@ -76,8 +74,8 @@ int hash_table_build(mmpm_hash *hash_table, uint32_t secondary_buckets)
     malloc_size += ALIGN(sizeof(mmpm_hash_bucket) * buckets_cnt);
     malloc_size += ALIGN(sizeof(mmpm_hash_subbucket) * buckets_cnt * subbuckets_cnt);
 
-    ret = posix_memalign((void **)(&malloc_ptr), ALIGN_SIZE, malloc_size);
-    if (ret || malloc_ptr == NULL) {
+    malloc_ptr = (uint8_t *)mmpm_database_aligned_alloc(malloc_size, ALIGN_SIZE);
+    if (malloc_ptr == NULL) {
         return MMPM_MALLOC_FAIL;
     }
 
@@ -109,7 +107,7 @@ error:
             pthread_rwlock_destroy(&hash_table->buckets[k].subbuckets[l].rwlock);
         }
     }
-    mmpm_free(hash_table->buckets);
+    mmpm_database_aligned_free(hash_table->buckets);
     hash_table->buckets = NULL;
     return ret;
 }
@@ -136,7 +134,6 @@ int hash_table_add(mmpm_hash *hash_table, uint32_t alias, const uint8_t *key, ui
 {
     uint32_t hash, bucket_idx, subbucket_idx;
     mmpm_hash_node *node = NULL;
-    int ret;
 
     if (hash_table == NULL || key == NULL || key_len == 0 || key_len > hash_table->key_size) {
         return MMPM_INVALID_PARA;
@@ -156,8 +153,8 @@ int hash_table_add(mmpm_hash *hash_table, uint32_t alias, const uint8_t *key, ui
     }
     pthread_rwlock_unlock(&hash_table->buckets[bucket_idx].subbuckets[subbucket_idx].rwlock);
 
-    ret = posix_memalign((void **)(&node), ALIGN_SIZE, sizeof(mmpm_hash_node) + hash_table->key_size);
-    if (ret || node == NULL) {
+    node = (mmpm_hash_node *)mmpm_database_aligned_alloc(sizeof(mmpm_hash_node) + hash_table->key_size, ALIGN_SIZE);
+    if (node == NULL) {
         return MMPM_MALLOC_FAIL;
     }
 
@@ -240,7 +237,7 @@ int hash_table_remove(mmpm_hash *hash_table, const uint8_t *key, uint32_t key_le
         
         if (node->link_next)
             node->link_next->link_pre = node->link_pre;
-        mmpm_free(node);
+        mmpm_database_aligned_free(node);
         hash_table->buckets[bucket_idx].subbuckets[subbucket_idx].node_num--;
     }
     pthread_rwlock_unlock(&hash_table->buckets[bucket_idx].subbuckets[subbucket_idx].rwlock);
@@ -266,7 +263,7 @@ int hash_table_destroy(mmpm_hash *hash_table)
             while (subbucket_head) {
                 tmp = subbucket_head;
                 subbucket_head = subbucket_head->link_next;
-                mmpm_free(tmp);
+                mmpm_database_aligned_free(tmp);
             }
             (void)pthread_rwlock_unlock(&hash_table->buckets[i].subbuckets[j].rwlock);
             (void)pthread_rwlock_destroy(&hash_table->buckets[i].subbuckets[j].rwlock);
@@ -274,11 +271,11 @@ int hash_table_destroy(mmpm_hash *hash_table)
     }
 
     if (hash_table->buckets) {
-        mmpm_free(hash_table->buckets);
+        mmpm_database_aligned_free(hash_table->buckets);
         hash_table->buckets = NULL;
     }
 
-    mmpm_free(hash_table);
+    mmpm_database_aligned_free(hash_table);
     return MMPM_SUCCESS;
 }
 

@@ -40,7 +40,7 @@ int mmpm_open_stream(mmpm_handler_t *handler, ms_stream_t **stream)
         return MMPM_INVALID_PARA;
     }
 
-    s = (ms_stream_t *)mmpm_calloc(1, sizeof(ms_stream_t));
+    s = (ms_stream_t *)mmpm_stream_calloc(1, sizeof(ms_stream_t));
     if (s == NULL) {
         return MMPM_MALLOC_FAIL;
     }
@@ -59,7 +59,7 @@ int mmpm_open_stream(mmpm_handler_t *handler, ms_stream_t **stream)
                                          &s->exhaustion_vector,
                                          &s->exhaustion_count);
     if (ret != MMPM_SUCCESS) {
-        mmpm_free(s);
+        mmpm_stream_free(s);
         return ret;
     }
 
@@ -235,6 +235,6 @@ int mmpm_close_stream(ms_stream_t *stream)
     mmpm_compile_stream_state_destroy(stream->logical_vector,
                                       stream->combination_vector,
                                       stream->exhaustion_vector);
-    mmpm_free(stream);
+    mmpm_stream_free(stream);
     return MMPM_SUCCESS;
 }

@@ -12,6 +12,7 @@ add_library(mmpm SHARED
     src/mmpm_stream.c
     src/mmpm_logical.c
     src/mmpm_allocator.c
+    src/mmpm_database.c
 )
 
 target_include_directories(mmpm PRIVATE
@@ -40,5 +41,6 @@ add_custom_command(TARGET mmpm POST_BUILD
             ${CMAKE_CURRENT_SOURCE_DIR}/include/mmpm_expr.h
             ${CMAKE_CURRENT_SOURCE_DIR}/include/mmpm_logical.h
             ${CMAKE_CURRENT_SOURCE_DIR}/include/mmpm_allocator.h
+            ${CMAKE_CURRENT_SOURCE_DIR}/include/mmpm_database.h
             ${CMAKE_SOURCE_DIR}/output/include
 )

@@ -168,17 +168,17 @@ int mmpm_compile_stream_state_init(mmpm_handler_t *handler,
     exhaustion_bytes = mmpm_compile_logical_byte_count(ctx->ekey_count);
 
     if (logical_bytes != 0) {
-        *logical_vector = (uint8_t *)mmpm_calloc(logical_bytes, sizeof(uint8_t));
+        *logical_vector = (uint8_t *)mmpm_stream_calloc(logical_bytes, sizeof(uint8_t));
         if (*logical_vector == NULL) {
             return MMPM_MALLOC_FAIL;
         }
     }
 
     if (combination_bytes != 0) {
-        *combination_vector = (uint8_t *)mmpm_calloc(combination_bytes, sizeof(uint8_t));
+        *combination_vector = (uint8_t *)mmpm_stream_calloc(combination_bytes, sizeof(uint8_t));
         if (*combination_vector == NULL) {
             if (*logical_vector != NULL) {
-                mmpm_free(*logical_vector);
+                mmpm_stream_free(*logical_vector);
                 *logical_vector = NULL;
             }
             return MMPM_MALLOC_FAIL;
@@ -186,14 +186,14 @@ int mmpm_compile_stream_state_init(mmpm_handler_t *handler,
     }
 
     if (exhaustion_bytes != 0) {
-        *exhaustion_vector = (uint8_t *)mmpm_calloc(exhaustion_bytes, sizeof(uint8_t));
+        *exhaustion_vector = (uint8_t *)mmpm_stream_calloc(exhaustion_bytes, sizeof(uint8_t));
         if (*exhaustion_vector == NULL) {
             if (*logical_vector != NULL) {
-                mmpm_free(*logical_vector);
+                mmpm_stream_free(*logical_vector);
                 *logical_vector = NULL;
             }
             if (*combination_vector != NULL) {
-                mmpm_free(*combination_vector);
+                mmpm_stream_free(*combination_vector);
                 *combination_vector = NULL;
             }
             return MMPM_MALLOC_FAIL;
@@ -208,13 +208,13 @@ void mmpm_compile_stream_state_destroy(uint8_t *logical_vector,
                                        uint8_t *exhaustion_vector)
 {
     if (logical_vector != NULL) {
-        mmpm_free(logical_vector);
+        mmpm_stream_free(logical_vector);
     }
     if (combination_vector != NULL) {
-        mmpm_free(combination_vector);
+        mmpm_stream_free(combination_vector);
     }
     if (exhaustion_vector != NULL) {
-        mmpm_free(exhaustion_vector);
+        mmpm_stream_free(exhaustion_vector);
     }
 }
 

@@ -8,5 +8,6 @@
 #include "mmpm_rule.h"
 #include "mmpm_compile.h"
 #include "mmpm_runtime.h"
+#include "mmpm_database.h"
 
 #endif

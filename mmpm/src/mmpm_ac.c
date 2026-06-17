@@ -731,7 +731,7 @@ int ac_automaton_remove(ACAutomaton *automaton, uint32_t alias, const uint8_t *p
     prune_empty_nodes_collect(automaton, node, deleted_infos, &deleted_cnt);
 
     int ret = update_fail_pointers_local(automaton, deleted_infos, deleted_cnt);
-    free(deleted_infos);
+    mmpm_free(deleted_infos);
     if (ret != MMPM_SUCCESS) {
         return ret;
     }
