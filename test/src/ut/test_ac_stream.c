@@ -20,7 +20,7 @@ static mmpm_rule_t make_rule(uint32_t alias, const char *s)
 
 static int scan_stream_raw(ms_stream_t *stream, const uint8_t *data, uint32_t len)
 {
-    return mmpm_scan_stream(stream, data, len);
+    return mmpm_scan_rule_stream(stream, data, len);
 }
 
 static int scan_stream_by_blocks(mmpm_handler_t *handler, const char *data, uint32_t stream_blocks)
@@ -36,7 +36,7 @@ static int scan_stream_by_blocks(mmpm_handler_t *handler, const char *data, uint
         return MMPM_INVALID_PARA;
     }
 
-    ret = mmpm_open_stream(handler, &stream);
+    ret = mmpm_open_handler_stream(handler, &stream);
     EXPECT_EQ(ret, MMPM_SUCCESS);
     if (ret != MMPM_SUCCESS) {
         return ret;
@@ -64,7 +64,7 @@ static int scan_stream_by_blocks(mmpm_handler_t *handler, const char *data, uint
         pos += cur;
     }
 
-    EXPECT_EQ(mmpm_close_stream(stream), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_close_handler_stream(stream), MMPM_SUCCESS);
     return final_ret;
 }
 
@@ -88,11 +88,11 @@ static void test_ac_stream_cross_chunk_match(void)
     EXPECT_EQ(mmpm_find_rule(&handler, &block_query2), MMPM_FIND_FAIL);
 
     /* Stream mode keeps AC state between chunks. */
-    EXPECT_EQ(mmpm_open_stream(&handler, &stream), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_open_handler_stream(&handler, &stream), MMPM_SUCCESS);
     EXPECT_EQ(scan_stream_raw(stream, (const uint8_t *)"xx123", 5), MMPM_FIND_FAIL);
     EXPECT_EQ(scan_stream_raw(stream, (const uint8_t *)"45yy", 4), MMPM_SUCCESS);
 
-    EXPECT_EQ(mmpm_close_stream(stream), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_close_handler_stream(stream), MMPM_SUCCESS);
     EXPECT_EQ(mmpm_handler_destroy(&handler), MMPM_SUCCESS);
 }
 
@@ -129,12 +129,12 @@ static void test_ac_stream_multi_chunk_match(void)
     EXPECT_EQ(mmpm_handler_init(&handler, MMPM_MATCHER_TYPE_AC, 0, 0), MMPM_SUCCESS);
     EXPECT_EQ(mmpm_add_rule(&handler, rules, 1), MMPM_SUCCESS);
 
-    EXPECT_EQ(mmpm_open_stream(&handler, &stream), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_open_handler_stream(&handler, &stream), MMPM_SUCCESS);
     EXPECT_EQ(scan_stream_raw(stream, (const uint8_t *)"ab", 2), MMPM_FIND_FAIL);
     EXPECT_EQ(scan_stream_raw(stream, (const uint8_t *)"cd", 2), MMPM_FIND_FAIL);
     EXPECT_EQ(scan_stream_raw(stream, (const uint8_t *)"ef", 2), MMPM_SUCCESS);
 
-    EXPECT_EQ(mmpm_close_stream(stream), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_close_handler_stream(stream), MMPM_SUCCESS);
     EXPECT_EQ(mmpm_handler_destroy(&handler), MMPM_SUCCESS);
 }
 
@@ -151,8 +151,8 @@ static void test_ac_stream_independent_streams(void)
     EXPECT_EQ(mmpm_handler_init(&handler, MMPM_MATCHER_TYPE_AC, 0, 0), MMPM_SUCCESS);
     EXPECT_EQ(mmpm_add_rule(&handler, rules, 1), MMPM_SUCCESS);
 
-    EXPECT_EQ(mmpm_open_stream(&handler, &stream1), MMPM_SUCCESS);
-    EXPECT_EQ(mmpm_open_stream(&handler, &stream2), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_open_handler_stream(&handler, &stream1), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_open_handler_stream(&handler, &stream2), MMPM_SUCCESS);
 
     EXPECT_EQ(scan_stream_raw(stream1, (const uint8_t *)"abc", 3), MMPM_FIND_FAIL);
     EXPECT_EQ(scan_stream_raw(stream2, (const uint8_t *)"xxx", 3), MMPM_FIND_FAIL);
@@ -163,8 +163,8 @@ static void test_ac_stream_independent_streams(void)
     /* stream2 is independent and should not inherit stream1's state. */
     EXPECT_EQ(scan_stream_raw(stream2, (const uint8_t *)"def", 3), MMPM_FIND_FAIL);
 
-    EXPECT_EQ(mmpm_close_stream(stream1), MMPM_SUCCESS);
-    EXPECT_EQ(mmpm_close_stream(stream2), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_close_handler_stream(stream1), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_close_handler_stream(stream2), MMPM_SUCCESS);
     EXPECT_EQ(mmpm_handler_destroy(&handler), MMPM_SUCCESS);
 }
 
@@ -182,16 +182,16 @@ static void test_ac_stream_interleaved_streams(void)
     EXPECT_EQ(mmpm_handler_init(&handler, MMPM_MATCHER_TYPE_AC, 0, 0), MMPM_SUCCESS);
     EXPECT_EQ(mmpm_add_rule(&handler, rules, 2), MMPM_SUCCESS);
 
-    EXPECT_EQ(mmpm_open_stream(&handler, &stream1), MMPM_SUCCESS);
-    EXPECT_EQ(mmpm_open_stream(&handler, &stream2), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_open_handler_stream(&handler, &stream1), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_open_handler_stream(&handler, &stream2), MMPM_SUCCESS);
 
     EXPECT_EQ(scan_stream_raw(stream1, (const uint8_t *)"abc", 3), MMPM_FIND_FAIL);
     EXPECT_EQ(scan_stream_raw(stream2, (const uint8_t *)"12", 2), MMPM_FIND_FAIL);
     EXPECT_EQ(scan_stream_raw(stream1, (const uint8_t *)"def", 3), MMPM_SUCCESS);
     EXPECT_EQ(scan_stream_raw(stream2, (const uint8_t *)"345", 3), MMPM_SUCCESS);
 
-    EXPECT_EQ(mmpm_close_stream(stream1), MMPM_SUCCESS);
-    EXPECT_EQ(mmpm_close_stream(stream2), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_close_handler_stream(stream1), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_close_handler_stream(stream2), MMPM_SUCCESS);
     EXPECT_EQ(mmpm_handler_destroy(&handler), MMPM_SUCCESS);
 }
 
@@ -208,11 +208,11 @@ static void test_ac_stream_prefix_and_long_rule(void)
     EXPECT_EQ(mmpm_handler_init(&handler, MMPM_MATCHER_TYPE_AC, 0, 0), MMPM_SUCCESS);
     EXPECT_EQ(mmpm_add_rule(&handler, rules, 2), MMPM_SUCCESS);
 
-    EXPECT_EQ(mmpm_open_stream(&handler, &stream), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_open_handler_stream(&handler, &stream), MMPM_SUCCESS);
     EXPECT_EQ(scan_stream_raw(stream, (const uint8_t *)"xx123", 5), MMPM_SUCCESS);
     EXPECT_EQ(scan_stream_raw(stream, (const uint8_t *)"45yy", 4), MMPM_SUCCESS);
 
-    EXPECT_EQ(mmpm_close_stream(stream), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_close_handler_stream(stream), MMPM_SUCCESS);
     EXPECT_EQ(mmpm_handler_destroy(&handler), MMPM_SUCCESS);
 }
 
@@ -229,11 +229,11 @@ static void test_ac_stream_match_then_continue(void)
     EXPECT_EQ(mmpm_handler_init(&handler, MMPM_MATCHER_TYPE_AC, 0, 0), MMPM_SUCCESS);
     EXPECT_EQ(mmpm_add_rule(&handler, rules, 2), MMPM_SUCCESS);
 
-    EXPECT_EQ(mmpm_open_stream(&handler, &stream), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_open_handler_stream(&handler, &stream), MMPM_SUCCESS);
     EXPECT_EQ(scan_stream_raw(stream, (const uint8_t *)"xxabc", 5), MMPM_SUCCESS);
     EXPECT_EQ(scan_stream_raw(stream, (const uint8_t *)"yydef", 5), MMPM_SUCCESS);
 
-    EXPECT_EQ(mmpm_close_stream(stream), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_close_handler_stream(stream), MMPM_SUCCESS);
     EXPECT_EQ(mmpm_handler_destroy(&handler), MMPM_SUCCESS);
 }
 
@@ -249,7 +249,7 @@ static void test_ac_stream_reset(void)
     EXPECT_EQ(mmpm_handler_init(&handler, MMPM_MATCHER_TYPE_AC, 0, 0), MMPM_SUCCESS);
     EXPECT_EQ(mmpm_add_rule(&handler, rules, 1), MMPM_SUCCESS);
 
-    EXPECT_EQ(mmpm_open_stream(&handler, &stream), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_open_handler_stream(&handler, &stream), MMPM_SUCCESS);
 
     EXPECT_EQ(scan_stream_raw(stream, (const uint8_t *)"abc", 3), MMPM_FIND_FAIL);
     EXPECT_EQ(mmpm_reset_stream(stream), MMPM_SUCCESS);
@@ -260,7 +260,7 @@ static void test_ac_stream_reset(void)
      */
     EXPECT_EQ(scan_stream_raw(stream, (const uint8_t *)"def", 3), MMPM_FIND_FAIL);
 
-    EXPECT_EQ(mmpm_close_stream(stream), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_close_handler_stream(stream), MMPM_SUCCESS);
     EXPECT_EQ(mmpm_handler_destroy(&handler), MMPM_SUCCESS);
 }
 
@@ -276,12 +276,12 @@ static void test_ac_stream_empty_chunk_keeps_state(void)
     EXPECT_EQ(mmpm_handler_init(&handler, MMPM_MATCHER_TYPE_AC, 0, 0), MMPM_SUCCESS);
     EXPECT_EQ(mmpm_add_rule(&handler, rules, 1), MMPM_SUCCESS);
 
-    EXPECT_EQ(mmpm_open_stream(&handler, &stream), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_open_handler_stream(&handler, &stream), MMPM_SUCCESS);
     EXPECT_EQ(scan_stream_raw(stream, (const uint8_t *)"abc", 3), MMPM_FIND_FAIL);
     EXPECT_EQ(scan_stream_raw(stream, (const uint8_t *)"", 0), MMPM_FIND_FAIL);
     EXPECT_EQ(scan_stream_raw(stream, (const uint8_t *)"de", 2), MMPM_SUCCESS);
 
-    EXPECT_EQ(mmpm_close_stream(stream), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_close_handler_stream(stream), MMPM_SUCCESS);
     EXPECT_EQ(mmpm_handler_destroy(&handler), MMPM_SUCCESS);
 }
 
@@ -302,7 +302,7 @@ static void test_ac_stream_stale_after_remove(void)
     EXPECT_EQ(mmpm_handler_init(&handler, MMPM_MATCHER_TYPE_AC, 0, 0), MMPM_SUCCESS);
     EXPECT_EQ(mmpm_add_rule(&handler, rules, 2), MMPM_SUCCESS);
 
-    EXPECT_EQ(mmpm_open_stream(&handler, &stream), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_open_handler_stream(&handler, &stream), MMPM_SUCCESS);
     EXPECT_EQ(scan_stream_raw(stream, (const uint8_t *)"abc", 3), MMPM_FIND_FAIL);
 
     /*
@@ -320,7 +320,7 @@ static void test_ac_stream_stale_after_remove(void)
     EXPECT_EQ(scan_stream_raw(stream, (const uint8_t *)"abcde", 5), MMPM_FIND_FAIL);
     EXPECT_EQ(scan_stream_raw(stream, (const uint8_t *)"xyz", 3), MMPM_SUCCESS);
 
-    EXPECT_EQ(mmpm_close_stream(stream), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_close_handler_stream(stream), MMPM_SUCCESS);
     EXPECT_EQ(mmpm_handler_destroy(&handler), MMPM_SUCCESS);
 }
 
@@ -339,12 +339,12 @@ static void test_ac_stream_remove_fail_keeps_stream_valid(void)
     EXPECT_EQ(mmpm_handler_init(&handler, MMPM_MATCHER_TYPE_AC, 0, 0), MMPM_SUCCESS);
     EXPECT_EQ(mmpm_add_rule(&handler, rules, 1), MMPM_SUCCESS);
 
-    EXPECT_EQ(mmpm_open_stream(&handler, &stream), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_open_handler_stream(&handler, &stream), MMPM_SUCCESS);
     EXPECT_EQ(scan_stream_raw(stream, (const uint8_t *)"abc", 3), MMPM_FIND_FAIL);
     EXPECT_EQ(mmpm_remove_rule(&handler, remove_rule, 1), MMPM_FIND_FAIL);
     EXPECT_EQ(scan_stream_raw(stream, (const uint8_t *)"de", 2), MMPM_SUCCESS);
 
-    EXPECT_EQ(mmpm_close_stream(stream), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_close_handler_stream(stream), MMPM_SUCCESS);
     EXPECT_EQ(mmpm_handler_destroy(&handler), MMPM_SUCCESS);
 }
 
@@ -357,24 +357,24 @@ static void test_ac_stream_invalid_usage(void)
         make_rule(5001, "abc"),
     };
 
-    EXPECT_EQ(mmpm_open_stream(NULL, &stream), MMPM_INVALID_PARA);
-    EXPECT_EQ(mmpm_open_stream(&handler, NULL), MMPM_INVALID_PARA);
+    EXPECT_EQ(mmpm_open_handler_stream(NULL, &stream), MMPM_INVALID_PARA);
+    EXPECT_EQ(mmpm_open_handler_stream(&handler, NULL), MMPM_INVALID_PARA);
     EXPECT_EQ(mmpm_reset_stream(NULL), MMPM_INVALID_PARA);
-    EXPECT_EQ(mmpm_close_stream(NULL), MMPM_INVALID_PARA);
+    EXPECT_EQ(mmpm_close_handler_stream(NULL), MMPM_INVALID_PARA);
 
     EXPECT_EQ(mmpm_handler_init(&handler, MMPM_MATCHER_TYPE_AC, 0, 0), MMPM_SUCCESS);
 
     /* Cannot open stream before AC rules are built. */
-    EXPECT_EQ(mmpm_open_stream(&handler, &stream), MMPM_INVALID_PARA);
+    EXPECT_EQ(mmpm_open_handler_stream(&handler, &stream), MMPM_INVALID_PARA);
 
     EXPECT_EQ(mmpm_add_rule(&handler, rules, 1), MMPM_SUCCESS);
-    EXPECT_EQ(mmpm_open_stream(&handler, &stream), MMPM_SUCCESS);
-    EXPECT_EQ(mmpm_open_stream(&handler, &stream), MMPM_INVALID_PARA);
+    EXPECT_EQ(mmpm_open_handler_stream(&handler, &stream), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_open_handler_stream(&handler, &stream), MMPM_INVALID_PARA);
 
     EXPECT_EQ(scan_stream_raw(NULL, (const uint8_t *)"abc", 3), MMPM_INVALID_PARA);
     EXPECT_EQ(scan_stream_raw(stream, NULL, 3), MMPM_INVALID_PARA);
 
-    EXPECT_EQ(mmpm_close_stream(stream), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_close_handler_stream(stream), MMPM_SUCCESS);
     EXPECT_EQ(mmpm_handler_destroy(&handler), MMPM_SUCCESS);
 }
 

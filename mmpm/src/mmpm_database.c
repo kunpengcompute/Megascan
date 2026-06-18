@@ -6,6 +6,7 @@
 #include "mmpm_allocator.h"
 #include "mmpm_compile.h"
 #include "mmpm_hash.h"
+#include "mmpm_rule.h"
 #include "mmpm_database_internal.h"
 #include "expr/mmpm_expr_internal.h"
 
@@ -208,6 +209,19 @@ int MMPM_CDECL mmpm_compile_database_multi_ext(mmpm_database_t **db,
 }
 
 __attribute__((visibility("default")))
+int MMPM_CDECL mmpm_find_database_rule(const mmpm_database_t *db, mmpm_rule_t *rule)
+{
+    mmpm_handler_t handler = {0};
+
+    if (db == NULL || rule == NULL) {
+        return MMPM_INVALID_PARA;
+    }
+
+    mmpm_database_to_handler(db, &handler);
+    return mmpm_find_rule(&handler, rule);
+}
+
+__attribute__((visibility("default")))
 int MMPM_CDECL mmpm_free_database(mmpm_database_t *db)
 {
     int ret;
@@ -223,14 +237,4 @@ int MMPM_CDECL mmpm_free_database(mmpm_database_t *db)
 
     mmpm_database_free(db);
     return MMPM_SUCCESS;
-}
-
-__attribute__((visibility("default")))
-mmpm_handler_t *mmpm_database_get_handler(mmpm_database_t *db)
-{
-    if (db == NULL) {
-        return NULL;
-    }
-
-    return (mmpm_handler_t *)db;
 }

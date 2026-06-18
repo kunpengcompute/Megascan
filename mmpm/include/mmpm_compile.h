@@ -9,8 +9,9 @@
 /**
  * Compile multiple expression-style rules.
  *
- * This is the basic expression import entry. New code that needs offset bounds
- * or wants one stable recommended path should prefer mmpm_compile_multi_ext().
+ * This is the legacy aggregate-handle import entry. New code that wants one
+ * stable recommended path should prefer mmpm_compile_database_multi() or
+ * mmpm_compile_database_multi_ext().
  *
  * Combination rules marked with MMPM_FLAG_QUIET are accepted and skipped:
  * they are not compiled as reported combinations and are not added as plain
@@ -29,7 +30,8 @@ int mmpm_compile_multi(mmpm_handler_t *handler, const char *const *expressions, 
 /**
  * Compile multiple expression-style rules with extended options.
  *
- * This is the recommended expression import entry for new code.
+ * This is the legacy aggregate-handle import entry with extended options.
+ * New code should prefer mmpm_compile_database_multi_ext().
  *
  * Offset bounds apply to combination rules. Megascan is fixed-string based, so
  * bounds are checked against the fixed-string match end offset that makes the
@@ -45,8 +47,9 @@ int mmpm_compile_multi_ext(mmpm_handler_t *handler,
 /**
  * Import expression-style rules.
  *
- * This is a compatibility wrapper around mmpm_compile_multi().
- * New code should prefer mmpm_compile_multi() or mmpm_compile_multi_ext().
+ * This is a compatibility wrapper around mmpm_compile_multi() and therefore
+ * also stays on the mutable handler path. New code should prefer
+ * mmpm_compile_database_multi() or mmpm_compile_database_multi_ext().
  */
 int mmpm_add_exprs(mmpm_handler_t *handler, const char *const *expr, const uint32_t *ids,
                    const uint32_t *flags, uint32_t elements);

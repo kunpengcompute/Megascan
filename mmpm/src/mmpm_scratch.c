@@ -364,13 +364,13 @@ static int mmpm_validate_database_stream_scratch(const ms_stream_t *stream,
 }
 
 __attribute__((visibility("default")))
-int MMPM_CDECL mmpm_scan_database_stream(ms_stream_t *stream,
-                                         const uint8_t *data,
-                                         uint32_t len,
-                                         mmpm_scratch_t *scratch,
-                                         uint32_t *ids,
-                                         uint32_t *id_count,
-                                         uint32_t id_capacity)
+int MMPM_CDECL mmpm_scan_stream(ms_stream_t *stream,
+                                const uint8_t *data,
+                                uint32_t len,
+                                mmpm_scratch_t *scratch,
+                                uint32_t *ids,
+                                uint32_t *id_count,
+                                uint32_t id_capacity)
 {
     uint32_t next_node_index;
     int scan_ret;
@@ -427,11 +427,11 @@ int MMPM_CDECL mmpm_scan_database_stream(ms_stream_t *stream,
 }
 
 __attribute__((visibility("default")))
-int MMPM_CDECL mmpm_flush_database_stream(ms_stream_t *stream,
-                                          mmpm_scratch_t *scratch,
-                                          uint32_t *ids,
-                                          uint32_t *id_count,
-                                          uint32_t id_capacity)
+int MMPM_CDECL mmpm_flush_stream(ms_stream_t *stream,
+                                 mmpm_scratch_t *scratch,
+                                 uint32_t *ids,
+                                 uint32_t *id_count,
+                                 uint32_t id_capacity)
 {
     int ret;
 
@@ -474,11 +474,11 @@ int MMPM_CDECL mmpm_flush_database_stream(ms_stream_t *stream,
 }
 
 __attribute__((visibility("default")))
-int MMPM_CDECL mmpm_close_database_stream(ms_stream_t *stream,
-                                          mmpm_scratch_t *scratch,
-                                          uint32_t *ids,
-                                          uint32_t *id_count,
-                                          uint32_t id_capacity)
+int MMPM_CDECL mmpm_close_stream(ms_stream_t *stream,
+                                 mmpm_scratch_t *scratch,
+                                 uint32_t *ids,
+                                 uint32_t *id_count,
+                                 uint32_t id_capacity)
 {
     int close_ret;
     int ret;
@@ -491,8 +491,8 @@ int MMPM_CDECL mmpm_close_database_stream(ms_stream_t *stream,
         return ret;
     }
 
-    ret = mmpm_flush_database_stream(stream, scratch, ids, id_count, id_capacity);
-    close_ret = mmpm_close_stream(stream);
+    ret = mmpm_flush_stream(stream, scratch, ids, id_count, id_capacity);
+    close_ret = mmpm_close_handler_stream(stream);
     if (close_ret != MMPM_SUCCESS) {
         return close_ret;
     }

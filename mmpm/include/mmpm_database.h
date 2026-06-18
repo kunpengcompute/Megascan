@@ -128,16 +128,28 @@ int MMPM_CDECL mmpm_scan_database(const mmpm_database_t *db,
                                   uint32_t id_capacity);
 
 /**
+ * @brief 使用 database 执行单条规则查询
+ *
+ * HASH database 按固定 key 查询；AC database 走表达式运行时，因此普通规则
+ * 和组合规则的返回语义与 mmpm_scan_database() 保持一致。
+ *
+ * @param db 已创建或已编译的 database
+ * @param rule 输入待查规则；成功时 alias 会被更新为命中的 ID
+ * @return MMPM_SUCCESS 表示有命中，MMPM_FIND_FAIL 表示无命中，否则返回错误码
+ */
+int MMPM_CDECL mmpm_find_database_rule(const mmpm_database_t *db, mmpm_rule_t *rule);
+
+/**
  * @brief 基于 database 打开 stream
  *
  * 当前仅支持 AC database。stream 对象及其跨 chunk 状态内存走 Stream
- * 分配器。旧 mmpm_open_stream() 后续应收敛为该完整入口的简化封装。
+ * 分配器。旧 handler 流接口应收敛为该完整入口的兼容封装。
  *
  * @param db 已编译的 AC database
  * @param stream 输出 stream 指针，调用前必须指向 NULL
  * @return MMPM_SUCCESS 表示成功，否则返回错误码
  */
-int MMPM_CDECL mmpm_open_database_stream(const mmpm_database_t *db, ms_stream_t **stream);
+int MMPM_CDECL mmpm_open_stream(const mmpm_database_t *db, ms_stream_t **stream);
 
 /**
  * @brief 使用显式 scratch 扫描 database stream
@@ -145,22 +157,22 @@ int MMPM_CDECL mmpm_open_database_stream(const mmpm_database_t *db, ms_stream_t 
  * stream 只保存跨 chunk 状态；本次调用的捕获、向量副本和组合计算临时
  * 内存来自 scratch。scratch 必须由打开该 stream 的同一个 database 分配。
  */
-int MMPM_CDECL mmpm_scan_database_stream(ms_stream_t *stream,
-                                         const uint8_t *data,
-                                         uint32_t len,
-                                         mmpm_scratch_t *scratch,
-                                         uint32_t *ids,
-                                         uint32_t *id_count,
-                                         uint32_t id_capacity);
+int MMPM_CDECL mmpm_scan_stream(ms_stream_t *stream,
+                                const uint8_t *data,
+                                uint32_t len,
+                                mmpm_scratch_t *scratch,
+                                uint32_t *ids,
+                                uint32_t *id_count,
+                                uint32_t id_capacity);
 
 /**
  * @brief 在流末尾执行组合规则计算但不释放 stream
  */
-int MMPM_CDECL mmpm_flush_database_stream(ms_stream_t *stream,
-                                          mmpm_scratch_t *scratch,
-                                          uint32_t *ids,
-                                          uint32_t *id_count,
-                                          uint32_t id_capacity);
+int MMPM_CDECL mmpm_flush_stream(ms_stream_t *stream,
+                                 mmpm_scratch_t *scratch,
+                                 uint32_t *ids,
+                                 uint32_t *id_count,
+                                 uint32_t id_capacity);
 
 /**
  * @brief 在流末尾执行组合规则计算并释放 stream
@@ -168,21 +180,10 @@ int MMPM_CDECL mmpm_flush_database_stream(ms_stream_t *stream,
  * 参数校验成功后，无论末尾计算是否成功，stream 都会被释放。
  * 没有末尾报告时 id_count 为 0，关闭仍返回 MMPM_SUCCESS。
  */
-int MMPM_CDECL mmpm_close_database_stream(ms_stream_t *stream,
-                                          mmpm_scratch_t *scratch,
-                                          uint32_t *ids,
-                                          uint32_t *id_count,
-                                          uint32_t id_capacity);
-
-/**
- * @brief 获取 database 内部兼容 handler
- *
- * 该接口仅用于迁移期兼容旧 API。最终方向是让旧 handler API 成为
- * database/scratch 完整入口的简化封装，而不是长期维护两套实现。
- *
- * @param db database 对象
- * @return 成功返回内部 handler，失败返回 NULL
- */
-mmpm_handler_t *mmpm_database_get_handler(mmpm_database_t *db);
+int MMPM_CDECL mmpm_close_stream(ms_stream_t *stream,
+                                 mmpm_scratch_t *scratch,
+                                 uint32_t *ids,
+                                 uint32_t *id_count,
+                                 uint32_t id_capacity);
 
 #endif

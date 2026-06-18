@@ -60,7 +60,7 @@ static void expect_ret(const char *name, int got, int expected)
 
 static int scan_stream_raw(ms_stream_t *stream, const uint8_t *data, uint32_t len)
 {
-    return mmpm_scan_stream(stream, data, len);
+    return mmpm_scan_rule_stream(stream, data, len);
 }
 
 /*
@@ -80,7 +80,7 @@ static int scan_stream_by_blocks(mmpm_handler_t *handler, const char *data, uint
         return MMPM_INVALID_PARA;
     }
 
-    ret = mmpm_open_stream(handler, &stream);
+    ret = mmpm_open_handler_stream(handler, &stream);
     if (ret != MMPM_SUCCESS) {
         return ret;
     }
@@ -107,7 +107,7 @@ static int scan_stream_by_blocks(mmpm_handler_t *handler, const char *data, uint
         pos += cur;
     }
 
-    ret = mmpm_close_stream(stream);
+    ret = mmpm_close_handler_stream(stream);
     if (ret != MMPM_SUCCESS) {
         return ret;
     }
@@ -137,11 +137,11 @@ static void test_cross_chunk_match(void)
     expect_ret("block xx123", mmpm_find_rule(&handler, &block_query1), MMPM_FIND_FAIL);
     expect_ret("block 45yy", mmpm_find_rule(&handler, &block_query2), MMPM_FIND_FAIL);
 
-    expect_ret("open stream", mmpm_open_stream(&handler, &stream), MMPM_SUCCESS);
+    expect_ret("open stream", mmpm_open_handler_stream(&handler, &stream), MMPM_SUCCESS);
     expect_ret("scan xx123", scan_stream_raw(stream, (const uint8_t *)"xx123", 5), MMPM_FIND_FAIL);
     expect_ret("scan 45yy", scan_stream_raw(stream, (const uint8_t *)"45yy", 4), MMPM_SUCCESS);
 
-    ret = mmpm_close_stream(stream);
+    ret = mmpm_close_handler_stream(stream);
     expect_ret("close stream", ret, MMPM_SUCCESS);
     expect_ret("destroy", mmpm_handler_destroy(&handler), MMPM_SUCCESS);
 }
@@ -183,13 +183,13 @@ static void test_multi_chunk_match(void)
 
     expect_ret("init", mmpm_handler_init(&handler, MMPM_MATCHER_TYPE_AC, 0, 0), MMPM_SUCCESS);
     expect_ret("add rules", mmpm_add_rule(&handler, rules, 1), MMPM_SUCCESS);
-    expect_ret("open stream", mmpm_open_stream(&handler, &stream), MMPM_SUCCESS);
+    expect_ret("open stream", mmpm_open_handler_stream(&handler, &stream), MMPM_SUCCESS);
 
     expect_ret("scan ab", scan_stream_raw(stream, (const uint8_t *)"ab", 2), MMPM_FIND_FAIL);
     expect_ret("scan cd", scan_stream_raw(stream, (const uint8_t *)"cd", 2), MMPM_FIND_FAIL);
     expect_ret("scan ef", scan_stream_raw(stream, (const uint8_t *)"ef", 2), MMPM_SUCCESS);
 
-    expect_ret("close stream", mmpm_close_stream(stream), MMPM_SUCCESS);
+    expect_ret("close stream", mmpm_close_handler_stream(stream), MMPM_SUCCESS);
     expect_ret("destroy", mmpm_handler_destroy(&handler), MMPM_SUCCESS);
 }
 
@@ -209,16 +209,16 @@ static void test_interleaved_streams(void)
 
     expect_ret("init", mmpm_handler_init(&handler, MMPM_MATCHER_TYPE_AC, 0, 0), MMPM_SUCCESS);
     expect_ret("add rules", mmpm_add_rule(&handler, rules, 2), MMPM_SUCCESS);
-    expect_ret("open stream1", mmpm_open_stream(&handler, &stream1), MMPM_SUCCESS);
-    expect_ret("open stream2", mmpm_open_stream(&handler, &stream2), MMPM_SUCCESS);
+    expect_ret("open stream1", mmpm_open_handler_stream(&handler, &stream1), MMPM_SUCCESS);
+    expect_ret("open stream2", mmpm_open_handler_stream(&handler, &stream2), MMPM_SUCCESS);
 
     expect_ret("stream1 abc", scan_stream_raw(stream1, (const uint8_t *)"abc", 3), MMPM_FIND_FAIL);
     expect_ret("stream2 12", scan_stream_raw(stream2, (const uint8_t *)"12", 2), MMPM_FIND_FAIL);
     expect_ret("stream1 def", scan_stream_raw(stream1, (const uint8_t *)"def", 3), MMPM_SUCCESS);
     expect_ret("stream2 345", scan_stream_raw(stream2, (const uint8_t *)"345", 3), MMPM_SUCCESS);
 
-    expect_ret("close stream1", mmpm_close_stream(stream1), MMPM_SUCCESS);
-    expect_ret("close stream2", mmpm_close_stream(stream2), MMPM_SUCCESS);
+    expect_ret("close stream1", mmpm_close_handler_stream(stream1), MMPM_SUCCESS);
+    expect_ret("close stream2", mmpm_close_handler_stream(stream2), MMPM_SUCCESS);
     expect_ret("destroy", mmpm_handler_destroy(&handler), MMPM_SUCCESS);
 }
 
@@ -239,14 +239,14 @@ static void test_prefix_and_continue(void)
 
     expect_ret("init", mmpm_handler_init(&handler, MMPM_MATCHER_TYPE_AC, 0, 0), MMPM_SUCCESS);
     expect_ret("add rules", mmpm_add_rule(&handler, rules, 4), MMPM_SUCCESS);
-    expect_ret("open stream", mmpm_open_stream(&handler, &stream), MMPM_SUCCESS);
+    expect_ret("open stream", mmpm_open_handler_stream(&handler, &stream), MMPM_SUCCESS);
 
     expect_ret("short prefix hit", scan_stream_raw(stream, (const uint8_t *)"xx123", 5), MMPM_SUCCESS);
     expect_ret("long prefix hit", scan_stream_raw(stream, (const uint8_t *)"45yy", 4), MMPM_SUCCESS);
     expect_ret("later hit abc", scan_stream_raw(stream, (const uint8_t *)"abc", 3), MMPM_SUCCESS);
     expect_ret("later hit def", scan_stream_raw(stream, (const uint8_t *)"def", 3), MMPM_SUCCESS);
 
-    expect_ret("close stream", mmpm_close_stream(stream), MMPM_SUCCESS);
+    expect_ret("close stream", mmpm_close_handler_stream(stream), MMPM_SUCCESS);
     expect_ret("destroy", mmpm_handler_destroy(&handler), MMPM_SUCCESS);
 }
 
@@ -265,7 +265,7 @@ static void test_reset_and_empty_chunk(void)
 
     expect_ret("init", mmpm_handler_init(&handler, MMPM_MATCHER_TYPE_AC, 0, 0), MMPM_SUCCESS);
     expect_ret("add rules", mmpm_add_rule(&handler, rules, 2), MMPM_SUCCESS);
-    expect_ret("open stream", mmpm_open_stream(&handler, &stream), MMPM_SUCCESS);
+    expect_ret("open stream", mmpm_open_handler_stream(&handler, &stream), MMPM_SUCCESS);
 
     expect_ret("scan abc", scan_stream_raw(stream, (const uint8_t *)"abc", 3), MMPM_FIND_FAIL);
     expect_ret("empty chunk", scan_stream_raw(stream, (const uint8_t *)"", 0), MMPM_FIND_FAIL);
@@ -274,7 +274,7 @@ static void test_reset_and_empty_chunk(void)
     expect_ret("reset", mmpm_reset_stream(stream), MMPM_SUCCESS);
     expect_ret("scan def after reset", scan_stream_raw(stream, (const uint8_t *)"def", 3), MMPM_FIND_FAIL);
 
-    expect_ret("close stream", mmpm_close_stream(stream), MMPM_SUCCESS);
+    expect_ret("close stream", mmpm_close_handler_stream(stream), MMPM_SUCCESS);
     expect_ret("destroy", mmpm_handler_destroy(&handler), MMPM_SUCCESS);
 }
 
@@ -296,7 +296,7 @@ static void test_remove_and_stale(void)
 
     expect_ret("init", mmpm_handler_init(&handler, MMPM_MATCHER_TYPE_AC, 0, 0), MMPM_SUCCESS);
     expect_ret("add rules", mmpm_add_rule(&handler, rules, 2), MMPM_SUCCESS);
-    expect_ret("open stream", mmpm_open_stream(&handler, &stream), MMPM_SUCCESS);
+    expect_ret("open stream", mmpm_open_handler_stream(&handler, &stream), MMPM_SUCCESS);
 
     expect_ret("scan abc", scan_stream_raw(stream, (const uint8_t *)"abc", 3), MMPM_FIND_FAIL);
     expect_ret("remove abcde", mmpm_remove_rule(&handler, remove_abcde, 1), MMPM_SUCCESS);
@@ -306,7 +306,7 @@ static void test_remove_and_stale(void)
     expect_ret("removed rule no match", scan_stream_raw(stream, (const uint8_t *)"abcde", 5), MMPM_FIND_FAIL);
     expect_ret("remaining rule match", scan_stream_raw(stream, (const uint8_t *)"xyz", 3), MMPM_SUCCESS);
 
-    expect_ret("close stream", mmpm_close_stream(stream), MMPM_SUCCESS);
+    expect_ret("close stream", mmpm_close_handler_stream(stream), MMPM_SUCCESS);
     expect_ret("destroy", mmpm_handler_destroy(&handler), MMPM_SUCCESS);
 }
 
@@ -327,13 +327,13 @@ static void test_remove_fail_keeps_stream_valid(void)
 
     expect_ret("init", mmpm_handler_init(&handler, MMPM_MATCHER_TYPE_AC, 0, 0), MMPM_SUCCESS);
     expect_ret("add rules", mmpm_add_rule(&handler, rules, 1), MMPM_SUCCESS);
-    expect_ret("open stream", mmpm_open_stream(&handler, &stream), MMPM_SUCCESS);
+    expect_ret("open stream", mmpm_open_handler_stream(&handler, &stream), MMPM_SUCCESS);
 
     expect_ret("scan abc", scan_stream_raw(stream, (const uint8_t *)"abc", 3), MMPM_FIND_FAIL);
     expect_ret("remove missing", mmpm_remove_rule(&handler, remove_missing, 1), MMPM_FIND_FAIL);
     expect_ret("scan de still valid", scan_stream_raw(stream, (const uint8_t *)"de", 2), MMPM_SUCCESS);
 
-    expect_ret("close stream", mmpm_close_stream(stream), MMPM_SUCCESS);
+    expect_ret("close stream", mmpm_close_handler_stream(stream), MMPM_SUCCESS);
     expect_ret("destroy", mmpm_handler_destroy(&handler), MMPM_SUCCESS);
 }
 
@@ -348,21 +348,21 @@ static void test_invalid_usage(void)
 
     printf("\n== invalid usage ==\n");
 
-    expect_ret("open NULL handler", mmpm_open_stream(NULL, &stream), MMPM_INVALID_PARA);
-    expect_ret("open NULL stream pointer", mmpm_open_stream(&handler, NULL), MMPM_INVALID_PARA);
+    expect_ret("open NULL handler", mmpm_open_handler_stream(NULL, &stream), MMPM_INVALID_PARA);
+    expect_ret("open NULL stream pointer", mmpm_open_handler_stream(&handler, NULL), MMPM_INVALID_PARA);
     expect_ret("reset NULL", mmpm_reset_stream(NULL), MMPM_INVALID_PARA);
-    expect_ret("close NULL", mmpm_close_stream(NULL), MMPM_INVALID_PARA);
+    expect_ret("close NULL", mmpm_close_handler_stream(NULL), MMPM_INVALID_PARA);
 
     expect_ret("init", mmpm_handler_init(&handler, MMPM_MATCHER_TYPE_AC, 0, 0), MMPM_SUCCESS);
-    expect_ret("open before build", mmpm_open_stream(&handler, &stream), MMPM_INVALID_PARA);
+    expect_ret("open before build", mmpm_open_handler_stream(&handler, &stream), MMPM_INVALID_PARA);
 
     expect_ret("add rules", mmpm_add_rule(&handler, rules, 1), MMPM_SUCCESS);
-    expect_ret("open stream", mmpm_open_stream(&handler, &stream), MMPM_SUCCESS);
-    expect_ret("open into non-null stream", mmpm_open_stream(&handler, &stream), MMPM_INVALID_PARA);
+    expect_ret("open stream", mmpm_open_handler_stream(&handler, &stream), MMPM_SUCCESS);
+    expect_ret("open into non-null stream", mmpm_open_handler_stream(&handler, &stream), MMPM_INVALID_PARA);
     expect_ret("scan NULL stream", scan_stream_raw(NULL, (const uint8_t *)"abc", 3), MMPM_INVALID_PARA);
     expect_ret("scan NULL data", scan_stream_raw(stream, NULL, 3), MMPM_INVALID_PARA);
 
-    expect_ret("close stream", mmpm_close_stream(stream), MMPM_SUCCESS);
+    expect_ret("close stream", mmpm_close_handler_stream(stream), MMPM_SUCCESS);
     expect_ret("destroy", mmpm_handler_destroy(&handler), MMPM_SUCCESS);
 }
 

@@ -56,13 +56,13 @@ static int mmpm_open_stream_view(const mmpm_database_t *database,
 }
 
 __attribute__((visibility("default")))
-int mmpm_open_stream(mmpm_handler_t *handler, ms_stream_t **stream)
+int mmpm_open_handler_stream(mmpm_handler_t *handler, ms_stream_t **stream)
 {
     return mmpm_open_stream_view(NULL, handler, handler, stream);
 }
 
 __attribute__((visibility("default")))
-int MMPM_CDECL mmpm_open_database_stream(const mmpm_database_t *db, ms_stream_t **stream)
+int MMPM_CDECL mmpm_open_stream(const mmpm_database_t *db, ms_stream_t **stream)
 {
     mmpm_handler_t handler = {0};
 
@@ -100,7 +100,7 @@ int mmpm_stream_scan_direct(ms_stream_t *stream, const uint8_t *data, uint32_t l
 }
 
 __attribute__((visibility("default")))
-int mmpm_scan_stream(ms_stream_t *stream, const uint8_t *data, uint32_t len)
+int mmpm_scan_rule_stream(ms_stream_t *stream, const uint8_t *data, uint32_t len)
 {
     mmpm_compile_context_t *ctx;
     uint32_t *ids = NULL;
@@ -261,7 +261,7 @@ int mmpm_reset_stream(ms_stream_t *stream)
 }
 
 __attribute__((visibility("default")))
-int mmpm_close_stream(ms_stream_t *stream)
+int mmpm_close_handler_stream(ms_stream_t *stream)
 {
     if (stream == NULL) {
         return MMPM_INVALID_PARA;
