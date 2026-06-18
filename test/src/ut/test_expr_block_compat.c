@@ -1,0 +1,441 @@
+/*
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * Description: expression-style block compatibility API unit tests
+ */
+#include <stdint.h>
+#include <string.h>
+
+#include "ktest.h"
+#include "../../../mmpm/include/mmpm.h"
+#include "../../../mmpm/include/mmpm_handler.h"
+#include "../../../mmpm/include/mmpm_compile.h"
+#include "../../../mmpm/include/mmpm_rule.h"
+#include "../../../mmpm/include/mmpm_runtime.h"
+#include "../../../mmpm/include/mmpm_expr.h"
+
+static mmpm_rule_t make_expr_block_query(const char *s)
+{
+    mmpm_rule_t rule;
+
+    rule.alias = 0;
+    rule.key_len = (uint32_t)strlen(s);
+    rule.key = (uint8_t *)s;
+
+    return rule;
+}
+
+static void test_expr_block_eval_combination_and_true(void)
+{
+    mmpm_handler_t handler = {0};
+    const char *expr[] = {"abc", "def", "101&102"};
+    uint32_t ids[] = {101, 102, 1001};
+    uint32_t flags[] = {MMPM_FLAG_QUIET, MMPM_FLAG_QUIET, MMPM_FLAG_COMBINATION};
+    uint32_t aliases[] = {101, 102};
+    uint32_t comb_ids[1] = {0};
+    uint32_t comb_count = 0;
+
+    EXPECT_EQ(mmpm_handler_init(&handler, MMPM_MATCHER_TYPE_HASH, 0, 0), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_compile_multi(&handler, expr, flags, ids, 3), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_compile_eval_combinations(&handler, aliases, 2, comb_ids, &comb_count, 1), MMPM_SUCCESS);
+    EXPECT_EQ(comb_count, 1U);
+    EXPECT_EQ(comb_ids[0], 1001U);
+    EXPECT_EQ(mmpm_handler_destroy(&handler), MMPM_SUCCESS);
+}
+
+static void test_expr_block_eval_combination_and_false(void)
+{
+    mmpm_handler_t handler = {0};
+    const char *expr[] = {"abc", "def", "101&102"};
+    uint32_t ids[] = {101, 102, 1001};
+    uint32_t flags[] = {MMPM_FLAG_QUIET, MMPM_FLAG_QUIET, MMPM_FLAG_COMBINATION};
+    uint32_t aliases[] = {101};
+    uint32_t comb_ids[1] = {0};
+    uint32_t comb_count = 0;
+
+    EXPECT_EQ(mmpm_handler_init(&handler, MMPM_MATCHER_TYPE_HASH, 0, 0), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_compile_multi(&handler, expr, flags, ids, 3), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_compile_eval_combinations(&handler, aliases, 1, comb_ids, &comb_count, 1), MMPM_SUCCESS);
+    EXPECT_EQ(comb_count, 0U);
+    EXPECT_EQ(mmpm_handler_destroy(&handler), MMPM_SUCCESS);
+}
+
+static void test_expr_block_eval_combination_not_true(void)
+{
+    mmpm_handler_t handler = {0};
+    const char *expr[] = {"abc", "def", "101&!102"};
+    uint32_t ids[] = {101, 102, 1001};
+    uint32_t flags[] = {MMPM_FLAG_QUIET, MMPM_FLAG_QUIET, MMPM_FLAG_COMBINATION};
+    uint32_t aliases[] = {101};
+    uint32_t comb_ids[1] = {0};
+    uint32_t comb_count = 0;
+
+    EXPECT_EQ(mmpm_handler_init(&handler, MMPM_MATCHER_TYPE_HASH, 0, 0), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_compile_multi(&handler, expr, flags, ids, 3), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_compile_eval_combinations(&handler, aliases, 1, comb_ids, &comb_count, 1), MMPM_SUCCESS);
+    EXPECT_EQ(comb_count, 1U);
+    EXPECT_EQ(comb_ids[0], 1001U);
+    EXPECT_EQ(mmpm_handler_destroy(&handler), MMPM_SUCCESS);
+}
+
+static void test_expr_block_eval_combination_large_ids(void)
+{
+    mmpm_handler_t handler = {0};
+    const char *expr[] = {"abc", "def", "900000001&900000002"};
+    uint32_t ids[] = {900000001, 900000002, 1001};
+    uint32_t flags[] = {MMPM_FLAG_QUIET, MMPM_FLAG_QUIET, MMPM_FLAG_COMBINATION};
+    uint32_t aliases[] = {900000001, 900000002};
+    uint32_t comb_ids[1] = {0};
+    uint32_t comb_count = 0;
+
+    EXPECT_EQ(mmpm_handler_init(&handler, MMPM_MATCHER_TYPE_HASH, 0, 0), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_compile_multi(&handler, expr, flags, ids, 3), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_compile_eval_combinations(&handler, aliases, 2, comb_ids, &comb_count, 1), MMPM_SUCCESS);
+    EXPECT_EQ(comb_count, 1U);
+    EXPECT_EQ(comb_ids[0], 1001U);
+    EXPECT_EQ(mmpm_handler_destroy(&handler), MMPM_SUCCESS);
+}
+
+static void test_expr_block_eval_combination_capacity_too_small(void)
+{
+    mmpm_handler_t handler = {0};
+    const char *expr[] = {"abc", "def", "101&102"};
+    uint32_t ids[] = {101, 102, 1001};
+    uint32_t flags[] = {MMPM_FLAG_QUIET, MMPM_FLAG_QUIET, MMPM_FLAG_COMBINATION};
+    uint32_t aliases[] = {101, 102};
+    uint32_t comb_count = 0;
+
+    EXPECT_EQ(mmpm_handler_init(&handler, MMPM_MATCHER_TYPE_HASH, 0, 0), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_compile_multi(&handler, expr, flags, ids, 3), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_compile_eval_combinations(&handler, aliases, 2, NULL, &comb_count, 0), MMPM_INVALID_PARA);
+    EXPECT_EQ(comb_count, 1U);
+    EXPECT_EQ(mmpm_handler_destroy(&handler), MMPM_SUCCESS);
+}
+
+static void test_expr_block_scan_ac_combination_true(void)
+{
+    mmpm_handler_t handler = {0};
+    const char *expr[] = {"abc", "def", "101&102"};
+    uint32_t ids[] = {101, 102, 1001};
+    uint32_t flags[] = {MMPM_FLAG_QUIET, MMPM_FLAG_QUIET, MMPM_FLAG_COMBINATION};
+    uint32_t comb_ids[1] = {0};
+    uint32_t comb_count = 0;
+
+    EXPECT_EQ(mmpm_handler_init(&handler, MMPM_MATCHER_TYPE_AC, 0, 0), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_compile_multi(&handler, expr, flags, ids, 3), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_compile_scan_ac_combinations(&handler, (const uint8_t *)"xxabcdefyy", 10,
+                                                comb_ids, &comb_count, 1), MMPM_SUCCESS);
+    EXPECT_EQ(comb_count, 1U);
+    EXPECT_EQ(comb_ids[0], 1001U);
+    EXPECT_EQ(mmpm_handler_destroy(&handler), MMPM_SUCCESS);
+}
+
+static void test_expr_block_scan_ac_combination_false(void)
+{
+    mmpm_handler_t handler = {0};
+    const char *expr[] = {"abc", "def", "101&102"};
+    uint32_t ids[] = {101, 102, 1001};
+    uint32_t flags[] = {MMPM_FLAG_QUIET, MMPM_FLAG_QUIET, MMPM_FLAG_COMBINATION};
+    uint32_t comb_ids[1] = {0};
+    uint32_t comb_count = 0;
+
+    EXPECT_EQ(mmpm_handler_init(&handler, MMPM_MATCHER_TYPE_AC, 0, 0), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_compile_multi(&handler, expr, flags, ids, 3), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_compile_scan_ac_combinations(&handler, (const uint8_t *)"xxabcyy", 7,
+                                                comb_ids, &comb_count, 1), MMPM_FIND_FAIL);
+    EXPECT_EQ(comb_count, 0U);
+    EXPECT_EQ(mmpm_handler_destroy(&handler), MMPM_SUCCESS);
+}
+
+static void test_expr_block_scan_ac_combination_not_true(void)
+{
+    mmpm_handler_t handler = {0};
+    const char *expr[] = {"abc", "def", "101&!102"};
+    uint32_t ids[] = {101, 102, 1001};
+    uint32_t flags[] = {MMPM_FLAG_QUIET, MMPM_FLAG_QUIET, MMPM_FLAG_COMBINATION};
+    uint32_t comb_ids[1] = {0};
+    uint32_t comb_count = 0;
+
+    EXPECT_EQ(mmpm_handler_init(&handler, MMPM_MATCHER_TYPE_AC, 0, 0), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_compile_multi(&handler, expr, flags, ids, 3), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_compile_scan_ac_combinations(&handler, (const uint8_t *)"xxabcyy", 7,
+                                                comb_ids, &comb_count, 1), MMPM_SUCCESS);
+    EXPECT_EQ(comb_count, 1U);
+    EXPECT_EQ(comb_ids[0], 1001U);
+    EXPECT_EQ(mmpm_handler_destroy(&handler), MMPM_SUCCESS);
+}
+
+static void test_expr_block_scan_ac_combination_capacity_too_small(void)
+{
+    mmpm_handler_t handler = {0};
+    const char *expr[] = {"abc", "def", "101&102"};
+    uint32_t ids[] = {101, 102, 1001};
+    uint32_t flags[] = {MMPM_FLAG_QUIET, MMPM_FLAG_QUIET, MMPM_FLAG_COMBINATION};
+    uint32_t comb_count = 0;
+
+    EXPECT_EQ(mmpm_handler_init(&handler, MMPM_MATCHER_TYPE_AC, 0, 0), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_compile_multi(&handler, expr, flags, ids, 3), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_compile_scan_ac_combinations(&handler, (const uint8_t *)"xxabcdefyy", 10,
+                                                NULL, &comb_count, 0), MMPM_INVALID_PARA);
+    EXPECT_EQ(comb_count, 1U);
+    EXPECT_EQ(mmpm_handler_destroy(&handler), MMPM_SUCCESS);
+}
+
+static void test_expr_block_scan_reports_plain_and_combination(void)
+{
+    mmpm_handler_t handler = {0};
+    const char *expr[] = {"abc", "def", "101&102"};
+    uint32_t ids[] = {101, 102, 1001};
+    uint32_t flags[] = {MMPM_FLAG_NONE, MMPM_FLAG_QUIET, MMPM_FLAG_COMBINATION};
+    uint32_t out_ids[2] = {0};
+    uint32_t out_count = 0;
+
+    EXPECT_EQ(mmpm_handler_init(&handler, MMPM_MATCHER_TYPE_AC, 0, 0), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_compile_multi(&handler, expr, flags, ids, 3), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_scan_expr(&handler, (const uint8_t *)"xxabcdefyy", 10,
+                             out_ids, &out_count, 2), MMPM_SUCCESS);
+    EXPECT_EQ(out_count, 2U);
+    EXPECT_EQ(out_ids[0], 101U);
+    EXPECT_EQ(out_ids[1], 1001U);
+    EXPECT_EQ(mmpm_handler_destroy(&handler), MMPM_SUCCESS);
+}
+
+static void test_expr_block_scan_quiet_only_no_report(void)
+{
+    mmpm_handler_t handler = {0};
+    const char *expr[] = {"abc"};
+    uint32_t ids[] = {101};
+    uint32_t flags[] = {MMPM_FLAG_QUIET};
+    uint32_t out_ids[1] = {0};
+    uint32_t out_count = 0;
+
+    EXPECT_EQ(mmpm_handler_init(&handler, MMPM_MATCHER_TYPE_AC, 0, 0), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_compile_multi(&handler, expr, flags, ids, 1), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_scan_expr(&handler, (const uint8_t *)"xxabcyy", 7,
+                             out_ids, &out_count, 1), MMPM_FIND_FAIL);
+    EXPECT_EQ(out_count, 0U);
+    EXPECT_EQ(mmpm_handler_destroy(&handler), MMPM_SUCCESS);
+}
+
+static void test_expr_block_scan_capacity_too_small(void)
+{
+    mmpm_handler_t handler = {0};
+    const char *expr[] = {"abc", "def", "101&102"};
+    uint32_t ids[] = {101, 102, 1001};
+    uint32_t flags[] = {MMPM_FLAG_NONE, MMPM_FLAG_QUIET, MMPM_FLAG_COMBINATION};
+    uint32_t out_ids[1] = {0};
+    uint32_t out_count = 0;
+
+    EXPECT_EQ(mmpm_handler_init(&handler, MMPM_MATCHER_TYPE_AC, 0, 0), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_compile_multi(&handler, expr, flags, ids, 3), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_scan_expr(&handler, (const uint8_t *)"xxabcdefyy", 10,
+                             out_ids, &out_count, 1), MMPM_INVALID_PARA);
+    EXPECT_EQ(out_count, 2U);
+    EXPECT_EQ(out_ids[0], 0U);
+    EXPECT_EQ(mmpm_handler_destroy(&handler), MMPM_SUCCESS);
+}
+
+static void test_expr_block_scan_deduplicates_plain_matches(void)
+{
+    mmpm_handler_t handler = {0};
+    const char *expr[] = {"abc"};
+    uint32_t ids[] = {101};
+    uint32_t out_ids[1] = {0};
+    uint32_t out_count = 0;
+
+    EXPECT_EQ(mmpm_handler_init(&handler, MMPM_MATCHER_TYPE_AC, 0, 0), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_compile_multi(&handler, expr, NULL, ids, 1), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_scan_expr(&handler, (const uint8_t *)"abcabc", 6,
+                             out_ids, &out_count, 1), MMPM_SUCCESS);
+    EXPECT_EQ(out_count, 1U);
+    EXPECT_EQ(out_ids[0], 101U);
+    EXPECT_EQ(mmpm_handler_destroy(&handler), MMPM_SUCCESS);
+}
+
+static void test_expr_block_scan_active_ckey_skips_unrelated_combinations(void)
+{
+    mmpm_handler_t handler = {0};
+    const char *expr[] = {"abc", "def", "foo", "bar", "101&102", "201&202"};
+    uint32_t ids[] = {101, 102, 201, 202, 1001, 1002};
+    uint32_t flags[] = {
+        MMPM_FLAG_QUIET, MMPM_FLAG_QUIET, MMPM_FLAG_QUIET,
+        MMPM_FLAG_QUIET, MMPM_FLAG_COMBINATION, MMPM_FLAG_COMBINATION
+    };
+    uint32_t out_ids[1] = {0};
+    uint32_t out_count = 0;
+
+    EXPECT_EQ(mmpm_handler_init(&handler, MMPM_MATCHER_TYPE_AC, 0, 0), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_compile_multi(&handler, expr, flags, ids, 6), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_scan_expr(&handler, (const uint8_t *)"xxabcdefyy", 10,
+                             out_ids, &out_count, 1), MMPM_SUCCESS);
+    EXPECT_EQ(out_count, 1U);
+    EXPECT_EQ(out_ids[0], 1001U);
+    EXPECT_EQ(mmpm_handler_destroy(&handler), MMPM_SUCCESS);
+}
+
+static void test_expr_block_scan_active_ckey_shared_lkey(void)
+{
+    mmpm_handler_t handler = {0};
+    const char *expr[] = {"abc", "def", "ghi", "101&102", "101&103"};
+    uint32_t ids[] = {101, 102, 103, 1001, 1002};
+    uint32_t flags[] = {
+        MMPM_FLAG_QUIET, MMPM_FLAG_QUIET, MMPM_FLAG_QUIET,
+        MMPM_FLAG_COMBINATION, MMPM_FLAG_COMBINATION
+    };
+    uint32_t out_ids[1] = {0};
+    uint32_t out_count = 0;
+
+    EXPECT_EQ(mmpm_handler_init(&handler, MMPM_MATCHER_TYPE_AC, 0, 0), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_compile_multi(&handler, expr, flags, ids, 5), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_scan_expr(&handler, (const uint8_t *)"xxabcghiyy", 10,
+                             out_ids, &out_count, 1), MMPM_SUCCESS);
+    EXPECT_EQ(out_count, 1U);
+    EXPECT_EQ(out_ids[0], 1002U);
+    EXPECT_EQ(mmpm_handler_destroy(&handler), MMPM_SUCCESS);
+}
+
+static void test_expr_block_scan_inplace_logical_ops_nested(void)
+{
+    mmpm_handler_t handler = {0};
+    const char *expr[] = {"a", "b", "c", "(101|102)&!103"};
+    uint32_t ids[] = {101, 102, 103, 1001};
+    uint32_t flags[] = {
+        MMPM_FLAG_QUIET, MMPM_FLAG_QUIET, MMPM_FLAG_QUIET,
+        MMPM_FLAG_COMBINATION
+    };
+    uint32_t out_ids[1] = {0};
+    uint32_t out_count = 0;
+
+    EXPECT_EQ(mmpm_handler_init(&handler, MMPM_MATCHER_TYPE_AC, 0, 0), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_compile_multi(&handler, expr, flags, ids, 4), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_scan_expr(&handler, (const uint8_t *)"xxayy", 5,
+                             out_ids, &out_count, 1), MMPM_SUCCESS);
+    EXPECT_EQ(out_count, 1U);
+    EXPECT_EQ(out_ids[0], 1001U);
+    EXPECT_EQ(mmpm_scan_expr(&handler, (const uint8_t *)"xxacyy", 6,
+                             out_ids, &out_count, 1), MMPM_FIND_FAIL);
+    EXPECT_EQ(out_count, 0U);
+    EXPECT_EQ(mmpm_handler_destroy(&handler), MMPM_SUCCESS);
+}
+
+static void test_expr_block_scan_final_flush_pure_negative(void)
+{
+    mmpm_handler_t handler = {0};
+    const char *expr[] = {"abc", "!101"};
+    uint32_t ids[] = {101, 1001};
+    uint32_t flags[] = {MMPM_FLAG_QUIET, MMPM_FLAG_COMBINATION};
+    uint32_t out_ids[1] = {0};
+    uint32_t out_count = 0;
+
+    EXPECT_EQ(mmpm_handler_init(&handler, MMPM_MATCHER_TYPE_AC, 0, 0), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_compile_multi(&handler, expr, flags, ids, 2), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_scan_expr(&handler, (const uint8_t *)"xxxx", 4,
+                             out_ids, &out_count, 1), MMPM_SUCCESS);
+    EXPECT_EQ(out_count, 1U);
+    EXPECT_EQ(out_ids[0], 1001U);
+    EXPECT_EQ(mmpm_scan_expr(&handler, (const uint8_t *)"abc", 3,
+                             out_ids, &out_count, 1), MMPM_FIND_FAIL);
+    EXPECT_EQ(out_count, 0U);
+    EXPECT_EQ(mmpm_handler_destroy(&handler), MMPM_SUCCESS);
+}
+
+static void test_expr_block_scan_offset_bounds(void)
+{
+    mmpm_handler_t handler = {0};
+    const char *expr[] = {"abc", "def", "101&102"};
+    uint32_t ids[] = {101, 102, 1001};
+    uint32_t flags[] = {MMPM_FLAG_QUIET, MMPM_FLAG_QUIET, MMPM_FLAG_COMBINATION};
+    mmpm_expr_ext_t ext[] = {
+        {0, 0, 0},
+        {0, 0, 0},
+        {MMPM_EXT_FLAG_MIN_OFFSET | MMPM_EXT_FLAG_MAX_OFFSET, 6, 10}
+    };
+    uint32_t out_ids[1] = {0};
+    uint32_t out_count = 0;
+
+    EXPECT_EQ(mmpm_handler_init(&handler, MMPM_MATCHER_TYPE_AC, 0, 0), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_compile_multi_ext(&handler, expr, flags, ids, ext, 3), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_scan_expr(&handler, (const uint8_t *)"abcdef", 6,
+                             out_ids, &out_count, 1), MMPM_SUCCESS);
+    EXPECT_EQ(out_count, 1U);
+    EXPECT_EQ(out_ids[0], 1001U);
+    EXPECT_EQ(mmpm_scan_expr(&handler, (const uint8_t *)"abcdefxxxxx", 11,
+                             out_ids, &out_count, 1), MMPM_SUCCESS);
+    EXPECT_EQ(out_count, 1U);
+    EXPECT_EQ(out_ids[0], 1001U);
+    EXPECT_EQ(mmpm_scan_expr(&handler, (const uint8_t *)"abcxxxxxdef", 11,
+                             out_ids, &out_count, 1), MMPM_FIND_FAIL);
+    EXPECT_EQ(out_count, 0U);
+    EXPECT_EQ(mmpm_handler_destroy(&handler), MMPM_SUCCESS);
+}
+
+static void test_expr_block_remove_combination_by_id(void)
+{
+    mmpm_handler_t handler = {0};
+    const char *expr[] = {"abc", "def", "101&102"};
+    uint32_t ids[] = {101, 102, 1001};
+    uint32_t flags[] = {MMPM_FLAG_QUIET, MMPM_FLAG_QUIET, MMPM_FLAG_COMBINATION};
+    mmpm_rule_t remove_comb = {0};
+    uint32_t out_ids[1] = {0};
+    uint32_t out_count = 0;
+
+    remove_comb.alias = 1001;
+
+    EXPECT_EQ(mmpm_handler_init(&handler, MMPM_MATCHER_TYPE_AC, 0, 0), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_compile_multi(&handler, expr, flags, ids, 3), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_scan_expr(&handler, (const uint8_t *)"abcdef", 6,
+                             out_ids, &out_count, 1), MMPM_SUCCESS);
+    EXPECT_EQ(out_count, 1U);
+    EXPECT_EQ(out_ids[0], 1001U);
+    EXPECT_EQ(mmpm_remove_rule(&handler, &remove_comb, 1), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_scan_expr(&handler, (const uint8_t *)"abcdef", 6,
+                             out_ids, &out_count, 1), MMPM_FIND_FAIL);
+    EXPECT_EQ(out_count, 0U);
+    EXPECT_EQ(mmpm_compile_multi(&handler, &expr[2], &flags[2], &ids[2], 1), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_handler_destroy(&handler), MMPM_SUCCESS);
+}
+
+static void test_expr_block_remove_plain_removes_dependent_combination(void)
+{
+    mmpm_handler_t handler = {0};
+    const char *expr[] = {"abc", "def", "101&102"};
+    uint32_t ids[] = {101, 102, 1001};
+    uint32_t flags[] = {MMPM_FLAG_QUIET, MMPM_FLAG_QUIET, MMPM_FLAG_COMBINATION};
+    mmpm_rule_t remove_plain = make_expr_block_query("abc");
+    uint32_t out_ids[1] = {0};
+    uint32_t out_count = 0;
+
+    remove_plain.alias = 101;
+
+    EXPECT_EQ(mmpm_handler_init(&handler, MMPM_MATCHER_TYPE_AC, 0, 0), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_compile_multi(&handler, expr, flags, ids, 3), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_scan_expr(&handler, (const uint8_t *)"abcdef", 6,
+                             out_ids, &out_count, 1), MMPM_SUCCESS);
+    EXPECT_EQ(out_count, 1U);
+    EXPECT_EQ(out_ids[0], 1001U);
+    EXPECT_EQ(mmpm_remove_rule(&handler, &remove_plain, 1), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_scan_expr(&handler, (const uint8_t *)"abcdef", 6,
+                             out_ids, &out_count, 1), MMPM_FIND_FAIL);
+    EXPECT_EQ(out_count, 0U);
+    EXPECT_EQ(mmpm_handler_destroy(&handler), MMPM_SUCCESS);
+}
+
+KTEST_ADD_TEST_CASE(SuiteExprBlockCompat, test_expr_block_eval_combination_and_true);
+KTEST_ADD_TEST_CASE(SuiteExprBlockCompat, test_expr_block_eval_combination_and_false);
+KTEST_ADD_TEST_CASE(SuiteExprBlockCompat, test_expr_block_eval_combination_not_true);
+KTEST_ADD_TEST_CASE(SuiteExprBlockCompat, test_expr_block_eval_combination_large_ids);
+KTEST_ADD_TEST_CASE(SuiteExprBlockCompat, test_expr_block_eval_combination_capacity_too_small);
+KTEST_ADD_TEST_CASE(SuiteExprBlockCompat, test_expr_block_scan_ac_combination_true);
+KTEST_ADD_TEST_CASE(SuiteExprBlockCompat, test_expr_block_scan_ac_combination_false);
+KTEST_ADD_TEST_CASE(SuiteExprBlockCompat, test_expr_block_scan_ac_combination_not_true);
+KTEST_ADD_TEST_CASE(SuiteExprBlockCompat, test_expr_block_scan_ac_combination_capacity_too_small);
+KTEST_ADD_TEST_CASE(SuiteExprBlockCompat, test_expr_block_scan_reports_plain_and_combination);
+KTEST_ADD_TEST_CASE(SuiteExprBlockCompat, test_expr_block_scan_quiet_only_no_report);
+KTEST_ADD_TEST_CASE(SuiteExprBlockCompat, test_expr_block_scan_capacity_too_small);
+KTEST_ADD_TEST_CASE(SuiteExprBlockCompat, test_expr_block_scan_deduplicates_plain_matches);
+KTEST_ADD_TEST_CASE(SuiteExprBlockCompat, test_expr_block_scan_active_ckey_skips_unrelated_combinations);
+KTEST_ADD_TEST_CASE(SuiteExprBlockCompat, test_expr_block_scan_active_ckey_shared_lkey);
+KTEST_ADD_TEST_CASE(SuiteExprBlockCompat, test_expr_block_scan_inplace_logical_ops_nested);
+KTEST_ADD_TEST_CASE(SuiteExprBlockCompat, test_expr_block_scan_final_flush_pure_negative);
+KTEST_ADD_TEST_CASE(SuiteExprBlockCompat, test_expr_block_scan_offset_bounds);
+KTEST_ADD_TEST_CASE(SuiteExprBlockCompat, test_expr_block_remove_combination_by_id);
+KTEST_ADD_TEST_CASE(SuiteExprBlockCompat, test_expr_block_remove_plain_removes_dependent_combination);
