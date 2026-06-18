@@ -6,6 +6,7 @@
 #include "mmpm_database.h"
 #include "mmpm_ac.h"
 #include "mmpm_allocator.h"
+#include "mmpm_runtime.h"
 #include "mmpm_database_internal.h"
 #include "mmpm_stream_internal.h"
 #include "expr/mmpm_expr_internal.h"
@@ -104,7 +105,6 @@ __attribute__((visibility("default")))
 int MMPM_CDECL mmpm_alloc_scratch(const mmpm_database_t *db, mmpm_scratch_t **scratch)
 {
     mmpm_scratch_t *new_scratch;
-    mmpm_handler_t scratch_handler = {0};
     int ret;
 
     if (db == NULL || scratch == NULL || *scratch != NULL) {
@@ -117,8 +117,7 @@ int MMPM_CDECL mmpm_alloc_scratch(const mmpm_database_t *db, mmpm_scratch_t **sc
     }
 
     new_scratch->db = db;
-    mmpm_database_to_handler(db, &scratch_handler);
-    ret = mmpm_compile_scratch_state_init(&scratch_handler,
+    ret = mmpm_compile_scratch_state_init(db,
                                           &new_scratch->logical_vector,
                                           &new_scratch->logical_count,
                                           &new_scratch->combination_vector,
@@ -131,7 +130,7 @@ int MMPM_CDECL mmpm_alloc_scratch(const mmpm_database_t *db, mmpm_scratch_t **sc
     }
 
     ret = mmpm_scratch_workspace_init(
-        (const mmpm_compile_context_t *)scratch_handler.mmpm_compile_ctx,
+        (const mmpm_compile_context_t *)db->mmpm_compile_ctx,
         &new_scratch->workspace);
     if (ret != MMPM_SUCCESS) {
         mmpm_compile_scratch_state_destroy(new_scratch->logical_vector,
@@ -253,7 +252,6 @@ int MMPM_CDECL mmpm_scan_database(const mmpm_database_t *db,
                                   uint32_t *id_count,
                                   uint32_t id_capacity)
 {
-    mmpm_handler_t scan_handler = {0};
     uint32_t node_index = 0;
     int scan_ret;
     int ret;
@@ -280,9 +278,8 @@ int MMPM_CDECL mmpm_scan_database(const mmpm_database_t *db,
         return scan_ret;
     }
 
-    mmpm_database_to_handler(db, &scan_handler);
     ret = mmpm_compile_eval_stream_matches_with_workspace(
-        &scan_handler,
+        db,
         scratch->aliases,
         scratch->offsets,
         scratch->capture_count,
@@ -352,9 +349,14 @@ static void mmpm_scratch_commit_stream_state(ms_stream_t *stream,
 static int mmpm_validate_database_stream_scratch(const ms_stream_t *stream,
                                                  const mmpm_scratch_t *scratch)
 {
-    if (stream == NULL || scratch == NULL || stream->database == NULL ||
-        scratch->db != stream->database || stream->automaton == NULL ||
-        stream->handler_view.mmpm_compile_ctx == NULL) {
+    const mmpm_database_t *expected_db;
+
+    if (stream == NULL || scratch == NULL || stream->automaton == NULL ||
+        stream->database_view.mmpm_compile_ctx == NULL) {
+        return MMPM_INVALID_PARA;
+    }
+    expected_db = (stream->database != NULL) ? stream->database : &stream->database_view;
+    if (scratch->db != expected_db) {
         return MMPM_INVALID_PARA;
     }
     if (stream->generation != stream->automaton->generation) {
@@ -400,7 +402,7 @@ int MMPM_CDECL mmpm_scan_stream(ms_stream_t *stream,
     }
 
     ret = mmpm_compile_eval_stream_matches_with_workspace(
-        &stream->handler_view,
+        &stream->database_view,
         scratch->aliases,
         scratch->offsets,
         scratch->capture_count,
@@ -449,7 +451,7 @@ int MMPM_CDECL mmpm_flush_stream(ms_stream_t *stream,
 
     *id_count = 0;
     ret = mmpm_compile_eval_stream_matches_with_workspace(
-        &stream->handler_view,
+        &stream->database_view,
         NULL,
         NULL,
         0,
@@ -499,44 +501,5 @@ int MMPM_CDECL mmpm_close_stream(ms_stream_t *stream,
     if (ret == MMPM_FIND_FAIL) {
         return MMPM_SUCCESS;
     }
-    return ret;
-}
-
-int mmpm_scan_handler_database(mmpm_handler_t *handler,
-                               const uint8_t *data,
-                               uint32_t len,
-                               uint32_t *ids,
-                               uint32_t *id_count,
-                               uint32_t id_capacity)
-{
-    mmpm_database_t db_view = {0};
-    mmpm_scratch_t *scratch = NULL;
-    int ret;
-    int free_ret;
-
-    if (handler == NULL || data == NULL || id_count == NULL ||
-        (id_capacity != 0 && ids == NULL) ||
-        handler->type != MMPM_MATCHER_TYPE_AC ||
-        handler->mmpm_matcher == NULL || !handler->is_built) {
-        return MMPM_INVALID_PARA;
-    }
-
-    *id_count = 0;
-    if (handler->mmpm_compile_ctx == NULL) {
-        return MMPM_INVALID_PARA;
-    }
-
-    mmpm_database_from_handler(&db_view, handler);
-    ret = mmpm_alloc_scratch(&db_view, &scratch);
-    if (ret != MMPM_SUCCESS) {
-        return ret;
-    }
-
-    ret = mmpm_scan_database(&db_view, data, len, scratch, ids, id_count, id_capacity);
-    free_ret = mmpm_free_scratch(scratch);
-    if ((ret == MMPM_SUCCESS || ret == MMPM_FIND_FAIL) && free_ret != MMPM_SUCCESS) {
-        return free_ret;
-    }
-
     return ret;
 }

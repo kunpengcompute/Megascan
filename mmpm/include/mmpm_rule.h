@@ -4,14 +4,12 @@
 #ifndef MMPM_RULE_H
 #define MMPM_RULE_H
 
-#include "mmpm_common.h"
+#include "mmpm_handler.h"
 
 /**
  * Register hash calculation function.
  *
- * Compatibility note: this configures the legacy mutable handler path.
- * Database-style APIs should keep HASH configuration attached to the database
- * lifecycle instead of mutating runtime scan objects.
+ * Compatibility note: this API belongs to the legacy handler path.
  *
  * @handler: Matching engine handle.
  * @hash_func: Hash function pointer.
@@ -22,9 +20,7 @@ int mmpm_set_hash_func(mmpm_handler_t *handler, hash_calc_func hash_func);
 /**
  * Import fixed-string rules.
  *
- * Compatibility note: this mutates the legacy handler in place.
- * New external-memory code should prefer compiling a database object, then
- * scanning through database/scratch/stream APIs.
+ * Compatibility note: this API belongs to the legacy handler path.
  *
  * @handler: Matching engine handle.
  * @rule: Rules to be imported.
@@ -36,13 +32,11 @@ int mmpm_add_rule(mmpm_handler_t *handler, mmpm_rule_t *rule, uint32_t rule_num)
 /**
  * Delete target rules.
  *
- * Compatibility note: this is part of the legacy mutable-handler workflow.
- * Database objects are intended to represent compiled state, so removal here
- * should be treated as compatibility behavior during the migration.
- *
  * Fixed-string rules are removed by key/key_len and alias. Combination rules
  * have no fixed-string key; pass their alias with key set to NULL and key_len
  * set to 0.
+ *
+ * Compatibility note: this API belongs to the legacy handler path.
  *
  * @handler: Matching engine handle.
  * @rule: Rules to be deleted.
@@ -54,12 +48,11 @@ int mmpm_remove_rule(mmpm_handler_t *handler, mmpm_rule_t *rule, uint32_t rule_n
 /**
  * Match rules against one complete block.
  *
- * Compatibility note: this is the legacy handler query entry. New database
- * call sites should prefer mmpm_find_database_rule() for direct rule lookup
- * or mmpm_scan_database() for block scanning semantics.
- *
  * For AC handlers, this uses the expression runtime so plain and combination
  * reporting follows the same semantics as mmpm_scan_expr().
+ *
+ * Compatibility note: database-style callers should prefer
+ * mmpm_find_database_rule() or mmpm_scan_database().
  *
  * @handler: Matching engine handle.
  * @rule: Pending matching rule.

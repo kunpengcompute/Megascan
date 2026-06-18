@@ -2,6 +2,10 @@
 #include <stdint.h>
 #include <string.h>
 #include "mmpm.h"
+#include "mmpm_handler.h"
+#include "mmpm_compile.h"
+#include "mmpm_rule.h"
+#include "mmpm_runtime.h"
 
 /*
  * 本 demo 覆盖 AC stream 的主要使用场景：
@@ -387,3 +391,4 @@ int main(void)
     printf("\nSTREAM DEMO TESTS FAILED: %d\n", g_failures);
     return 1;
 }
+

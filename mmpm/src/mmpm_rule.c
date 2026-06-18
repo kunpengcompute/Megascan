@@ -13,6 +13,23 @@
 #include "mmpm_ac.h"
 #include "expr/mmpm_expr_internal.h"
 
+static int mmpm_database_is_valid(const mmpm_database_t *db, bool is_add)
+{
+    if (db == NULL) {
+        return MMPM_INVALID_PARA;
+    }
+
+    if (db->mmpm_matcher && db->type < MMPM_MATCHER_TYPE_MAX) {
+        return MMPM_SUCCESS;
+    }
+
+    if (is_add && db->mmpm_matcher == NULL && db->type == MMPM_MATCHER_NONE) {
+        return MMPM_SUCCESS;
+    }
+
+    return MMPM_INVALID_PARA;
+}
+
 static int mmpm_handler_is_valid(mmpm_handler_t *handler, bool is_add)
 {
     if (handler == NULL) {
@@ -83,6 +100,55 @@ int mmpm_rule_add_direct(mmpm_handler_t *handler, mmpm_rule_t *rule, uint32_t ru
     return ret;
 }
 
+int mmpm_rule_add_database_direct(mmpm_database_t *db, mmpm_rule_t *rule, uint32_t rule_num)
+{
+    uint32_t i;
+    int ret = 0;
+
+    if (mmpm_database_is_valid(db, true) || rule == NULL) {
+        return MMPM_INVALID_PARA;
+    }
+
+    if (db->mmpm_matcher == NULL && db->type == MMPM_MATCHER_NONE) {
+        printf("first import the rules need choose hash or ac.\n");
+        return MMPM_INVALID_PARA;
+    }
+
+    for (i = 0; i < rule_num; i++) {
+        switch (db->type) {
+            case MMPM_MATCHER_TYPE_HASH:
+                ret = hash_table_add(db->mmpm_matcher, rule[i].alias, rule[i].key, rule[i].key_len);
+                if (ret) {
+                    return ret;
+                }
+                break;
+            case MMPM_MATCHER_TYPE_AC:
+                if (db->is_built) {
+                    return MMPM_BUILT_ALREADY;
+                }
+                ret = ac_automaton_insert(db->mmpm_matcher, rule[i].alias, rule[i].key, rule[i].key_len);
+                if (ret) {
+                    ac_automaton_destroy(db->mmpm_matcher);
+                    return ret;
+                }
+                break;
+            default:
+                break;
+        }
+    }
+
+    if (db->type == MMPM_MATCHER_TYPE_AC) {
+        ret = ac_automaton_build(db->mmpm_matcher);
+        if (ret) {
+            (void)ac_automaton_destroy(db->mmpm_matcher);
+        } else {
+            db->is_built = true;
+        }
+    }
+
+    return ret;
+}
+
 int mmpm_rule_find_direct(mmpm_handler_t *handler, mmpm_rule_t *rule)
 {
     if (rule == NULL || rule->key == NULL || mmpm_handler_is_valid(handler, false)) {
@@ -97,6 +163,25 @@ int mmpm_rule_find_direct(mmpm_handler_t *handler, mmpm_rule_t *rule)
                 return MMPM_INVALID_PARA;
             }
             return ac_automaton_match(handler->mmpm_matcher, rule->key, rule->key_len);
+        default:
+            return MMPM_INVALID_PARA;
+    }
+}
+
+int mmpm_rule_find_database_direct(const mmpm_database_t *db, mmpm_rule_t *rule)
+{
+    if (rule == NULL || rule->key == NULL || mmpm_database_is_valid(db, false)) {
+        return MMPM_INVALID_PARA;
+    }
+
+    switch (db->type) {
+        case MMPM_MATCHER_TYPE_HASH:
+            return hash_table_find(db->mmpm_matcher, rule->key, rule->key_len, &(rule->alias));
+        case MMPM_MATCHER_TYPE_AC:
+            if (!db->is_built) {
+                return MMPM_INVALID_PARA;
+            }
+            return ac_automaton_match(db->mmpm_matcher, rule->key, rule->key_len);
         default:
             return MMPM_INVALID_PARA;
     }

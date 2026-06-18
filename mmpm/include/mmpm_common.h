@@ -48,52 +48,7 @@ typedef struct {
     uint64_t max_offset;
 } mmpm_expr_ext_t;
 
-/**
- * Legacy aggregate handle.
- *
- * This object predates the database/scratch/stream split and bundles the
- * matcher instance together with the compiled expression context. It remains
- * useful for compatibility APIs, mutable rule management, and some internal
- * bridging code, but new public scan/stream paths should prefer
- * mmpm_database_t, mmpm_scratch_t and ms_stream_t.
- */
-typedef struct {
-    void *mmpm_matcher;
-    void *mmpm_compile_ctx;
-    mmpm_matcher_type type;
-
-    /* mark whether the ac automation has been built. */
-    bool is_built;
-} mmpm_handler_t;
-
 typedef struct ms_stream ms_stream_t;
-
-/**
- * Initialize multi-pattern matching handler.
- *
- * Compatibility note: this API initializes the legacy aggregate handle.
- * New code that uses external-memory lifecycle management should prefer the
- * database APIs.
- *
- * @handler: Matching engine handle.
- * @type: Types of Matching Engines, ac or hash.
- * @bucket_num: Number of primary hash buckets.
- * @secondary_buckets_num: Number of secondary hash buckets.
- * @return: 0 for success, an error code(negative number) for failure.
- */
-int mmpm_handler_init(mmpm_handler_t *handler, mmpm_matcher_type type, uint32_t buckets, uint32_t secondary_buckets);
-
-/**
- * Destroy multi-pattern matching handler.
- *
- * Compatibility note: this API destroys the legacy aggregate handle.
- * New code that uses external-memory lifecycle management should prefer the
- * database APIs.
- *
- * @handler: Matching engine handle.
- * @return: 0 for success, an error code(negative number) for failure.
- */
-int mmpm_handler_destroy(mmpm_handler_t *handler);
 
 /**
  * Set global memory allocator for MMPM.

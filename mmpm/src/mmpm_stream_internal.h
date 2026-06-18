@@ -10,7 +10,7 @@
 struct ms_stream {
     const mmpm_database_t *database;
     mmpm_handler_t *legacy_handler;
-    mmpm_handler_t handler_view;
+    mmpm_database_t database_view;
     ACAutomaton *automaton;
     uint32_t node_index;
     uint64_t offset;

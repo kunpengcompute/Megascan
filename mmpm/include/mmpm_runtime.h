@@ -4,19 +4,19 @@
 #ifndef MMPM_RUNTIME_H
 #define MMPM_RUNTIME_H
 
-#include "mmpm_common.h"
+#include "mmpm_handler.h"
 
 /**
  * Scan data with expression-style rules.
- *
- * Compatibility note: this is the legacy handler-based block entry. New code
- * should prefer mmpm_scan_database() with an explicit scratch workspace.
  *
  * Non-quiet plain rules and matched combination rules are written to @ids.
  * Quiet plain rules participate in combination evaluation but are not written.
  * Quiet combination rules are accepted at compile time and skipped.
  * If @id_capacity is too small, @id_count is set to the required count and
  * MMPM_INVALID_PARA is returned.
+ *
+ * Compatibility note: database-style callers should prefer
+ * mmpm_scan_database().
  *
  * @handler: Matching engine handle. Only AC handlers are supported currently.
  * @data: Pending matching data.
@@ -32,9 +32,7 @@ int mmpm_scan_expr(mmpm_handler_t *handler, const uint8_t *data, uint32_t len,
 /**
  * Open a stream for AC matching.
  *
- * Compatibility note: this is the legacy handler-based stream entry. New code
- * should prefer mmpm_open_stream() together with explicit-scratch
- * stream scan/flush/close APIs.
+ * Compatibility note: this API belongs to the legacy handler path.
  *
  * @handler: Matching engine handle.
  * @stream: Stream handle to be opened.
@@ -45,12 +43,13 @@ int mmpm_open_handler_stream(mmpm_handler_t *handler, ms_stream_t **stream);
 /**
  * Scan data on an opened AC stream with expression-style reporting.
  *
- * Compatibility note: this legacy API keeps expression temporary state inside
- * the stream path. New code should prefer mmpm_scan_stream().
- *
  * Plain rule state and combination state are accumulated across chunks for the
  * lifetime of the stream until reset. This API reports only the IDs newly
  * produced by the current chunk.
+ *
+ * Compatibility note: database-style callers should prefer mmpm_scan_stream().
+ * This wrapper allocates temporary scratch and delegates to the full stream
+ * API.
  *
  * @stream: Opened stream handle.
  * @data: Pending matching data.
@@ -66,11 +65,13 @@ int mmpm_scan_expr_stream(ms_stream_t *stream, const uint8_t *data, uint32_t len
 /**
  * Flush an expression stream at end of data.
  *
- * Compatibility note: new code should prefer mmpm_flush_stream().
- *
  * This reports combinations that can match without a positive sub-expression
  * hit in the current chunk, such as !101, using the stream's accumulated
  * logical state.
+ *
+ * Compatibility note: database-style callers should prefer mmpm_flush_stream().
+ * This wrapper allocates temporary scratch and delegates to the full stream
+ * API.
  */
 int mmpm_scan_expr_stream_flush(ms_stream_t *stream,
                                 uint32_t *ids,
@@ -88,7 +89,7 @@ int mmpm_reset_stream(ms_stream_t *stream);
 /**
  * Close an opened AC stream.
  *
- * Compatibility note: new code should prefer mmpm_close_stream().
+ * Compatibility note: database-style callers should prefer mmpm_close_stream().
  *
  * @stream: Opened stream handle.
  * @return: 0 for success, an error code(negative number) for failure.

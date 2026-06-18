@@ -4,18 +4,17 @@
 #ifndef MMPM_COMPILE_H
 #define MMPM_COMPILE_H
 
-#include "mmpm_common.h"
+#include "mmpm_handler.h"
 
 /**
  * Compile multiple expression-style rules.
  *
- * This is the legacy aggregate-handle import entry. New code that wants one
- * stable recommended path should prefer mmpm_compile_database_multi() or
- * mmpm_compile_database_multi_ext().
- *
  * Combination rules marked with MMPM_FLAG_QUIET are accepted and skipped:
  * they are not compiled as reported combinations and are not added as plain
  * fixed-string rules.
+ *
+ * Compatibility note: database-style callers should prefer
+ * mmpm_compile_database_multi() or mmpm_compile_database_multi_ext().
  *
  * @handler: Matching engine handle.
  * @expressions: NULL-terminated expressions to be compiled.
@@ -30,12 +29,12 @@ int mmpm_compile_multi(mmpm_handler_t *handler, const char *const *expressions, 
 /**
  * Compile multiple expression-style rules with extended options.
  *
- * This is the legacy aggregate-handle import entry with extended options.
- * New code should prefer mmpm_compile_database_multi_ext().
- *
  * Offset bounds apply to combination rules. Megascan is fixed-string based, so
  * bounds are checked against the fixed-string match end offset that makes the
  * combination true. In stream mode, that offset is cumulative across chunks.
+ *
+ * Compatibility note: database-style callers should prefer
+ * mmpm_compile_database_multi_ext().
  */
 int mmpm_compile_multi_ext(mmpm_handler_t *handler,
                            const char *const *expressions,
@@ -47,9 +46,7 @@ int mmpm_compile_multi_ext(mmpm_handler_t *handler,
 /**
  * Import expression-style rules.
  *
- * This is a compatibility wrapper around mmpm_compile_multi() and therefore
- * also stays on the mutable handler path. New code should prefer
- * mmpm_compile_database_multi() or mmpm_compile_database_multi_ext().
+ * Compatibility note: this legacy helper stays on the mutable handler path.
  */
 int mmpm_add_exprs(mmpm_handler_t *handler, const char *const *expr, const uint32_t *ids,
                    const uint32_t *flags, uint32_t elements);
