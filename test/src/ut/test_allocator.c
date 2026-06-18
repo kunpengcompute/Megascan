@@ -285,6 +285,99 @@ static void test_allocator_database_stream_uses_stream_allocator(void)
     reset_allocators();
 }
 
+static void test_allocator_database_scan_reuses_scratch_workspace(void)
+{
+    mmpm_database_t *db = NULL;
+    mmpm_scratch_t *scratch = NULL;
+    const char *expr[] = {"abc", "def", "101&102"};
+    uint32_t ids[] = {101, 102, 1001};
+    uint32_t flags[] = {MMPM_FLAG_QUIET, MMPM_FLAG_QUIET, MMPM_FLAG_COMBINATION};
+    uint32_t out_ids[1] = {0};
+    uint32_t out_count = 0;
+
+    reset_all_counters();
+    reset_allocators();
+    EXPECT_EQ(mmpm_set_database_allocator(db_alloc, db_calloc, db_free), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_compile_database_multi(&db, MMPM_MATCHER_TYPE_AC, 0, 0,
+                                          expr, flags, ids, 3), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_set_scratch_allocator(scratch_alloc, scratch_calloc, scratch_free), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_alloc_scratch(db, &scratch), MMPM_SUCCESS);
+
+    reset_counter(&g_db_counter);
+    reset_counter(&g_scratch_counter);
+    EXPECT_EQ(mmpm_scan_database(db, (const uint8_t *)"abcdef", 6,
+                                 scratch, out_ids, &out_count, 1), MMPM_SUCCESS);
+    EXPECT_EQ(out_count, 1U);
+    EXPECT_EQ(out_ids[0], 1001U);
+    EXPECT_EQ(g_db_counter.alloc_count + g_db_counter.calloc_count, 0U);
+    EXPECT_EQ(g_db_counter.free_count, 0U);
+    EXPECT_NE(g_scratch_counter.calloc_count, 0U);
+
+    reset_counter(&g_db_counter);
+    reset_counter(&g_scratch_counter);
+    out_ids[0] = 0;
+    out_count = 0;
+    EXPECT_EQ(mmpm_scan_database(db, (const uint8_t *)"abcdef", 6,
+                                 scratch, out_ids, &out_count, 1), MMPM_SUCCESS);
+    EXPECT_EQ(out_count, 1U);
+    EXPECT_EQ(out_ids[0], 1001U);
+    EXPECT_EQ(g_db_counter.alloc_count + g_db_counter.calloc_count, 0U);
+    EXPECT_EQ(g_db_counter.free_count, 0U);
+    EXPECT_EQ(g_scratch_counter.alloc_count + g_scratch_counter.calloc_count, 0U);
+    EXPECT_EQ(g_scratch_counter.free_count, 0U);
+
+    EXPECT_EQ(mmpm_free_scratch(scratch), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_free_database(db), MMPM_SUCCESS);
+    reset_allocators();
+}
+
+static void test_allocator_database_stream_scan_reuses_scratch(void)
+{
+    mmpm_database_t *db = NULL;
+    mmpm_scratch_t *scratch = NULL;
+    ms_stream_t *stream = NULL;
+    const char *expr[] = {"abc", "def", "101&102"};
+    uint32_t ids[] = {101, 102, 1001};
+    uint32_t flags[] = {MMPM_FLAG_QUIET, MMPM_FLAG_QUIET, MMPM_FLAG_COMBINATION};
+    uint32_t out_ids[1] = {0};
+    uint32_t out_count = 0;
+
+    reset_all_counters();
+    reset_allocators();
+    EXPECT_EQ(mmpm_set_database_allocator(db_alloc, db_calloc, db_free), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_compile_database_multi(&db, MMPM_MATCHER_TYPE_AC, 0, 0,
+                                          expr, flags, ids, 3), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_set_scratch_allocator(scratch_alloc, scratch_calloc, scratch_free), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_set_stream_allocator(stream_alloc, stream_calloc, stream_free), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_alloc_scratch(db, &scratch), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_open_database_stream(db, &stream), MMPM_SUCCESS);
+
+    EXPECT_EQ(mmpm_scan_database_stream(stream, (const uint8_t *)"abcdef", 6,
+                                        scratch, out_ids, &out_count, 1), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_reset_stream(stream), MMPM_SUCCESS);
+
+    reset_counter(&g_db_counter);
+    reset_counter(&g_scratch_counter);
+    reset_counter(&g_stream_counter);
+    out_ids[0] = 0;
+    out_count = 0;
+    EXPECT_EQ(mmpm_scan_database_stream(stream, (const uint8_t *)"abcdef", 6,
+                                        scratch, out_ids, &out_count, 1), MMPM_SUCCESS);
+    EXPECT_EQ(out_count, 1U);
+    EXPECT_EQ(out_ids[0], 1001U);
+    EXPECT_EQ(g_db_counter.alloc_count + g_db_counter.calloc_count, 0U);
+    EXPECT_EQ(g_db_counter.free_count, 0U);
+    EXPECT_EQ(g_scratch_counter.alloc_count + g_scratch_counter.calloc_count, 0U);
+    EXPECT_EQ(g_scratch_counter.free_count, 0U);
+    EXPECT_EQ(g_stream_counter.alloc_count + g_stream_counter.calloc_count, 0U);
+    EXPECT_EQ(g_stream_counter.free_count, 0U);
+
+    EXPECT_EQ(mmpm_close_stream(stream), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_free_scratch(scratch), MMPM_SUCCESS);
+    EXPECT_EQ(mmpm_free_database(db), MMPM_SUCCESS);
+    reset_allocators();
+}
+
 KTEST_ADD_TEST_CASE(SuiteAllocator, test_allocator_set_all_covers_database_and_stream_paths);
 KTEST_ADD_TEST_CASE(SuiteAllocator, test_allocator_hash_uses_database_allocator);
 KTEST_ADD_TEST_CASE(SuiteAllocator, test_allocator_stream_uses_stream_allocator);
@@ -292,3 +385,5 @@ KTEST_ADD_TEST_CASE(SuiteAllocator, test_allocator_database_lifecycle_uses_datab
 KTEST_ADD_TEST_CASE(SuiteAllocator, test_allocator_scratch_uses_scratch_allocator);
 KTEST_ADD_TEST_CASE(SuiteAllocator, test_allocator_legacy_scan_expr_uses_scratch_allocator);
 KTEST_ADD_TEST_CASE(SuiteAllocator, test_allocator_database_stream_uses_stream_allocator);
+KTEST_ADD_TEST_CASE(SuiteAllocator, test_allocator_database_scan_reuses_scratch_workspace);
+KTEST_ADD_TEST_CASE(SuiteAllocator, test_allocator_database_stream_scan_reuses_scratch);

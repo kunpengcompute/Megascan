@@ -140,6 +140,41 @@ int MMPM_CDECL mmpm_scan_database(const mmpm_database_t *db,
 int MMPM_CDECL mmpm_open_database_stream(const mmpm_database_t *db, ms_stream_t **stream);
 
 /**
+ * @brief 使用显式 scratch 扫描 database stream
+ *
+ * stream 只保存跨 chunk 状态；本次调用的捕获、向量副本和组合计算临时
+ * 内存来自 scratch。scratch 必须由打开该 stream 的同一个 database 分配。
+ */
+int MMPM_CDECL mmpm_scan_database_stream(ms_stream_t *stream,
+                                         const uint8_t *data,
+                                         uint32_t len,
+                                         mmpm_scratch_t *scratch,
+                                         uint32_t *ids,
+                                         uint32_t *id_count,
+                                         uint32_t id_capacity);
+
+/**
+ * @brief 在流末尾执行组合规则计算但不释放 stream
+ */
+int MMPM_CDECL mmpm_flush_database_stream(ms_stream_t *stream,
+                                          mmpm_scratch_t *scratch,
+                                          uint32_t *ids,
+                                          uint32_t *id_count,
+                                          uint32_t id_capacity);
+
+/**
+ * @brief 在流末尾执行组合规则计算并释放 stream
+ *
+ * 参数校验成功后，无论末尾计算是否成功，stream 都会被释放。
+ * 没有末尾报告时 id_count 为 0，关闭仍返回 MMPM_SUCCESS。
+ */
+int MMPM_CDECL mmpm_close_database_stream(ms_stream_t *stream,
+                                          mmpm_scratch_t *scratch,
+                                          uint32_t *ids,
+                                          uint32_t *id_count,
+                                          uint32_t id_capacity);
+
+/**
  * @brief 获取 database 内部兼容 handler
  *
  * 该接口仅用于迁移期兼容旧 API。最终方向是让旧 handler API 成为

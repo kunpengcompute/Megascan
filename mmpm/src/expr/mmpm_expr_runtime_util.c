@@ -106,10 +106,17 @@ int mmpm_compile_result_add(mmpm_compile_result_t *result, uint32_t id)
 static int mmpm_compile_index_list_add(mmpm_compile_index_list_t *list, uint32_t index)
 {
     uint32_t *indexes;
+    uint32_t i;
     uint32_t new_capacity;
 
     if (list == NULL) {
         return MMPM_INVALID_PARA;
+    }
+
+    for (i = 0; i < list->count; i++) {
+        if (list->indexes[i] == index) {
+            return MMPM_SUCCESS;
+        }
     }
 
     if (list->count >= list->capacity) {
@@ -396,6 +403,72 @@ end:
     return ret;
 }
 
+int mmpm_compile_context_collect_ckeys(const mmpm_compile_context_t *ctx,
+                                       const uint32_t *aliases,
+                                       uint32_t alias_count,
+                                       uint8_t *active_vector,
+                                       uint32_t active_count,
+                                       uint32_t *ckeys,
+                                       uint32_t ckey_capacity,
+                                       uint32_t *ckey_count)
+{
+    uint32_t active_bytes;
+    uint32_t i;
+    uint32_t j;
+    int ret;
+
+    if (ctx == NULL || ckey_count == NULL || active_count != ctx->comb_count ||
+        (alias_count != 0 && aliases == NULL) ||
+        (ctx->comb_count != 0 && active_vector == NULL) ||
+        (ckey_capacity != 0 && ckeys == NULL)) {
+        return MMPM_INVALID_PARA;
+    }
+
+    *ckey_count = 0;
+    active_bytes = mmpm_compile_logical_byte_count(active_count);
+    if (active_bytes != 0) {
+        (void)memset(active_vector, 0, active_bytes);
+    }
+
+    for (i = 0; i < alias_count; i++) {
+        uint32_t lkey;
+
+        ret = mmpm_compile_context_find_lkey(ctx, aliases[i], &lkey);
+        if (ret == MMPM_FIND_FAIL) {
+            continue;
+        }
+        if (ret != MMPM_SUCCESS || lkey >= ctx->logical_count) {
+            return ret == MMPM_SUCCESS ? MMPM_INVALID_PARA : ret;
+        }
+
+        for (j = 0; j < ctx->lkey_to_ckey_counts[lkey]; j++) {
+            ret = mmpm_compile_bitset_set(active_vector, active_count,
+                                          ctx->lkey_to_ckeys[lkey][j], 1);
+            if (ret != MMPM_SUCCESS) {
+                return ret;
+            }
+        }
+    }
+
+    for (i = 0; i < active_count; i++) {
+        uint8_t is_active = 0;
+
+        ret = mmpm_compile_bitset_get(active_vector, active_count, i, &is_active);
+        if (ret != MMPM_SUCCESS) {
+            return ret;
+        }
+        if (!is_active) {
+            continue;
+        }
+        if (*ckey_count >= ckey_capacity) {
+            return MMPM_INVALID_PARA;
+        }
+        ckeys[(*ckey_count)++] = i;
+    }
+
+    return MMPM_SUCCESS;
+}
+
 int mmpm_compile_eval_active_combinations(const mmpm_compile_context_t *ctx,
                                           const uint32_t *active_ckeys,
                                           uint32_t active_ckey_count,
@@ -409,16 +482,19 @@ int mmpm_compile_eval_active_combinations(const mmpm_compile_context_t *ctx,
                                           uint8_t *final_logical_vector,
                                           mmpm_compile_result_t *result,
                                           mmpm_compile_index_list_t *new_combinations,
+                                          mmpm_compile_index_list_t *new_exhaustions,
                                           bool use_combination_vector)
 {
     uint32_t i;
     int ret;
-    mmpm_compile_index_list_t new_exhaustions = {0};
 
     if (ctx == NULL || logical_vector == NULL || result == NULL ||
+        new_exhaustions == NULL ||
         (active_ckey_count != 0 && active_ckeys == NULL)) {
         return MMPM_INVALID_PARA;
     }
+
+    new_exhaustions->count = 0;
 
     if (use_combination_vector &&
         (combination_count != ctx->comb_count ||
@@ -443,23 +519,22 @@ int mmpm_compile_eval_active_combinations(const mmpm_compile_context_t *ctx,
                                                 final_logical_vector,
                                                 result,
                                                 new_combinations,
-                                                &new_exhaustions,
+                                                new_exhaustions,
                                                 use_combination_vector);
         if (ret != MMPM_SUCCESS) {
             goto end;
         }
     }
 
-    for (i = 0; i < new_exhaustions.count; i++) {
+    for (i = 0; i < new_exhaustions->count; i++) {
         ret = mmpm_compile_bitset_set(exhaustion_vector, exhaustion_count,
-                                      new_exhaustions.indexes[i], 1);
+                                      new_exhaustions->indexes[i], 1);
         if (ret != MMPM_SUCCESS) {
             goto end;
         }
     }
 
 end:
-    mmpm_compile_index_list_destroy(&new_exhaustions);
     return ret;
 }
 
@@ -473,15 +548,18 @@ int mmpm_compile_eval_final_combinations(const mmpm_compile_context_t *ctx,
                                          uint64_t end_offset,
                                          mmpm_compile_result_t *result,
                                          mmpm_compile_index_list_t *new_combinations,
+                                         mmpm_compile_index_list_t *new_exhaustions,
                                          bool use_combination_vector)
 {
     uint32_t i;
     int ret = MMPM_SUCCESS;
-    mmpm_compile_index_list_t new_exhaustions = {0};
 
-    if (ctx == NULL || logical_vector == NULL || result == NULL) {
+    if (ctx == NULL || logical_vector == NULL || result == NULL ||
+        new_exhaustions == NULL) {
         return MMPM_INVALID_PARA;
     }
+
+    new_exhaustions->count = 0;
     if (use_combination_vector &&
         (combination_count != ctx->comb_count ||
          (ctx->comb_count != 0 && combination_vector == NULL) ||
@@ -508,22 +586,21 @@ int mmpm_compile_eval_final_combinations(const mmpm_compile_context_t *ctx,
                                                 NULL,
                                                 result,
                                                 new_combinations,
-                                                &new_exhaustions,
+                                                new_exhaustions,
                                                 use_combination_vector);
         if (ret != MMPM_SUCCESS) {
             goto end;
         }
     }
 
-    for (i = 0; i < new_exhaustions.count; i++) {
+    for (i = 0; i < new_exhaustions->count; i++) {
         ret = mmpm_compile_bitset_set(exhaustion_vector, exhaustion_count,
-                                      new_exhaustions.indexes[i], 1);
+                                      new_exhaustions->indexes[i], 1);
         if (ret != MMPM_SUCCESS) {
             goto end;
         }
     }
 
 end:
-    mmpm_compile_index_list_destroy(&new_exhaustions);
     return ret;
 }

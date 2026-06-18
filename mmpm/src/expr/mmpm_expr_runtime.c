@@ -293,6 +293,7 @@ int mmpm_compile_eval_combinations(mmpm_handler_t *handler,
     uint32_t *active_ckeys = NULL;
     uint32_t active_ckey_count = 0;
     mmpm_compile_result_t result = {0};
+    mmpm_compile_index_list_t new_exhaustions = {0};
     int ret = MMPM_SUCCESS;
 
     if (handler == NULL || comb_count == NULL ||
@@ -345,7 +346,8 @@ int mmpm_compile_eval_combinations(mmpm_handler_t *handler,
                                                 ctx->ekey_count,
                                                 UINT64_MAX,
                                                 NULL,
-                                                &result, NULL, false);
+                                                &result, NULL,
+                                                &new_exhaustions, false);
     if (ret != MMPM_SUCCESS) {
         goto end;
     }
@@ -357,7 +359,8 @@ int mmpm_compile_eval_combinations(mmpm_handler_t *handler,
                                                exhaustion_vector,
                                                ctx->ekey_count,
                                                UINT64_MAX,
-                                               &result, NULL, false);
+                                               &result, NULL,
+                                               &new_exhaustions, false);
     if (ret != MMPM_SUCCESS) {
         goto end;
     }
@@ -374,6 +377,7 @@ end:
         mmpm_free(active_ckeys);
     }
     mmpm_compile_result_destroy(&result);
+    mmpm_compile_index_list_destroy(&new_exhaustions);
     if (logical_vector != NULL) {
         mmpm_free(logical_vector);
     }
@@ -383,27 +387,62 @@ end:
     return ret;
 }
 
-int mmpm_compile_eval_stream_matches(mmpm_handler_t *handler,
-                                     const uint32_t *aliases,
-                                     const uint64_t *offsets,
-                                     uint32_t alias_count,
-                                     uint8_t *logical_vector,
-                                     uint32_t logical_count,
-                                     uint8_t *combination_vector,
-                                     uint32_t combination_count,
-                                     uint8_t *exhaustion_vector,
-                                     uint32_t exhaustion_count,
-                                     uint64_t scan_start_offset,
-                                     uint64_t final_flush_offset,
-                                     bool final_flush,
-                                     bool require_final_state,
-                                     uint32_t *ids,
-                                     uint32_t *id_count,
-                                     uint32_t id_capacity)
+static int mmpm_compile_validate_runtime_workspace(
+    const mmpm_compile_context_t *ctx,
+    bool require_final_state,
+    const mmpm_compile_runtime_workspace_t *workspace)
+{
+    uint32_t result_capacity;
+
+    if (ctx == NULL || workspace == NULL) {
+        return MMPM_INVALID_PARA;
+    }
+
+    result_capacity = ctx->expr_count + ctx->comb_count;
+    if ((require_final_state && ctx->logical_count != 0 &&
+         workspace->final_logical_vector == NULL) ||
+        (ctx->comb_count != 0 &&
+         (workspace->active_ckey_vector == NULL ||
+          workspace->active_ckeys == NULL ||
+          workspace->active_ckey_capacity < ctx->comb_count ||
+          workspace->new_combination_indexes == NULL ||
+          workspace->new_combination_capacity < ctx->comb_count)) ||
+        (result_capacity != 0 &&
+         (workspace->result_ids == NULL ||
+          workspace->result_capacity < result_capacity)) ||
+        (ctx->ekey_count != 0 &&
+         (workspace->new_exhaustion_indexes == NULL ||
+          workspace->new_exhaustion_capacity < ctx->ekey_count))) {
+        return MMPM_INVALID_PARA;
+    }
+
+    return MMPM_SUCCESS;
+}
+
+static int mmpm_compile_eval_stream_matches_impl(
+    mmpm_handler_t *handler,
+    const uint32_t *aliases,
+    const uint64_t *offsets,
+    uint32_t alias_count,
+    uint8_t *logical_vector,
+    uint32_t logical_count,
+    uint8_t *combination_vector,
+    uint32_t combination_count,
+    uint8_t *exhaustion_vector,
+    uint32_t exhaustion_count,
+    uint64_t scan_start_offset,
+    uint64_t final_flush_offset,
+    bool final_flush,
+    bool require_final_state,
+    uint32_t *ids,
+    uint32_t *id_count,
+    uint32_t id_capacity,
+    mmpm_compile_runtime_workspace_t *workspace)
 {
     mmpm_compile_context_t *ctx;
     mmpm_compile_result_t result = {0};
     mmpm_compile_index_list_t new_combinations = {0};
+    mmpm_compile_index_list_t new_exhaustions = {0};
     uint8_t *final_logical_vector = NULL;
     uint32_t *active_ckeys = NULL;
     uint32_t active_ckey_count = 0;
@@ -428,12 +467,31 @@ int mmpm_compile_eval_stream_matches(mmpm_handler_t *handler,
         return MMPM_INVALID_PARA;
     }
 
+    if (workspace != NULL) {
+        ret = mmpm_compile_validate_runtime_workspace(ctx, require_final_state, workspace);
+        if (ret != MMPM_SUCCESS) {
+            return ret;
+        }
+        result.ids = workspace->result_ids;
+        result.capacity = workspace->result_capacity;
+        new_combinations.indexes = workspace->new_combination_indexes;
+        new_combinations.capacity = workspace->new_combination_capacity;
+        new_exhaustions.indexes = workspace->new_exhaustion_indexes;
+        new_exhaustions.capacity = workspace->new_exhaustion_capacity;
+    }
+
     if (require_final_state && ctx->logical_count != 0) {
-        final_logical_vector = (uint8_t *)mmpm_calloc(mmpm_compile_logical_byte_count(ctx->logical_count),
-                                                      sizeof(uint8_t));
-        if (final_logical_vector == NULL) {
-            ret = MMPM_MALLOC_FAIL;
-            goto end;
+        if (workspace != NULL) {
+            final_logical_vector = workspace->final_logical_vector;
+            (void)memset(final_logical_vector, 0,
+                         mmpm_compile_logical_byte_count(ctx->logical_count));
+        } else {
+            final_logical_vector = (uint8_t *)mmpm_calloc(
+                mmpm_compile_logical_byte_count(ctx->logical_count), sizeof(uint8_t));
+            if (final_logical_vector == NULL) {
+                ret = MMPM_MALLOC_FAIL;
+                goto end;
+            }
         }
         ret = mmpm_compile_mark_aliases(ctx, aliases, alias_count,
                                         final_logical_vector, ctx->logical_count);
@@ -461,9 +519,18 @@ int mmpm_compile_eval_stream_matches(mmpm_handler_t *handler,
             goto end;
         }
 
-        ret = mmpm_compile_context_get_ckeys_for_aliases(ctx, &aliases[i], 1,
-                                                         &active_ckeys,
-                                                         &active_ckey_count);
+        if (workspace != NULL) {
+            active_ckeys = workspace->active_ckeys;
+            ret = mmpm_compile_context_collect_ckeys(
+                ctx, &aliases[i], 1,
+                workspace->active_ckey_vector, ctx->comb_count,
+                active_ckeys, workspace->active_ckey_capacity,
+                &active_ckey_count);
+        } else {
+            ret = mmpm_compile_context_get_ckeys_for_aliases(ctx, &aliases[i], 1,
+                                                             &active_ckeys,
+                                                             &active_ckey_count);
+        }
         if (ret != MMPM_SUCCESS) {
             goto end;
         }
@@ -480,11 +547,12 @@ int mmpm_compile_eval_stream_matches(mmpm_handler_t *handler,
                                                     final_logical_vector,
                                                     &result,
                                                     &new_combinations,
+                                                    &new_exhaustions,
                                                     true);
         if (ret != MMPM_SUCCESS) {
             goto end;
         }
-        if (active_ckeys != NULL) {
+        if (workspace == NULL && active_ckeys != NULL) {
             mmpm_free(active_ckeys);
             active_ckeys = NULL;
         }
@@ -502,6 +570,7 @@ int mmpm_compile_eval_stream_matches(mmpm_handler_t *handler,
                                                    final_flush_offset,
                                                    &result,
                                                    &new_combinations,
+                                                   &new_exhaustions,
                                                    true);
         if (ret != MMPM_SUCCESS) {
             goto end;
@@ -526,13 +595,74 @@ int mmpm_compile_eval_stream_matches(mmpm_handler_t *handler,
     }
 
 end:
-    if (active_ckeys != NULL) {
+    if (workspace == NULL && active_ckeys != NULL) {
         mmpm_free(active_ckeys);
     }
-    if (final_logical_vector != NULL) {
+    if (workspace == NULL && final_logical_vector != NULL) {
         mmpm_free(final_logical_vector);
     }
-    mmpm_compile_index_list_destroy(&new_combinations);
-    mmpm_compile_result_destroy(&result);
+    if (workspace == NULL) {
+        mmpm_compile_index_list_destroy(&new_combinations);
+        mmpm_compile_index_list_destroy(&new_exhaustions);
+        mmpm_compile_result_destroy(&result);
+    }
     return ret;
+}
+
+int mmpm_compile_eval_stream_matches(mmpm_handler_t *handler,
+                                     const uint32_t *aliases,
+                                     const uint64_t *offsets,
+                                     uint32_t alias_count,
+                                     uint8_t *logical_vector,
+                                     uint32_t logical_count,
+                                     uint8_t *combination_vector,
+                                     uint32_t combination_count,
+                                     uint8_t *exhaustion_vector,
+                                     uint32_t exhaustion_count,
+                                     uint64_t scan_start_offset,
+                                     uint64_t final_flush_offset,
+                                     bool final_flush,
+                                     bool require_final_state,
+                                     uint32_t *ids,
+                                     uint32_t *id_count,
+                                     uint32_t id_capacity)
+{
+    return mmpm_compile_eval_stream_matches_impl(
+        handler, aliases, offsets, alias_count,
+        logical_vector, logical_count,
+        combination_vector, combination_count,
+        exhaustion_vector, exhaustion_count,
+        scan_start_offset, final_flush_offset,
+        final_flush, require_final_state,
+        ids, id_count, id_capacity, NULL);
+}
+
+int mmpm_compile_eval_stream_matches_with_workspace(
+    mmpm_handler_t *handler,
+    const uint32_t *aliases,
+    const uint64_t *offsets,
+    uint32_t alias_count,
+    uint8_t *logical_vector,
+    uint32_t logical_count,
+    uint8_t *combination_vector,
+    uint32_t combination_count,
+    uint8_t *exhaustion_vector,
+    uint32_t exhaustion_count,
+    uint64_t scan_start_offset,
+    uint64_t final_flush_offset,
+    bool final_flush,
+    bool require_final_state,
+    uint32_t *ids,
+    uint32_t *id_count,
+    uint32_t id_capacity,
+    mmpm_compile_runtime_workspace_t *workspace)
+{
+    return mmpm_compile_eval_stream_matches_impl(
+        handler, aliases, offsets, alias_count,
+        logical_vector, logical_count,
+        combination_vector, combination_count,
+        exhaustion_vector, exhaustion_count,
+        scan_start_offset, final_flush_offset,
+        final_flush, require_final_state,
+        ids, id_count, id_capacity, workspace);
 }
