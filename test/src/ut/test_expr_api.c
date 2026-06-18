@@ -7,6 +7,10 @@
 
 #include "ktest.h"
 #include "../../../mmpm/include/mmpm.h"
+#include "../../../mmpm/include/mmpm_handler.h"
+#include "../../../mmpm/include/mmpm_compile.h"
+#include "../../../mmpm/include/mmpm_rule.h"
+#include "../../../mmpm/include/mmpm_runtime.h"
 #include "../../../mmpm/include/mmpm_expr.h"
 
 static mmpm_rule_t make_expr_query(const char *s)
@@ -567,3 +571,4 @@ KTEST_ADD_TEST_CASE(SuiteExprApi, test_expr_api_rejects_plain_singlematch);
 KTEST_ADD_TEST_CASE(SuiteExprApi, test_expr_api_scan_offset_bounds);
 KTEST_ADD_TEST_CASE(SuiteExprApi, test_expr_api_remove_combination_by_id);
 KTEST_ADD_TEST_CASE(SuiteExprApi, test_expr_api_remove_plain_removes_dependent_combination);
+

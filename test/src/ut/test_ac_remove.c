@@ -6,6 +6,9 @@
 #include <stdint.h>
 #include "ktest.h"
 #include "../../../mmpm/include/mmpm.h"
+#include "../../../mmpm/include/mmpm_handler.h"
+#include "../../../mmpm/include/mmpm_compile.h"
+#include "../../../mmpm/include/mmpm_rule.h"
 
 static mmpm_rule_t make_rule(uint32_t alias, const char *s)
 {

@@ -6,6 +6,10 @@
 #include <stdint.h>
 #include "ktest.h"
 #include "../../../mmpm/include/mmpm.h"
+#include "../../../mmpm/include/mmpm_handler.h"
+#include "../../../mmpm/include/mmpm_compile.h"
+#include "../../../mmpm/include/mmpm_rule.h"
+#include "../../../mmpm/include/mmpm_runtime.h"
 
 static mmpm_rule_t make_rule(uint32_t alias, const char *s)
 {
@@ -390,3 +394,4 @@ KTEST_ADD_TEST_CASE(SuiteAcStream, test_ac_stream_empty_chunk_keeps_state);
 KTEST_ADD_TEST_CASE(SuiteAcStream, test_ac_stream_stale_after_remove);
 KTEST_ADD_TEST_CASE(SuiteAcStream, test_ac_stream_remove_fail_keeps_stream_valid);
 KTEST_ADD_TEST_CASE(SuiteAcStream, test_ac_stream_invalid_usage);
+

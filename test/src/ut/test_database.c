@@ -7,6 +7,10 @@
 
 #include "ktest.h"
 #include "../../../mmpm/include/mmpm.h"
+#include "../../../mmpm/include/mmpm_handler.h"
+#include "../../../mmpm/include/mmpm_compile.h"
+#include "../../../mmpm/include/mmpm_rule.h"
+#include "../../../mmpm/include/mmpm_runtime.h"
 
 static mmpm_rule_t make_database_query(uint32_t alias, const char *s)
 {
@@ -297,3 +301,4 @@ KTEST_ADD_TEST_CASE(SuiteDatabase, test_database_stream_rejects_wrong_scratch);
 KTEST_ADD_TEST_CASE(SuiteDatabase, test_database_open_stream_rejects_hash);
 KTEST_ADD_TEST_CASE(SuiteDatabase, test_database_compile_hash_plain_and_find);
 KTEST_ADD_TEST_CASE(SuiteDatabase, test_database_rejects_hash_combination);
+

@@ -7,6 +7,10 @@
 
 #include "ktest.h"
 #include "../../../mmpm/include/mmpm.h"
+#include "../../../mmpm/include/mmpm_handler.h"
+#include "../../../mmpm/include/mmpm_compile.h"
+#include "../../../mmpm/include/mmpm_rule.h"
+#include "../../../mmpm/include/mmpm_runtime.h"
 #include "../../../mmpm/include/mmpm_expr.h"
 
 static mmpm_rule_t make_expr_stream_query(const char *s)
@@ -385,3 +389,4 @@ KTEST_ADD_TEST_CASE(SuiteExprStream, test_expr_stream_offset_bounds_use_cumulati
 KTEST_ADD_TEST_CASE(SuiteExprStream, test_expr_stream_combination_singlematch_flag);
 KTEST_ADD_TEST_CASE(SuiteExprStream, test_expr_stream_rule_scan_uses_expression_runtime);
 KTEST_ADD_TEST_CASE(SuiteExprStream, test_expr_stream_remove_combination_marks_stream_stale);
+

@@ -8,6 +8,10 @@
 
 #include "ktest.h"
 #include "../../../mmpm/include/mmpm.h"
+#include "../../../mmpm/include/mmpm_handler.h"
+#include "../../../mmpm/include/mmpm_compile.h"
+#include "../../../mmpm/include/mmpm_rule.h"
+#include "../../../mmpm/include/mmpm_runtime.h"
 
 typedef struct {
     uint32_t alloc_count;
@@ -396,3 +400,4 @@ KTEST_ADD_TEST_CASE(SuiteAllocator, test_allocator_legacy_scan_expr_uses_scratch
 KTEST_ADD_TEST_CASE(SuiteAllocator, test_allocator_database_stream_uses_stream_allocator);
 KTEST_ADD_TEST_CASE(SuiteAllocator, test_allocator_database_scan_reuses_scratch_workspace);
 KTEST_ADD_TEST_CASE(SuiteAllocator, test_allocator_database_stream_scan_reuses_scratch);
+
