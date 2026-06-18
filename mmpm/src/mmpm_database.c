@@ -7,6 +7,7 @@
 #include "mmpm_compile.h"
 #include "mmpm_hash.h"
 #include "mmpm_rule.h"
+#include "mmpm_rule_internal.h"
 #include "mmpm_database_internal.h"
 #include "expr/mmpm_expr_internal.h"
 
@@ -30,16 +31,12 @@ static bool mmpm_database_has_combination_rules(const uint32_t *flags, uint32_t 
     return false;
 }
 
-void mmpm_database_to_handler(const mmpm_database_t *db, mmpm_handler_t *handler)
-{
-    handler->mmpm_matcher = db->mmpm_matcher;
-    handler->mmpm_compile_ctx = db->mmpm_compile_ctx;
-    handler->type = db->type;
-    handler->is_built = db->is_built;
-}
-
 void mmpm_database_from_handler(mmpm_database_t *db, const mmpm_handler_t *handler)
 {
+    if (db == NULL || handler == NULL) {
+        return;
+    }
+
     db->mmpm_matcher = handler->mmpm_matcher;
     db->mmpm_compile_ctx = handler->mmpm_compile_ctx;
     db->type = handler->type;
@@ -97,8 +94,7 @@ static int mmpm_database_destroy_state(mmpm_database_t *db)
     }
 
     if (db->mmpm_compile_ctx != NULL) {
-        mmpm_compile_context_free((mmpm_compile_context_t *)db->mmpm_compile_ctx);
-        db->mmpm_compile_ctx = NULL;
+        mmpm_compile_context_destroy_database(db);
     }
 
     if (db->mmpm_matcher == NULL) {
@@ -176,7 +172,6 @@ int MMPM_CDECL mmpm_compile_database_multi_ext(mmpm_database_t **db,
                                                uint32_t elements)
 {
     mmpm_database_t *new_db = NULL;
-    mmpm_handler_t compile_handler = {0};
     int ret;
 
     if (db == NULL || *db != NULL) {
@@ -196,9 +191,7 @@ int MMPM_CDECL mmpm_compile_database_multi_ext(mmpm_database_t **db,
         return ret;
     }
 
-    mmpm_database_to_handler(new_db, &compile_handler);
-    ret = mmpm_compile_multi_ext(&compile_handler, expressions, flags, ids, ext, elements);
-    mmpm_database_from_handler(new_db, &compile_handler);
+    ret = mmpm_compile_database_multi_native(new_db, expressions, flags, ids, ext, elements);
     if (ret != MMPM_SUCCESS) {
         (void)mmpm_free_database(new_db);
         return ret;
@@ -211,14 +204,11 @@ int MMPM_CDECL mmpm_compile_database_multi_ext(mmpm_database_t **db,
 __attribute__((visibility("default")))
 int MMPM_CDECL mmpm_find_database_rule(const mmpm_database_t *db, mmpm_rule_t *rule)
 {
-    mmpm_handler_t handler = {0};
-
     if (db == NULL || rule == NULL) {
         return MMPM_INVALID_PARA;
     }
 
-    mmpm_database_to_handler(db, &handler);
-    return mmpm_find_rule(&handler, rule);
+    return mmpm_rule_find_database_direct(db, rule);
 }
 
 __attribute__((visibility("default")))

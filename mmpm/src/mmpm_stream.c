@@ -7,24 +7,25 @@
 #include "mmpm.h"
 #include "mmpm_ac.h"
 #include "mmpm_allocator.h"
+#include "mmpm_runtime.h"
 #include "mmpm_rule_internal.h"
 #include "mmpm_stream_internal.h"
 #include "expr/mmpm_expr_internal.h"
 
 static int mmpm_open_stream_view(const mmpm_database_t *database,
                                  mmpm_handler_t *legacy_handler,
-                                 const mmpm_handler_t *handler,
+                                 const mmpm_database_t *db_view,
                                  ms_stream_t **stream)
 {
     int ret;
     ACAutomaton *automaton;
     ms_stream_t *s = NULL;
 
-    if (handler == NULL || stream == NULL || *stream != NULL) {
+    if (db_view == NULL || stream == NULL || *stream != NULL) {
         return MMPM_INVALID_PARA;
     }
-    if (handler->type != MMPM_MATCHER_TYPE_AC ||
-        handler->mmpm_matcher == NULL || !handler->is_built) {
+    if (db_view->type != MMPM_MATCHER_TYPE_AC ||
+        db_view->mmpm_matcher == NULL || !db_view->is_built) {
         return MMPM_INVALID_PARA;
     }
 
@@ -33,13 +34,13 @@ static int mmpm_open_stream_view(const mmpm_database_t *database,
         return MMPM_MALLOC_FAIL;
     }
 
-    automaton = (ACAutomaton *)handler->mmpm_matcher;
+    automaton = (ACAutomaton *)db_view->mmpm_matcher;
     s->database = database;
     s->legacy_handler = legacy_handler;
-    s->handler_view = *handler;
+    s->database_view = *db_view;
     s->automaton = automaton;
     s->generation = automaton->generation;
-    ret = mmpm_compile_stream_state_init(&s->handler_view,
+    ret = mmpm_compile_stream_state_init(&s->database_view,
                                          &s->logical_vector,
                                          &s->logical_count,
                                          &s->combination_vector,
@@ -55,25 +56,81 @@ static int mmpm_open_stream_view(const mmpm_database_t *database,
     return MMPM_SUCCESS;
 }
 
+static const mmpm_database_t *mmpm_stream_expected_database(const ms_stream_t *stream)
+{
+    if (stream == NULL) {
+        return NULL;
+    }
+
+    return (stream->database != NULL) ? stream->database : &stream->database_view;
+}
+
+static int mmpm_stream_call_with_temporary_scratch(ms_stream_t *stream,
+                                                   const uint8_t *data,
+                                                   uint32_t len,
+                                                   uint32_t *ids,
+                                                   uint32_t *id_count,
+                                                   uint32_t id_capacity,
+                                                   bool flush_only)
+{
+    const mmpm_database_t *db;
+    mmpm_scratch_t *scratch = NULL;
+    int ret;
+    int free_ret;
+
+    if (stream == NULL || id_count == NULL || (id_capacity != 0 && ids == NULL)) {
+        return MMPM_INVALID_PARA;
+    }
+    if (!flush_only && data == NULL) {
+        return MMPM_INVALID_PARA;
+    }
+
+    db = mmpm_stream_expected_database(stream);
+    if (db == NULL) {
+        return MMPM_INVALID_PARA;
+    }
+
+    ret = mmpm_alloc_scratch(db, &scratch);
+    if (ret != MMPM_SUCCESS) {
+        return ret;
+    }
+
+    if (flush_only) {
+        ret = mmpm_flush_stream(stream, scratch, ids, id_count, id_capacity);
+    } else {
+        ret = mmpm_scan_stream(stream, data, len, scratch, ids, id_count, id_capacity);
+    }
+    free_ret = mmpm_free_scratch(scratch);
+    if ((ret == MMPM_SUCCESS || ret == MMPM_FIND_FAIL) && free_ret != MMPM_SUCCESS) {
+        return free_ret;
+    }
+
+    return ret;
+}
+
 __attribute__((visibility("default")))
 int mmpm_open_handler_stream(mmpm_handler_t *handler, ms_stream_t **stream)
 {
-    return mmpm_open_stream_view(NULL, handler, handler, stream);
+    mmpm_database_t db_view = {0};
+
+    if (handler == NULL) {
+        return MMPM_INVALID_PARA;
+    }
+
+    mmpm_database_from_handler(&db_view, handler);
+    return mmpm_open_stream_view(NULL, handler, &db_view, stream);
 }
 
 __attribute__((visibility("default")))
 int MMPM_CDECL mmpm_open_stream(const mmpm_database_t *db, ms_stream_t **stream)
 {
-    mmpm_handler_t handler = {0};
-
     if (db == NULL || db->type != MMPM_MATCHER_TYPE_AC ||
         db->mmpm_matcher == NULL || !db->is_built ||
         db->mmpm_compile_ctx == NULL) {
         return MMPM_INVALID_PARA;
     }
 
-    mmpm_database_to_handler(db, &handler);
-    return mmpm_open_stream_view(db, NULL, &handler, stream);
+    return mmpm_open_stream_view(db, NULL, db, stream);
 }
 
 int mmpm_stream_scan_direct(ms_stream_t *stream, const uint8_t *data, uint32_t len)
@@ -116,11 +173,11 @@ int mmpm_scan_rule_stream(ms_stream_t *stream, const uint8_t *data, uint32_t len
         return MMPM_STREAM_STALE;
     }
 
-    if (stream->handler_view.mmpm_compile_ctx == NULL) {
+    if (stream->database_view.mmpm_compile_ctx == NULL) {
         return MMPM_INVALID_PARA;
     }
 
-    ctx = (mmpm_compile_context_t *)stream->handler_view.mmpm_compile_ctx;
+    ctx = (mmpm_compile_context_t *)stream->database_view.mmpm_compile_ctx;
     id_capacity = ctx->expr_count + ctx->comb_count;
     if (id_capacity != 0) {
         ids = (uint32_t *)mmpm_calloc(id_capacity, sizeof(uint32_t));
@@ -149,25 +206,17 @@ int mmpm_scan_expr_stream(ms_stream_t *stream, const uint8_t *data, uint32_t len
         return MMPM_STREAM_STALE;
     }
 
-    if (stream->handler_view.mmpm_compile_ctx == NULL) {
+    if (stream->database_view.mmpm_compile_ctx == NULL) {
         return MMPM_INVALID_PARA;
     }
 
-    return mmpm_expr_scan_stream(&stream->handler_view,
-                                 stream->automaton,
-                                 &stream->node_index,
-                                 stream->logical_vector,
-                                 stream->logical_count,
-                                 stream->combination_vector,
-                                 stream->combination_count,
-                                 stream->exhaustion_vector,
-                                 stream->exhaustion_count,
-                                 &stream->offset,
-                                 data,
-                                 len,
-                                 ids,
-                                 id_count,
-                                 id_capacity);
+    return mmpm_stream_call_with_temporary_scratch(stream,
+                                                   data,
+                                                   len,
+                                                   ids,
+                                                   id_count,
+                                                   id_capacity,
+                                                   false);
 }
 
 __attribute__((visibility("default")))
@@ -185,17 +234,13 @@ int mmpm_scan_expr_stream_flush(ms_stream_t *stream,
         return MMPM_STREAM_STALE;
     }
 
-    return mmpm_expr_flush_stream(&stream->handler_view,
-                                  stream->logical_vector,
-                                  stream->logical_count,
-                                  stream->combination_vector,
-                                  stream->combination_count,
-                                  stream->exhaustion_vector,
-                                  stream->exhaustion_count,
-                                  stream->offset,
-                                  ids,
-                                  id_count,
-                                  id_capacity);
+    return mmpm_stream_call_with_temporary_scratch(stream,
+                                                   NULL,
+                                                   0,
+                                                   ids,
+                                                   id_count,
+                                                   id_capacity,
+                                                   true);
 }
 
 __attribute__((visibility("default")))
@@ -224,9 +269,9 @@ int mmpm_reset_stream(ms_stream_t *stream)
         stream->combination_count = 0;
         stream->exhaustion_vector = NULL;
         stream->exhaustion_count = 0;
-        stream->handler_view = *stream->legacy_handler;
-        stream->automaton = (ACAutomaton *)stream->handler_view.mmpm_matcher;
-        ret = mmpm_compile_stream_state_init(&stream->handler_view,
+        mmpm_database_from_handler(&stream->database_view, stream->legacy_handler);
+        stream->automaton = (ACAutomaton *)stream->database_view.mmpm_matcher;
+        ret = mmpm_compile_stream_state_init(&stream->database_view,
                                              &stream->logical_vector,
                                              &stream->logical_count,
                                              &stream->combination_vector,
