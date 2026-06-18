@@ -8,7 +8,7 @@
 #include "mmpm_ac.h"
 #include "mmpm_expr_internal.h"
 
-int mmpm_expr_scan_stream(mmpm_handler_t *handler,
+int mmpm_expr_scan_stream(const mmpm_database_t *db,
                           ACAutomaton *automaton,
                           uint32_t *node_index,
                           uint8_t *logical_vector,
@@ -35,7 +35,7 @@ int mmpm_expr_scan_stream(mmpm_handler_t *handler,
     int scan_ret;
     int ret;
 
-    if (handler == NULL || automaton == NULL || node_index == NULL || offset == NULL ||
+    if (db == NULL || automaton == NULL || node_index == NULL || offset == NULL ||
         data == NULL || id_count == NULL || (id_capacity != 0 && ids == NULL)) {
         return MMPM_INVALID_PARA;
     }
@@ -81,7 +81,7 @@ int mmpm_expr_scan_stream(mmpm_handler_t *handler,
         goto end;
     }
 
-    ret = mmpm_compile_eval_stream_matches(handler,
+    ret = mmpm_compile_eval_stream_matches(db,
                                            capture.aliases,
                                            capture.offsets,
                                            capture.count,
@@ -131,7 +131,7 @@ end:
     return ret;
 }
 
-int mmpm_expr_flush_stream(mmpm_handler_t *handler,
+int mmpm_expr_flush_stream(const mmpm_database_t *db,
                            uint8_t *logical_vector,
                            uint32_t logical_count,
                            uint8_t *combination_vector,
@@ -151,7 +151,7 @@ int mmpm_expr_flush_stream(mmpm_handler_t *handler,
     uint32_t exhaustion_bytes;
     int ret;
 
-    if (handler == NULL || id_count == NULL || (id_capacity != 0 && ids == NULL)) {
+    if (db == NULL || id_count == NULL || (id_capacity != 0 && ids == NULL)) {
         return MMPM_INVALID_PARA;
     }
 
@@ -184,7 +184,7 @@ int mmpm_expr_flush_stream(mmpm_handler_t *handler,
         (void)memcpy(exhaustion_vector_copy, exhaustion_vector, exhaustion_bytes);
     }
 
-    ret = mmpm_compile_eval_stream_matches(handler,
+    ret = mmpm_compile_eval_stream_matches(db,
                                            NULL,
                                            NULL,
                                            0,

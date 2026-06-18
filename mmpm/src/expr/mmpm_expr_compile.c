@@ -7,9 +7,11 @@
 
 #include "mmpm.h"
 #include "mmpm_allocator.h"
+#include "mmpm_compile.h"
 #include "mmpm_expr.h"
 #include "mmpm_expr_internal.h"
 #include "mmpm_logical.h"
+#include "../mmpm_database_internal.h"
 #include "../mmpm_rule_internal.h"
 
 static int mmpm_compile_validate(const char *const *expressions, const uint32_t *flags,
@@ -330,11 +332,11 @@ static int mmpm_compile_parse_combinations(mmpm_compile_context_t *ctx,
     return MMPM_SUCCESS;
 }
 
-static int mmpm_compile_add_plain_rules(mmpm_handler_t *handler,
-                                        const char *const *expressions,
-                                        const uint32_t *flags,
-                                        const uint32_t *ids,
-                                        uint32_t elements)
+static int mmpm_compile_add_plain_rules_handler(mmpm_handler_t *handler,
+                                                const char *const *expressions,
+                                                const uint32_t *flags,
+                                                const uint32_t *ids,
+                                                uint32_t elements)
 {
     uint32_t i;
     uint32_t plain_count = 0;
@@ -364,6 +366,44 @@ static int mmpm_compile_add_plain_rules(mmpm_handler_t *handler,
     }
 
     ret = plain_count ? mmpm_rule_add_direct(handler, rules, plain_count) : MMPM_SUCCESS;
+    mmpm_free(rules);
+    return ret;
+}
+
+static int mmpm_compile_add_plain_rules_database(mmpm_database_t *db,
+                                                 const char *const *expressions,
+                                                 const uint32_t *flags,
+                                                 const uint32_t *ids,
+                                        uint32_t elements)
+{
+    uint32_t i;
+    uint32_t plain_count = 0;
+    mmpm_rule_t *rules = NULL;
+    int ret;
+
+    rules = (mmpm_rule_t *)mmpm_calloc(elements, sizeof(mmpm_rule_t));
+    if (rules == NULL) {
+        return MMPM_MALLOC_FAIL;
+    }
+
+    for (i = 0; i < elements; i++) {
+        size_t len = strlen(expressions[i]);
+        if (len == 0 || len > UINT32_MAX) {
+            mmpm_free(rules);
+            return MMPM_INVALID_PARA;
+        }
+
+        if (mmpm_compile_is_combination(flags, i)) {
+            continue;
+        }
+
+        rules[plain_count].alias = ids ? ids[i] : 0;
+        rules[plain_count].key_len = (uint32_t)len;
+        rules[plain_count].key = (uint8_t *)expressions[i];
+        plain_count++;
+    }
+
+    ret = plain_count ? mmpm_rule_add_database_direct(db, rules, plain_count) : MMPM_SUCCESS;
     mmpm_free(rules);
     return ret;
 }
@@ -414,7 +454,7 @@ int mmpm_compile_multi_ext(mmpm_handler_t *handler,
         return ret;
     }
 
-    ret = mmpm_compile_add_plain_rules(handler, expressions, flags, ids, elements);
+    ret = mmpm_compile_add_plain_rules_handler(handler, expressions, flags, ids, elements);
     if (ret != MMPM_SUCCESS) {
         mmpm_compile_context_free(new_ctx);
         return ret;
@@ -437,4 +477,60 @@ int mmpm_add_exprs(mmpm_handler_t *handler, const char *const *expr, const uint3
                    const uint32_t *flags, uint32_t elements)
 {
     return mmpm_compile_multi(handler, expr, flags, ids, elements);
+}
+
+int mmpm_compile_database_multi_native(mmpm_database_t *db,
+                                       const char *const *expressions,
+                                       const uint32_t *flags,
+                                       const uint32_t *ids,
+                                       const mmpm_expr_ext_t *ext,
+                                       uint32_t elements)
+{
+    int ret;
+    mmpm_compile_context_t *new_ctx = NULL;
+    mmpm_compile_context_t *old_ctx = NULL;
+
+    if (db == NULL) {
+        return MMPM_INVALID_PARA;
+    }
+
+    ret = mmpm_compile_validate(expressions, flags, ids, ext, elements);
+    if (ret != MMPM_SUCCESS) {
+        return ret;
+    }
+
+    new_ctx = (mmpm_compile_context_t *)mmpm_calloc(1, sizeof(mmpm_compile_context_t));
+    if (new_ctx == NULL) {
+        return MMPM_MALLOC_FAIL;
+    }
+
+    old_ctx = (mmpm_compile_context_t *)db->mmpm_compile_ctx;
+    ret = mmpm_compile_collect_exprs(new_ctx, old_ctx, flags, ids, elements);
+    if (ret != MMPM_SUCCESS) {
+        mmpm_compile_context_free(new_ctx);
+        return ret;
+    }
+
+    ret = mmpm_compile_parse_combinations(new_ctx, old_ctx, expressions, flags, ids, ext, elements);
+    if (ret != MMPM_SUCCESS) {
+        mmpm_compile_context_free(new_ctx);
+        return ret;
+    }
+
+    ret = mmpm_compile_add_plain_rules_database(db, expressions, flags, ids, elements);
+    if (ret != MMPM_SUCCESS) {
+        mmpm_compile_context_free(new_ctx);
+        return ret;
+    }
+
+    ret = mmpm_compile_append_database_context(db, new_ctx);
+    if (ret != MMPM_SUCCESS) {
+        mmpm_compile_context_free(new_ctx);
+        return ret;
+    }
+
+    if (db->mmpm_compile_ctx != new_ctx) {
+        mmpm_compile_context_free(new_ctx);
+    }
+    return MMPM_SUCCESS;
 }

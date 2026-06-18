@@ -5,6 +5,7 @@
 #include <string.h>
 
 #include "mmpm_allocator.h"
+#include "../mmpm_database_internal.h"
 #include "mmpm_expr_internal.h"
 #include "mmpm_logical.h"
 
@@ -629,19 +630,23 @@ int mmpm_compile_context_remove_id(mmpm_compile_context_t *ctx, uint32_t id)
     return mmpm_compile_context_remove_comb_id(ctx, id);
 }
 
-int mmpm_compile_append_context(mmpm_handler_t *handler,
-                                mmpm_compile_context_t *new_ctx)
+static int mmpm_compile_append_context_impl(mmpm_compile_context_t **ctx_slot,
+                                            mmpm_compile_context_t *new_ctx)
 {
-    mmpm_compile_context_t *ctx = (mmpm_compile_context_t *)handler->mmpm_compile_ctx;
+    mmpm_compile_context_t *ctx = ctx_slot ? *ctx_slot : NULL;
     uint32_t i;
     int ret;
+
+    if (ctx_slot == NULL || new_ctx == NULL) {
+        return MMPM_INVALID_PARA;
+    }
 
     if (new_ctx->expr_count == 0 && new_ctx->comb_count == 0) {
         return MMPM_SUCCESS;
     }
 
     if (ctx == NULL) {
-        handler->mmpm_compile_ctx = new_ctx;
+        *ctx_slot = new_ctx;
         return MMPM_SUCCESS;
     }
 
@@ -670,6 +675,28 @@ int mmpm_compile_append_context(mmpm_handler_t *handler,
     }
 
     return MMPM_SUCCESS;
+}
+
+int mmpm_compile_append_context(mmpm_handler_t *handler,
+                                mmpm_compile_context_t *new_ctx)
+{
+    if (handler == NULL) {
+        return MMPM_INVALID_PARA;
+    }
+
+    return mmpm_compile_append_context_impl(
+        (mmpm_compile_context_t **)&handler->mmpm_compile_ctx, new_ctx);
+}
+
+int mmpm_compile_append_database_context(mmpm_database_t *db,
+                                         mmpm_compile_context_t *new_ctx)
+{
+    if (db == NULL) {
+        return MMPM_INVALID_PARA;
+    }
+
+    return mmpm_compile_append_context_impl(
+        (mmpm_compile_context_t **)&db->mmpm_compile_ctx, new_ctx);
 }
 
 void mmpm_compile_context_free(mmpm_compile_context_t *ctx)
@@ -717,4 +744,14 @@ void mmpm_compile_context_destroy(mmpm_handler_t *handler)
 
     mmpm_compile_context_free((mmpm_compile_context_t *)handler->mmpm_compile_ctx);
     handler->mmpm_compile_ctx = NULL;
+}
+
+void mmpm_compile_context_destroy_database(mmpm_database_t *db)
+{
+    if (db == NULL || db->mmpm_compile_ctx == NULL) {
+        return;
+    }
+
+    mmpm_compile_context_free((mmpm_compile_context_t *)db->mmpm_compile_ctx);
+    db->mmpm_compile_ctx = NULL;
 }

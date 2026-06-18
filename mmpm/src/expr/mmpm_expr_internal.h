@@ -8,6 +8,7 @@
 #include <stdint.h>
 
 #include "mmpm.h"
+#include "mmpm_handler.h"
 #include "mmpm_ac.h"
 #include "mmpm_logical.h"
 
@@ -98,6 +99,14 @@ int mmpm_compile_context_remove_comb_id(mmpm_compile_context_t *ctx, uint32_t id
 int mmpm_compile_context_remove_id(mmpm_compile_context_t *ctx, uint32_t id);
 int mmpm_compile_append_context(mmpm_handler_t *handler,
                                 mmpm_compile_context_t *new_ctx);
+int mmpm_compile_append_database_context(mmpm_database_t *db,
+                                         mmpm_compile_context_t *new_ctx);
+int mmpm_compile_database_multi_native(mmpm_database_t *db,
+                                       const char *const *expressions,
+                                       const uint32_t *flags,
+                                       const uint32_t *ids,
+                                       const mmpm_expr_ext_t *ext,
+                                       uint32_t elements);
 int mmpm_compile_mark_aliases(const mmpm_compile_context_t *ctx,
                               const uint32_t *aliases,
                               uint32_t alias_count,
@@ -155,11 +164,12 @@ int mmpm_compile_eval_final_combinations(const mmpm_compile_context_t *ctx,
                                          mmpm_compile_index_list_t *new_exhaustions,
                                          bool use_combination_vector);
 void mmpm_compile_context_free(mmpm_compile_context_t *ctx);
+void mmpm_compile_context_destroy_database(mmpm_database_t *db);
 int mmpm_compile_alias_capture_reserve(mmpm_compile_alias_capture_t *capture);
 int mmpm_compile_capture_alias(uint32_t alias, uint64_t end_offset, void *ctx);
 int mmpm_compile_capture_alias_unique(uint32_t alias, uint64_t end_offset, void *ctx);
 
-int mmpm_compile_stream_state_init(mmpm_handler_t *handler,
+int mmpm_compile_stream_state_init(const mmpm_database_t *db,
                                    uint8_t **logical_vector,
                                    uint32_t *logical_count,
                                    uint8_t **combination_vector,
@@ -169,7 +179,7 @@ int mmpm_compile_stream_state_init(mmpm_handler_t *handler,
 void mmpm_compile_stream_state_destroy(uint8_t *logical_vector,
                                        uint8_t *combination_vector,
                                        uint8_t *exhaustion_vector);
-int mmpm_compile_scratch_state_init(mmpm_handler_t *handler,
+int mmpm_compile_scratch_state_init(const mmpm_database_t *db,
                                     uint8_t **logical_vector,
                                     uint32_t *logical_count,
                                     uint8_t **combination_vector,
@@ -179,13 +189,19 @@ int mmpm_compile_scratch_state_init(mmpm_handler_t *handler,
 void mmpm_compile_scratch_state_destroy(uint8_t *logical_vector,
                                         uint8_t *combination_vector,
                                         uint8_t *exhaustion_vector);
+int mmpm_compile_eval_database_combinations(const mmpm_database_t *db,
+                                            const uint32_t *aliases,
+                                            uint32_t alias_count,
+                                            uint32_t *comb_ids,
+                                            uint32_t *comb_count,
+                                            uint32_t comb_capacity);
 int mmpm_compile_eval_combinations(mmpm_handler_t *handler,
                                    const uint32_t *aliases,
                                    uint32_t alias_count,
                                    uint32_t *comb_ids,
                                    uint32_t *comb_count,
                                    uint32_t comb_capacity);
-int mmpm_compile_eval_stream_matches(mmpm_handler_t *handler,
+int mmpm_compile_eval_stream_matches(const mmpm_database_t *db,
                                      const uint32_t *aliases,
                                      const uint64_t *offsets,
                                      uint32_t alias_count,
@@ -203,7 +219,7 @@ int mmpm_compile_eval_stream_matches(mmpm_handler_t *handler,
                                      uint32_t *id_count,
                                      uint32_t id_capacity);
 int mmpm_compile_eval_stream_matches_with_workspace(
-    mmpm_handler_t *handler,
+    const mmpm_database_t *db,
     const uint32_t *aliases,
     const uint64_t *offsets,
     uint32_t alias_count,
@@ -221,7 +237,7 @@ int mmpm_compile_eval_stream_matches_with_workspace(
     uint32_t *id_count,
     uint32_t id_capacity,
     mmpm_compile_runtime_workspace_t *workspace);
-int mmpm_expr_scan_stream(mmpm_handler_t *handler,
+int mmpm_expr_scan_stream(const mmpm_database_t *db,
                           ACAutomaton *automaton,
                           uint32_t *node_index,
                           uint8_t *logical_vector,
@@ -236,7 +252,7 @@ int mmpm_expr_scan_stream(mmpm_handler_t *handler,
                           uint32_t *ids,
                           uint32_t *id_count,
                           uint32_t id_capacity);
-int mmpm_expr_flush_stream(mmpm_handler_t *handler,
+int mmpm_expr_flush_stream(const mmpm_database_t *db,
                            uint8_t *logical_vector,
                            uint32_t logical_count,
                            uint8_t *combination_vector,
