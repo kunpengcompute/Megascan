@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * Description: AC stream unit tests
+ * Description: legacy AC rule stream compatibility unit tests
  */
 #include <string.h>
 #include <stdint.h>
@@ -382,16 +382,16 @@ static void test_ac_stream_invalid_usage(void)
     EXPECT_EQ(mmpm_handler_destroy(&handler), MMPM_SUCCESS);
 }
 
-KTEST_ADD_TEST_CASE(SuiteAcStream, test_ac_stream_cross_chunk_match);
-KTEST_ADD_TEST_CASE(SuiteAcStream, test_ac_stream_hscollider_style_splits);
-KTEST_ADD_TEST_CASE(SuiteAcStream, test_ac_stream_multi_chunk_match);
-KTEST_ADD_TEST_CASE(SuiteAcStream, test_ac_stream_independent_streams);
-KTEST_ADD_TEST_CASE(SuiteAcStream, test_ac_stream_interleaved_streams);
-KTEST_ADD_TEST_CASE(SuiteAcStream, test_ac_stream_prefix_and_long_rule);
-KTEST_ADD_TEST_CASE(SuiteAcStream, test_ac_stream_match_then_continue);
-KTEST_ADD_TEST_CASE(SuiteAcStream, test_ac_stream_reset);
-KTEST_ADD_TEST_CASE(SuiteAcStream, test_ac_stream_empty_chunk_keeps_state);
-KTEST_ADD_TEST_CASE(SuiteAcStream, test_ac_stream_stale_after_remove);
-KTEST_ADD_TEST_CASE(SuiteAcStream, test_ac_stream_remove_fail_keeps_stream_valid);
-KTEST_ADD_TEST_CASE(SuiteAcStream, test_ac_stream_invalid_usage);
+KTEST_ADD_TEST_CASE(SuiteRuleStreamCompat, test_ac_stream_cross_chunk_match);
+KTEST_ADD_TEST_CASE(SuiteRuleStreamCompat, test_ac_stream_hscollider_style_splits);
+KTEST_ADD_TEST_CASE(SuiteRuleStreamCompat, test_ac_stream_multi_chunk_match);
+KTEST_ADD_TEST_CASE(SuiteRuleStreamCompat, test_ac_stream_independent_streams);
+KTEST_ADD_TEST_CASE(SuiteRuleStreamCompat, test_ac_stream_interleaved_streams);
+KTEST_ADD_TEST_CASE(SuiteRuleStreamCompat, test_ac_stream_prefix_and_long_rule);
+KTEST_ADD_TEST_CASE(SuiteRuleStreamCompat, test_ac_stream_match_then_continue);
+KTEST_ADD_TEST_CASE(SuiteRuleStreamCompat, test_ac_stream_reset);
+KTEST_ADD_TEST_CASE(SuiteRuleStreamCompat, test_ac_stream_empty_chunk_keeps_state);
+KTEST_ADD_TEST_CASE(SuiteRuleStreamCompat, test_ac_stream_stale_after_remove);
+KTEST_ADD_TEST_CASE(SuiteRuleStreamCompat, test_ac_stream_remove_fail_keeps_stream_valid);
+KTEST_ADD_TEST_CASE(SuiteRuleStreamCompat, test_ac_stream_invalid_usage);
 

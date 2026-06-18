@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * Description: AC remove unit tests
+ * Description: legacy AC rule remove compatibility unit tests
  */
 #include <string.h>
 #include <stdint.h>
@@ -289,11 +289,11 @@ static void test_ac_remove_nonexistent_rule()
     EXPECT_EQ(mmpm_handler_destroy(&handler), MMPM_SUCCESS);
 }
 
-KTEST_ADD_TEST_CASE(SuiteAcRemove, test_ac_remove_basic_exact);
-KTEST_ADD_TEST_CASE(SuiteAcRemove, test_ac_remove_shared_prefix_prune);
-KTEST_ADD_TEST_CASE(SuiteAcRemove, test_ac_remove_overlap_and_fail_rebuild);
-KTEST_ADD_TEST_CASE(SuiteAcRemove, test_ac_remove_same_pattern_multi_alias);
-KTEST_ADD_TEST_CASE(SuiteAcRemove, test_ac_remove_to_empty_and_boundaries);
-KTEST_ADD_TEST_CASE(SuiteAcRemove, test_ac_remove_complex_rule_set_regression);
-KTEST_ADD_TEST_CASE(SuiteAcRemove, test_ac_remove_deleted_rule_as_multi_fail_target);
-KTEST_ADD_TEST_CASE(SuiteAcRemove, test_ac_remove_nonexistent_rule);
+KTEST_ADD_TEST_CASE(SuiteRuleRemoveCompat, test_ac_remove_basic_exact);
+KTEST_ADD_TEST_CASE(SuiteRuleRemoveCompat, test_ac_remove_shared_prefix_prune);
+KTEST_ADD_TEST_CASE(SuiteRuleRemoveCompat, test_ac_remove_overlap_and_fail_rebuild);
+KTEST_ADD_TEST_CASE(SuiteRuleRemoveCompat, test_ac_remove_same_pattern_multi_alias);
+KTEST_ADD_TEST_CASE(SuiteRuleRemoveCompat, test_ac_remove_to_empty_and_boundaries);
+KTEST_ADD_TEST_CASE(SuiteRuleRemoveCompat, test_ac_remove_complex_rule_set_regression);
+KTEST_ADD_TEST_CASE(SuiteRuleRemoveCompat, test_ac_remove_deleted_rule_as_multi_fail_target);
+KTEST_ADD_TEST_CASE(SuiteRuleRemoveCompat, test_ac_remove_nonexistent_rule);
