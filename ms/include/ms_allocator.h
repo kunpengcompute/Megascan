@@ -1,8 +1,8 @@
 /*
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  */
-#ifndef MMPM_ALLOCATOR_H
-#define MMPM_ALLOCATOR_H
+#ifndef MS_ALLOCATOR_H
+#define MS_ALLOCATOR_H
 
 #include <stdlib.h>
 #include <stdint.h>
@@ -14,9 +14,9 @@
  * 在 Linux/Unix 上默认就是 cdecl，无需额外声明。
  */
 #if defined(_WIN32)
-#define MMPM_CDECL __cdecl
+#define MS_CDECL __cdecl
 #else
-#define MMPM_CDECL
+#define MS_CDECL
 #endif
 
 /**
@@ -25,7 +25,7 @@
  * @param size 要分配的内存大小（字节）
  * @return 成功返回分配的内存指针，失败返回 NULL
  */
-typedef void *(MMPM_CDECL *mmpm_alloc_t)(size_t size);
+typedef void *(MS_CDECL *ms_alloc_t)(size_t size);
 
 /**
  * @brief 内存分配并初始化函数指针类型
@@ -36,14 +36,14 @@ typedef void *(MMPM_CDECL *mmpm_alloc_t)(size_t size);
  * @param size 每个元素的大小（字节）
  * @return 成功返回分配并清零的内存指针，失败返回 NULL
  */
-typedef void *(MMPM_CDECL *mmpm_calloc_t)(size_t nmemb, size_t size);
+typedef void *(MS_CDECL *ms_calloc_t)(size_t nmemb, size_t size);
 
 /**
  * @brief 内存释放函数指针类型
  * 
  * @param ptr 要释放的内存指针（可以是 NULL）
  */
-typedef void (MMPM_CDECL *mmpm_free_t)(void *ptr);
+typedef void (MS_CDECL *ms_free_t)(void *ptr);
 
 /**
  * @brief 检查内存地址是否对齐的宏
@@ -60,64 +60,64 @@ typedef void (MMPM_CDECL *mmpm_free_t)(void *ptr);
  * @brief 数据库分配器 - 用于持久化数据的内存分配
  * 
  * 这些全局变量存储用户自定义的内存分配函数，默认为标准库的 malloc/calloc/free。
- * 用户可以通过 mmpm_set_allocator() 函数自定义这些函数。
+ * 用户可以通过 ms_set_allocator() 函数自定义这些函数。
  */
-extern mmpm_alloc_t g_mmpm_db_alloc;
-extern mmpm_calloc_t g_mmpm_db_calloc;
-extern mmpm_free_t g_mmpm_db_free;
+extern ms_alloc_t g_ms_db_alloc;
+extern ms_calloc_t g_ms_db_calloc;
+extern ms_free_t g_ms_db_free;
 
 /**
  * @brief 检查内存分配是否成功
  * 
  * @param mem 要检查的内存指针
- * @return MMPM_SUCCESS 表示成功，MMPM_MALLOC_FAIL 表示内存分配失败，
- *         MMPM_INVALID_PARA 表示对齐检查失败
+ * @return MS_SUCCESS 表示成功，MS_MALLOC_FAIL 表示内存分配失败，
+ *         MS_INVALID_PARA 表示对齐检查失败
  */
-int mmpm_check_alloc(const void *mem);
+int ms_check_alloc(const void *mem);
 
 /**
  * @brief 获取当前的数据库分配函数
  * @return 当前的 malloc 函数指针
  */
-mmpm_alloc_t mmpm_get_db_alloc(void);
+ms_alloc_t ms_get_db_alloc(void);
 
 /**
  * @brief 获取当前的数据库分配并初始化函数
  * @return 当前的 calloc 函数指针
  */
-mmpm_calloc_t mmpm_get_db_calloc(void);
+ms_calloc_t ms_get_db_calloc(void);
 
 /**
  * @brief 获取当前的数据库释放函数
  * @return 当前的 free 函数指针
  */
-mmpm_free_t mmpm_get_db_free(void);
+ms_free_t ms_get_db_free(void);
 
 /**
  * @brief 设置全局内存分配器
  * 
- * 用户可以通过此函数提供自定义的内存分配函数，实现对 MMPM 库内存分配的完全控制。
+ * 用户可以通过此函数提供自定义的内存分配函数，实现对 MS 库内存分配的完全控制。
  * 如果传入 NULL，会自动回退到标准库函数。
  * 
  * @param alloc_func 自定义 malloc 函数
  * @param calloc_func 自定义 calloc 函数
  * @param free_func 自定义 free 函数
- * @return MMPM_SUCCESS 表示成功
+ * @return MS_SUCCESS 表示成功
  */
-int MMPM_CDECL mmpm_set_allocator(mmpm_alloc_t alloc_func, mmpm_calloc_t calloc_func, mmpm_free_t free_func);
+int MS_CDECL ms_set_allocator(ms_alloc_t alloc_func, ms_calloc_t calloc_func, ms_free_t free_func);
 
 /**
- * @brief MMPM 封装的 malloc 函数
+ * @brief MS 封装的 malloc 函数
  * 
  * 使用当前设置的数据库分配器进行内存分配。
  * 
  * @param size 要分配的内存大小（字节）
  * @return 成功返回分配的内存指针，失败返回 NULL
  */
-void *mmpm_malloc(size_t size);
+void *ms_malloc(size_t size);
 
 /**
- * @brief MMPM 封装的 calloc 函数
+ * @brief MS 封装的 calloc 函数
  * 
  * 使用当前设置的数据库分配器进行内存分配并初始化为零。
  * 
@@ -125,15 +125,15 @@ void *mmpm_malloc(size_t size);
  * @param size 每个元素的大小（字节）
  * @return 成功返回分配并清零的内存指针，失败返回 NULL
  */
-void *mmpm_calloc(size_t nmemb, size_t size);
+void *ms_calloc(size_t nmemb, size_t size);
 
 /**
- * @brief MMPM 封装的 free 函数
+ * @brief MS 封装的 free 函数
  * 
  * 使用当前设置的数据库分配器释放内存。
  * 
  * @param ptr 要释放的内存指针（可以是 NULL）
  */
-void mmpm_free(void *ptr);
+void ms_free(void *ptr);
 
 #endif

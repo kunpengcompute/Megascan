@@ -16,7 +16,7 @@ add_executable(${target} ${testcode_source})
 target_include_directories(${target}
     PUBLIC
     ${PROJECT_INCLUDE_DIR}
-    ${CMAKE_SOURCE_DIR}/mmpm/include  # 添加 mmpm 头文件路径
+    ${CMAKE_SOURCE_DIR}/ms/include  # 添加 ms 头文件路径
 )
 
 #设置测试码需要连接的库
@@ -25,5 +25,5 @@ target_link_libraries(${target} PUBLIC
     test_main
     "-Wl,--no-whole-archive"
     cunit
-    mmpm
+    ms
 )

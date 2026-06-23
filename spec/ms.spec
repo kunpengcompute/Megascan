@@ -1,10 +1,10 @@
-%define _build_name_fmt %%{ARCH}/boostida-kdadk-mmpm-release-%%{VERSION}.%%{RELEASE}.%%{ARCH}.rpm
-Name:           boostkit-kdadk-mmpm
+%define _build_name_fmt %%{ARCH}/boostida-kdadk-ms-release-%%{VERSION}.%%{RELEASE}.%%{ARCH}.rpm
+Name:           boostkit-kdadk-ms
 Version:        1.1.0
 Release:        oe2203%{?dist}
 ExclusiveArch:  aarch64
 Summary:        The Million-rule Multi-Pattern Matcher.
-Source0:        mmpm.tar.gz
+Source0:        ms.tar.gz
 BuildArch:      aarch64
 License:        commercial
 BuildRequires:  rpm

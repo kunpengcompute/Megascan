@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <string.h>
-#include "mmpm.h"
+#include "ms.h"
 
 /*
  * 本 demo 覆盖 AC stream 的主要使用场景：
@@ -25,7 +25,7 @@
     gcc examples/stream_demo.c \
     -I./output/include \
     -L./output/lib \
-    -lmmpm \
+    -lms \
     -Wl,-rpath,$PWD/output/lib \
     -o examples/stream_demo
  *4. 运行代码：./examples/stream_demo
@@ -34,10 +34,10 @@
 
 static int g_failures = 0;
 
-/* 构造一条 mmpm 规则或查询对象，避免重复填写 alias/key_len/key。 */
-static mmpm_rule_t make_rule(uint32_t alias, const char *s)
+/* 构造一条 ms 规则或查询对象，避免重复填写 alias/key_len/key。 */
+static ms_rule_t make_rule(uint32_t alias, const char *s)
 {
-    mmpm_rule_t rule;
+    ms_rule_t rule;
 
     rule.alias = alias;
     rule.key_len = (uint32_t)strlen(s);
@@ -62,21 +62,21 @@ static void expect_ret(const char *name, int got, int expected)
  * 按指定块数切分同一段语料并使用 stream 扫描，
  * 用于模拟 hyperscan hscollider -t 风格的多切分测试。
  */
-static int scan_stream_by_blocks(mmpm_handler_t *handler, const char *data, uint32_t stream_blocks)
+static int scan_stream_by_blocks(ms_handler_t *handler, const char *data, uint32_t stream_blocks)
 {
     ms_stream_t *stream = NULL;
     uint32_t len = (uint32_t)strlen(data);
     uint32_t block_size;
     uint32_t pos = 0;
-    int final_ret = MMPM_FIND_FAIL;
+    int final_ret = MS_FIND_FAIL;
     int ret;
 
     if (stream_blocks == 0) {
-        return MMPM_INVALID_PARA;
+        return MS_INVALID_PARA;
     }
 
-    ret = mmpm_open_stream(handler, &stream);
-    if (ret != MMPM_SUCCESS) {
+    ret = ms_open_stream(handler, &stream);
+    if (ret != MS_SUCCESS) {
         return ret;
     }
 
@@ -91,10 +91,10 @@ static int scan_stream_by_blocks(mmpm_handler_t *handler, const char *data, uint
             cur = len - pos;
         }
 
-        ret = mmpm_scan_stream(stream, (const uint8_t *)(data + pos), cur);
-        if (ret == MMPM_SUCCESS) {
-            final_ret = MMPM_SUCCESS;
-        } else if (ret != MMPM_FIND_FAIL) {
+        ret = ms_scan_stream(stream, (const uint8_t *)(data + pos), cur);
+        if (ret == MS_SUCCESS) {
+            final_ret = MS_SUCCESS;
+        } else if (ret != MS_FIND_FAIL) {
             final_ret = ret;
             break;
         }
@@ -102,8 +102,8 @@ static int scan_stream_by_blocks(mmpm_handler_t *handler, const char *data, uint
         pos += cur;
     }
 
-    ret = mmpm_close_stream(stream);
-    if (ret != MMPM_SUCCESS) {
+    ret = ms_close_stream(stream);
+    if (ret != MS_SUCCESS) {
         return ret;
     }
 
@@ -113,117 +113,117 @@ static int scan_stream_by_blocks(mmpm_handler_t *handler, const char *data, uint
 /* 验证 block 模式无法跨 buffer 匹配，而 stream 模式可以跨 chunk 匹配。 */
 static void test_cross_chunk_match(void)
 {
-    mmpm_handler_t handler = {0};
+    ms_handler_t handler = {0};
     ms_stream_t *stream = NULL;
     int ret;
 
-    mmpm_rule_t rules[] = {
+    ms_rule_t rules[] = {
         make_rule(1001, "12345"),
         make_rule(1002, "xyz"),
     };
-    mmpm_rule_t block_query1 = make_rule(0, "xx123");
-    mmpm_rule_t block_query2 = make_rule(0, "45yy");
+    ms_rule_t block_query1 = make_rule(0, "xx123");
+    ms_rule_t block_query2 = make_rule(0, "45yy");
 
     printf("\n== cross chunk match ==\n");
 
-    expect_ret("init", mmpm_handler_init(&handler, MMPM_MATCHER_TYPE_AC, 0, 0), MMPM_SUCCESS);
-    expect_ret("add rules", mmpm_add_rule(&handler, rules, 2), MMPM_SUCCESS);
+    expect_ret("init", ms_handler_init(&handler, MS_MATCHER_TYPE_AC, 0, 0), MS_SUCCESS);
+    expect_ret("add rules", ms_add_rule(&handler, rules, 2), MS_SUCCESS);
 
-    expect_ret("block xx123", mmpm_find_rule(&handler, &block_query1), MMPM_FIND_FAIL);
-    expect_ret("block 45yy", mmpm_find_rule(&handler, &block_query2), MMPM_FIND_FAIL);
+    expect_ret("block xx123", ms_find_rule(&handler, &block_query1), MS_FIND_FAIL);
+    expect_ret("block 45yy", ms_find_rule(&handler, &block_query2), MS_FIND_FAIL);
 
-    expect_ret("open stream", mmpm_open_stream(&handler, &stream), MMPM_SUCCESS);
-    expect_ret("scan xx123", mmpm_scan_stream(stream, (const uint8_t *)"xx123", 5), MMPM_FIND_FAIL);
-    expect_ret("scan 45yy", mmpm_scan_stream(stream, (const uint8_t *)"45yy", 4), MMPM_SUCCESS);
+    expect_ret("open stream", ms_open_stream(&handler, &stream), MS_SUCCESS);
+    expect_ret("scan xx123", ms_scan_stream(stream, (const uint8_t *)"xx123", 5), MS_FIND_FAIL);
+    expect_ret("scan 45yy", ms_scan_stream(stream, (const uint8_t *)"45yy", 4), MS_SUCCESS);
 
-    ret = mmpm_close_stream(stream);
-    expect_ret("close stream", ret, MMPM_SUCCESS);
-    expect_ret("destroy", mmpm_handler_destroy(&handler), MMPM_SUCCESS);
+    ret = ms_close_stream(stream);
+    expect_ret("close stream", ret, MS_SUCCESS);
+    expect_ret("destroy", ms_handler_destroy(&handler), MS_SUCCESS);
 }
 
 /* 验证同一段语料按不同块数切分后，stream 模式仍能得到匹配结果。 */
 static void test_hscollider_style_splits(void)
 {
-    mmpm_handler_t handler = {0};
-    mmpm_rule_t rules[] = {
+    ms_handler_t handler = {0};
+    ms_rule_t rules[] = {
         make_rule(1101, "12345"),
     };
-    mmpm_rule_t full_query = make_rule(0, "xx12345yy");
+    ms_rule_t full_query = make_rule(0, "xx12345yy");
 
     printf("\n== hscollider style splits ==\n");
 
-    expect_ret("init", mmpm_handler_init(&handler, MMPM_MATCHER_TYPE_AC, 0, 0), MMPM_SUCCESS);
-    expect_ret("add rules", mmpm_add_rule(&handler, rules, 1), MMPM_SUCCESS);
-    expect_ret("full block", mmpm_find_rule(&handler, &full_query), MMPM_SUCCESS);
+    expect_ret("init", ms_handler_init(&handler, MS_MATCHER_TYPE_AC, 0, 0), MS_SUCCESS);
+    expect_ret("add rules", ms_add_rule(&handler, rules, 1), MS_SUCCESS);
+    expect_ret("full block", ms_find_rule(&handler, &full_query), MS_SUCCESS);
 
-    expect_ret("split 1", scan_stream_by_blocks(&handler, "xx12345yy", 1), MMPM_SUCCESS);
-    expect_ret("split 2", scan_stream_by_blocks(&handler, "xx12345yy", 2), MMPM_SUCCESS);
-    expect_ret("split 3", scan_stream_by_blocks(&handler, "xx12345yy", 3), MMPM_SUCCESS);
-    expect_ret("split 5", scan_stream_by_blocks(&handler, "xx12345yy", 5), MMPM_SUCCESS);
-    expect_ret("split 20", scan_stream_by_blocks(&handler, "xx12345yy", 20), MMPM_SUCCESS);
+    expect_ret("split 1", scan_stream_by_blocks(&handler, "xx12345yy", 1), MS_SUCCESS);
+    expect_ret("split 2", scan_stream_by_blocks(&handler, "xx12345yy", 2), MS_SUCCESS);
+    expect_ret("split 3", scan_stream_by_blocks(&handler, "xx12345yy", 3), MS_SUCCESS);
+    expect_ret("split 5", scan_stream_by_blocks(&handler, "xx12345yy", 5), MS_SUCCESS);
+    expect_ret("split 20", scan_stream_by_blocks(&handler, "xx12345yy", 20), MS_SUCCESS);
 
-    expect_ret("destroy", mmpm_handler_destroy(&handler), MMPM_SUCCESS);
+    expect_ret("destroy", ms_handler_destroy(&handler), MS_SUCCESS);
 }
 
 /* 验证一个规则跨三个 chunk 时，stream 状态能连续传递直到最终命中。 */
 static void test_multi_chunk_match(void)
 {
-    mmpm_handler_t handler = {0};
+    ms_handler_t handler = {0};
     ms_stream_t *stream = NULL;
-    mmpm_rule_t rules[] = {
+    ms_rule_t rules[] = {
         make_rule(1201, "abcdef"),
     };
 
     printf("\n== multi chunk match ==\n");
 
-    expect_ret("init", mmpm_handler_init(&handler, MMPM_MATCHER_TYPE_AC, 0, 0), MMPM_SUCCESS);
-    expect_ret("add rules", mmpm_add_rule(&handler, rules, 1), MMPM_SUCCESS);
-    expect_ret("open stream", mmpm_open_stream(&handler, &stream), MMPM_SUCCESS);
+    expect_ret("init", ms_handler_init(&handler, MS_MATCHER_TYPE_AC, 0, 0), MS_SUCCESS);
+    expect_ret("add rules", ms_add_rule(&handler, rules, 1), MS_SUCCESS);
+    expect_ret("open stream", ms_open_stream(&handler, &stream), MS_SUCCESS);
 
-    expect_ret("scan ab", mmpm_scan_stream(stream, (const uint8_t *)"ab", 2), MMPM_FIND_FAIL);
-    expect_ret("scan cd", mmpm_scan_stream(stream, (const uint8_t *)"cd", 2), MMPM_FIND_FAIL);
-    expect_ret("scan ef", mmpm_scan_stream(stream, (const uint8_t *)"ef", 2), MMPM_SUCCESS);
+    expect_ret("scan ab", ms_scan_stream(stream, (const uint8_t *)"ab", 2), MS_FIND_FAIL);
+    expect_ret("scan cd", ms_scan_stream(stream, (const uint8_t *)"cd", 2), MS_FIND_FAIL);
+    expect_ret("scan ef", ms_scan_stream(stream, (const uint8_t *)"ef", 2), MS_SUCCESS);
 
-    expect_ret("close stream", mmpm_close_stream(stream), MMPM_SUCCESS);
-    expect_ret("destroy", mmpm_handler_destroy(&handler), MMPM_SUCCESS);
+    expect_ret("close stream", ms_close_stream(stream), MS_SUCCESS);
+    expect_ret("destroy", ms_handler_destroy(&handler), MS_SUCCESS);
 }
 
 /* 验证两条 stream 交错扫描时，各自维护独立的 AC 状态。 */
 static void test_interleaved_streams(void)
 {
-    mmpm_handler_t handler = {0};
+    ms_handler_t handler = {0};
     ms_stream_t *stream1 = NULL;
     ms_stream_t *stream2 = NULL;
 
-    mmpm_rule_t rules[] = {
+    ms_rule_t rules[] = {
         make_rule(2001, "abcdef"),
         make_rule(2002, "12345"),
     };
 
     printf("\n== interleaved streams ==\n");
 
-    expect_ret("init", mmpm_handler_init(&handler, MMPM_MATCHER_TYPE_AC, 0, 0), MMPM_SUCCESS);
-    expect_ret("add rules", mmpm_add_rule(&handler, rules, 2), MMPM_SUCCESS);
-    expect_ret("open stream1", mmpm_open_stream(&handler, &stream1), MMPM_SUCCESS);
-    expect_ret("open stream2", mmpm_open_stream(&handler, &stream2), MMPM_SUCCESS);
+    expect_ret("init", ms_handler_init(&handler, MS_MATCHER_TYPE_AC, 0, 0), MS_SUCCESS);
+    expect_ret("add rules", ms_add_rule(&handler, rules, 2), MS_SUCCESS);
+    expect_ret("open stream1", ms_open_stream(&handler, &stream1), MS_SUCCESS);
+    expect_ret("open stream2", ms_open_stream(&handler, &stream2), MS_SUCCESS);
 
-    expect_ret("stream1 abc", mmpm_scan_stream(stream1, (const uint8_t *)"abc", 3), MMPM_FIND_FAIL);
-    expect_ret("stream2 12", mmpm_scan_stream(stream2, (const uint8_t *)"12", 2), MMPM_FIND_FAIL);
-    expect_ret("stream1 def", mmpm_scan_stream(stream1, (const uint8_t *)"def", 3), MMPM_SUCCESS);
-    expect_ret("stream2 345", mmpm_scan_stream(stream2, (const uint8_t *)"345", 3), MMPM_SUCCESS);
+    expect_ret("stream1 abc", ms_scan_stream(stream1, (const uint8_t *)"abc", 3), MS_FIND_FAIL);
+    expect_ret("stream2 12", ms_scan_stream(stream2, (const uint8_t *)"12", 2), MS_FIND_FAIL);
+    expect_ret("stream1 def", ms_scan_stream(stream1, (const uint8_t *)"def", 3), MS_SUCCESS);
+    expect_ret("stream2 345", ms_scan_stream(stream2, (const uint8_t *)"345", 3), MS_SUCCESS);
 
-    expect_ret("close stream1", mmpm_close_stream(stream1), MMPM_SUCCESS);
-    expect_ret("close stream2", mmpm_close_stream(stream2), MMPM_SUCCESS);
-    expect_ret("destroy", mmpm_handler_destroy(&handler), MMPM_SUCCESS);
+    expect_ret("close stream1", ms_close_stream(stream1), MS_SUCCESS);
+    expect_ret("close stream2", ms_close_stream(stream2), MS_SUCCESS);
+    expect_ret("destroy", ms_handler_destroy(&handler), MS_SUCCESS);
 }
 
 /* 验证短规则和长规则共享前缀时，短规则命中后长规则仍可继续跨 chunk 命中。 */
 static void test_prefix_and_continue(void)
 {
-    mmpm_handler_t handler = {0};
+    ms_handler_t handler = {0};
     ms_stream_t *stream = NULL;
 
-    mmpm_rule_t rules[] = {
+    ms_rule_t rules[] = {
         make_rule(3001, "123"),
         make_rule(3002, "12345"),
         make_rule(3003, "abc"),
@@ -232,133 +232,133 @@ static void test_prefix_and_continue(void)
 
     printf("\n== prefix and continue ==\n");
 
-    expect_ret("init", mmpm_handler_init(&handler, MMPM_MATCHER_TYPE_AC, 0, 0), MMPM_SUCCESS);
-    expect_ret("add rules", mmpm_add_rule(&handler, rules, 4), MMPM_SUCCESS);
-    expect_ret("open stream", mmpm_open_stream(&handler, &stream), MMPM_SUCCESS);
+    expect_ret("init", ms_handler_init(&handler, MS_MATCHER_TYPE_AC, 0, 0), MS_SUCCESS);
+    expect_ret("add rules", ms_add_rule(&handler, rules, 4), MS_SUCCESS);
+    expect_ret("open stream", ms_open_stream(&handler, &stream), MS_SUCCESS);
 
-    expect_ret("short prefix hit", mmpm_scan_stream(stream, (const uint8_t *)"xx123", 5), MMPM_SUCCESS);
-    expect_ret("long prefix hit", mmpm_scan_stream(stream, (const uint8_t *)"45yy", 4), MMPM_SUCCESS);
-    expect_ret("later hit abc", mmpm_scan_stream(stream, (const uint8_t *)"abc", 3), MMPM_SUCCESS);
-    expect_ret("later hit def", mmpm_scan_stream(stream, (const uint8_t *)"def", 3), MMPM_SUCCESS);
+    expect_ret("short prefix hit", ms_scan_stream(stream, (const uint8_t *)"xx123", 5), MS_SUCCESS);
+    expect_ret("long prefix hit", ms_scan_stream(stream, (const uint8_t *)"45yy", 4), MS_SUCCESS);
+    expect_ret("later hit abc", ms_scan_stream(stream, (const uint8_t *)"abc", 3), MS_SUCCESS);
+    expect_ret("later hit def", ms_scan_stream(stream, (const uint8_t *)"def", 3), MS_SUCCESS);
 
-    expect_ret("close stream", mmpm_close_stream(stream), MMPM_SUCCESS);
-    expect_ret("destroy", mmpm_handler_destroy(&handler), MMPM_SUCCESS);
+    expect_ret("close stream", ms_close_stream(stream), MS_SUCCESS);
+    expect_ret("destroy", ms_handler_destroy(&handler), MS_SUCCESS);
 }
 
 /* 验证空 chunk 不改变 stream 状态，同时验证 reset 会清空已有的中间状态。 */
 static void test_reset_and_empty_chunk(void)
 {
-    mmpm_handler_t handler = {0};
+    ms_handler_t handler = {0};
     ms_stream_t *stream = NULL;
 
-    mmpm_rule_t rules[] = {
+    ms_rule_t rules[] = {
         make_rule(4001, "abcdef"),
         make_rule(4002, "abcde"),
     };
 
     printf("\n== reset and empty chunk ==\n");
 
-    expect_ret("init", mmpm_handler_init(&handler, MMPM_MATCHER_TYPE_AC, 0, 0), MMPM_SUCCESS);
-    expect_ret("add rules", mmpm_add_rule(&handler, rules, 2), MMPM_SUCCESS);
-    expect_ret("open stream", mmpm_open_stream(&handler, &stream), MMPM_SUCCESS);
+    expect_ret("init", ms_handler_init(&handler, MS_MATCHER_TYPE_AC, 0, 0), MS_SUCCESS);
+    expect_ret("add rules", ms_add_rule(&handler, rules, 2), MS_SUCCESS);
+    expect_ret("open stream", ms_open_stream(&handler, &stream), MS_SUCCESS);
 
-    expect_ret("scan abc", mmpm_scan_stream(stream, (const uint8_t *)"abc", 3), MMPM_FIND_FAIL);
-    expect_ret("empty chunk", mmpm_scan_stream(stream, (const uint8_t *)"", 0), MMPM_FIND_FAIL);
-    expect_ret("scan de after empty", mmpm_scan_stream(stream, (const uint8_t *)"de", 2), MMPM_SUCCESS);
+    expect_ret("scan abc", ms_scan_stream(stream, (const uint8_t *)"abc", 3), MS_FIND_FAIL);
+    expect_ret("empty chunk", ms_scan_stream(stream, (const uint8_t *)"", 0), MS_FIND_FAIL);
+    expect_ret("scan de after empty", ms_scan_stream(stream, (const uint8_t *)"de", 2), MS_SUCCESS);
 
-    expect_ret("reset", mmpm_reset_stream(stream), MMPM_SUCCESS);
-    expect_ret("scan def after reset", mmpm_scan_stream(stream, (const uint8_t *)"def", 3), MMPM_FIND_FAIL);
+    expect_ret("reset", ms_reset_stream(stream), MS_SUCCESS);
+    expect_ret("scan def after reset", ms_scan_stream(stream, (const uint8_t *)"def", 3), MS_FIND_FAIL);
 
-    expect_ret("close stream", mmpm_close_stream(stream), MMPM_SUCCESS);
-    expect_ret("destroy", mmpm_handler_destroy(&handler), MMPM_SUCCESS);
+    expect_ret("close stream", ms_close_stream(stream), MS_SUCCESS);
+    expect_ret("destroy", ms_handler_destroy(&handler), MS_SUCCESS);
 }
 
 /* 验证 remove 成功后自动机版本变化，旧 stream 会返回 stale，reset 后可继续使用。 */
 static void test_remove_and_stale(void)
 {
-    mmpm_handler_t handler = {0};
+    ms_handler_t handler = {0};
     ms_stream_t *stream = NULL;
 
-    mmpm_rule_t rules[] = {
+    ms_rule_t rules[] = {
         make_rule(5001, "abcde"),
         make_rule(5002, "xyz"),
     };
-    mmpm_rule_t remove_abcde[] = {
+    ms_rule_t remove_abcde[] = {
         make_rule(5001, "abcde"),
     };
 
     printf("\n== remove and stale ==\n");
 
-    expect_ret("init", mmpm_handler_init(&handler, MMPM_MATCHER_TYPE_AC, 0, 0), MMPM_SUCCESS);
-    expect_ret("add rules", mmpm_add_rule(&handler, rules, 2), MMPM_SUCCESS);
-    expect_ret("open stream", mmpm_open_stream(&handler, &stream), MMPM_SUCCESS);
+    expect_ret("init", ms_handler_init(&handler, MS_MATCHER_TYPE_AC, 0, 0), MS_SUCCESS);
+    expect_ret("add rules", ms_add_rule(&handler, rules, 2), MS_SUCCESS);
+    expect_ret("open stream", ms_open_stream(&handler, &stream), MS_SUCCESS);
 
-    expect_ret("scan abc", mmpm_scan_stream(stream, (const uint8_t *)"abc", 3), MMPM_FIND_FAIL);
-    expect_ret("remove abcde", mmpm_remove_rule(&handler, remove_abcde, 1), MMPM_SUCCESS);
-    expect_ret("scan stale stream", mmpm_scan_stream(stream, (const uint8_t *)"de", 2), MMPM_STREAM_STALE);
+    expect_ret("scan abc", ms_scan_stream(stream, (const uint8_t *)"abc", 3), MS_FIND_FAIL);
+    expect_ret("remove abcde", ms_remove_rule(&handler, remove_abcde, 1), MS_SUCCESS);
+    expect_ret("scan stale stream", ms_scan_stream(stream, (const uint8_t *)"de", 2), MS_STREAM_STALE);
 
-    expect_ret("reset after stale", mmpm_reset_stream(stream), MMPM_SUCCESS);
-    expect_ret("removed rule no match", mmpm_scan_stream(stream, (const uint8_t *)"abcde", 5), MMPM_FIND_FAIL);
-    expect_ret("remaining rule match", mmpm_scan_stream(stream, (const uint8_t *)"xyz", 3), MMPM_SUCCESS);
+    expect_ret("reset after stale", ms_reset_stream(stream), MS_SUCCESS);
+    expect_ret("removed rule no match", ms_scan_stream(stream, (const uint8_t *)"abcde", 5), MS_FIND_FAIL);
+    expect_ret("remaining rule match", ms_scan_stream(stream, (const uint8_t *)"xyz", 3), MS_SUCCESS);
 
-    expect_ret("close stream", mmpm_close_stream(stream), MMPM_SUCCESS);
-    expect_ret("destroy", mmpm_handler_destroy(&handler), MMPM_SUCCESS);
+    expect_ret("close stream", ms_close_stream(stream), MS_SUCCESS);
+    expect_ret("destroy", ms_handler_destroy(&handler), MS_SUCCESS);
 }
 
 /* 验证 remove 不存在的规则失败时，不会破坏已有 stream 的连续匹配状态。 */
 static void test_remove_fail_keeps_stream_valid(void)
 {
-    mmpm_handler_t handler = {0};
+    ms_handler_t handler = {0};
     ms_stream_t *stream = NULL;
 
-    mmpm_rule_t rules[] = {
+    ms_rule_t rules[] = {
         make_rule(6001, "abcde"),
     };
-    mmpm_rule_t remove_missing[] = {
+    ms_rule_t remove_missing[] = {
         make_rule(6999, "xxxxx"),
     };
 
     printf("\n== remove fail keeps stream valid ==\n");
 
-    expect_ret("init", mmpm_handler_init(&handler, MMPM_MATCHER_TYPE_AC, 0, 0), MMPM_SUCCESS);
-    expect_ret("add rules", mmpm_add_rule(&handler, rules, 1), MMPM_SUCCESS);
-    expect_ret("open stream", mmpm_open_stream(&handler, &stream), MMPM_SUCCESS);
+    expect_ret("init", ms_handler_init(&handler, MS_MATCHER_TYPE_AC, 0, 0), MS_SUCCESS);
+    expect_ret("add rules", ms_add_rule(&handler, rules, 1), MS_SUCCESS);
+    expect_ret("open stream", ms_open_stream(&handler, &stream), MS_SUCCESS);
 
-    expect_ret("scan abc", mmpm_scan_stream(stream, (const uint8_t *)"abc", 3), MMPM_FIND_FAIL);
-    expect_ret("remove missing", mmpm_remove_rule(&handler, remove_missing, 1), MMPM_FIND_FAIL);
-    expect_ret("scan de still valid", mmpm_scan_stream(stream, (const uint8_t *)"de", 2), MMPM_SUCCESS);
+    expect_ret("scan abc", ms_scan_stream(stream, (const uint8_t *)"abc", 3), MS_FIND_FAIL);
+    expect_ret("remove missing", ms_remove_rule(&handler, remove_missing, 1), MS_FIND_FAIL);
+    expect_ret("scan de still valid", ms_scan_stream(stream, (const uint8_t *)"de", 2), MS_SUCCESS);
 
-    expect_ret("close stream", mmpm_close_stream(stream), MMPM_SUCCESS);
-    expect_ret("destroy", mmpm_handler_destroy(&handler), MMPM_SUCCESS);
+    expect_ret("close stream", ms_close_stream(stream), MS_SUCCESS);
+    expect_ret("destroy", ms_handler_destroy(&handler), MS_SUCCESS);
 }
 
 /* 验证 stream API 在空指针、未 build、重复 open 等非法用法下返回错误码。 */
 static void test_invalid_usage(void)
 {
-    mmpm_handler_t handler = {0};
+    ms_handler_t handler = {0};
     ms_stream_t *stream = NULL;
-    mmpm_rule_t rules[] = {
+    ms_rule_t rules[] = {
         make_rule(7001, "abc"),
     };
 
     printf("\n== invalid usage ==\n");
 
-    expect_ret("open NULL handler", mmpm_open_stream(NULL, &stream), MMPM_INVALID_PARA);
-    expect_ret("open NULL stream pointer", mmpm_open_stream(&handler, NULL), MMPM_INVALID_PARA);
-    expect_ret("reset NULL", mmpm_reset_stream(NULL), MMPM_INVALID_PARA);
-    expect_ret("close NULL", mmpm_close_stream(NULL), MMPM_INVALID_PARA);
+    expect_ret("open NULL handler", ms_open_stream(NULL, &stream), MS_INVALID_PARA);
+    expect_ret("open NULL stream pointer", ms_open_stream(&handler, NULL), MS_INVALID_PARA);
+    expect_ret("reset NULL", ms_reset_stream(NULL), MS_INVALID_PARA);
+    expect_ret("close NULL", ms_close_stream(NULL), MS_INVALID_PARA);
 
-    expect_ret("init", mmpm_handler_init(&handler, MMPM_MATCHER_TYPE_AC, 0, 0), MMPM_SUCCESS);
-    expect_ret("open before build", mmpm_open_stream(&handler, &stream), MMPM_INVALID_PARA);
+    expect_ret("init", ms_handler_init(&handler, MS_MATCHER_TYPE_AC, 0, 0), MS_SUCCESS);
+    expect_ret("open before build", ms_open_stream(&handler, &stream), MS_INVALID_PARA);
 
-    expect_ret("add rules", mmpm_add_rule(&handler, rules, 1), MMPM_SUCCESS);
-    expect_ret("open stream", mmpm_open_stream(&handler, &stream), MMPM_SUCCESS);
-    expect_ret("open into non-null stream", mmpm_open_stream(&handler, &stream), MMPM_INVALID_PARA);
-    expect_ret("scan NULL stream", mmpm_scan_stream(NULL, (const uint8_t *)"abc", 3), MMPM_INVALID_PARA);
-    expect_ret("scan NULL data", mmpm_scan_stream(stream, NULL, 3), MMPM_INVALID_PARA);
+    expect_ret("add rules", ms_add_rule(&handler, rules, 1), MS_SUCCESS);
+    expect_ret("open stream", ms_open_stream(&handler, &stream), MS_SUCCESS);
+    expect_ret("open into non-null stream", ms_open_stream(&handler, &stream), MS_INVALID_PARA);
+    expect_ret("scan NULL stream", ms_scan_stream(NULL, (const uint8_t *)"abc", 3), MS_INVALID_PARA);
+    expect_ret("scan NULL data", ms_scan_stream(stream, NULL, 3), MS_INVALID_PARA);
 
-    expect_ret("close stream", mmpm_close_stream(stream), MMPM_SUCCESS);
-    expect_ret("destroy", mmpm_handler_destroy(&handler), MMPM_SUCCESS);
+    expect_ret("close stream", ms_close_stream(stream), MS_SUCCESS);
+    expect_ret("destroy", ms_handler_destroy(&handler), MS_SUCCESS);
 }
 
 /* 依次运行所有 demo 测试，并根据失败数量返回进程退出码。 */
