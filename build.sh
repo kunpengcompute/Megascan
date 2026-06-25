@@ -1,14 +1,14 @@
 #!/bin/bash
  ##############################################################
 # Copyright (c) 2026 Huawei Technologies Co., Ltd.
-# Build mmpm RPM package
+# Build ms RPM package
 ##############################################################
 set -eu
 
 script_path="${BASH_SOURCE[0]}"
 workspace_dir=$(cd $(dirname "$script_path") && pwd)
 
-function build_mmpm()
+function build_ms()
 {
     # compile
     cd $workspace_dir
@@ -19,20 +19,20 @@ function build_mmpm()
     cmake --build build # install to ./output
     
     mkdir -p output/lib
-    cp ./output/lib/libmmpm.so ./output/
+    cp ./output/lib/libms.so ./output/
     
     cd ./output
-    tar -czvf mmpm.tar.gz lib/ include/
+    tar -czvf ms.tar.gz lib/ include/
     mkdir -p rpmbuild/SOURCES
-    mv mmpm.tar.gz rpmbuild/SOURCES
+    mv ms.tar.gz rpmbuild/SOURCES
 
-    rpmbuild --define "_topdir $workspace_dir/output/rpmbuild" -ba $workspace_dir/spec/mmpm.spec
+    rpmbuild --define "_topdir $workspace_dir/output/rpmbuild" -ba $workspace_dir/spec/ms.spec
     mv rpmbuild/RPMS/aarch64/*.rpm .
     
     rm -rf include/ lib/
     rm -rf rpmbuild
 }
 
-build_mmpm
+build_ms
 
 exit 0
