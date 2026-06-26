@@ -155,6 +155,9 @@ static void test_allocator_set_all_covers_database_and_stream_paths(void)
 
 static void test_allocator_hash_uses_database_allocator(void)
 {
+    enum {
+        ALIGN_SIZE = 64
+    };
     ms_handler_t handler = {0};
     ms_rule_t rule = make_allocator_rule(1001, "0123456789abcdef");
 
@@ -162,6 +165,8 @@ static void test_allocator_hash_uses_database_allocator(void)
     EXPECT_EQ(ms_set_database_allocator(db_alloc, db_calloc, db_free), MS_SUCCESS);
 
     EXPECT_EQ(ms_handler_init(&handler, MS_MATCHER_TYPE_HASH, 16, 8), MS_SUCCESS);
+    EXPECT_TRUE(handler.ms_matcher != NULL);
+    EXPECT_EQ((uintptr_t)handler.ms_matcher % ALIGN_SIZE, 0U);
     EXPECT_EQ(ms_add_rule(&handler, &rule, 1), MS_SUCCESS);
     EXPECT_EQ(ms_handler_destroy(&handler), MS_SUCCESS);
 
