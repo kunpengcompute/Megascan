@@ -254,23 +254,22 @@ int hash_table_destroy(ms_hash *hash_table)
         return MS_INVALID_PARA;
     }
 
-    /* free all rwlock of stage-2 hash_bucket. */
-    for (i = 0; i < hash_table->bucket_num; i++) {
-        for (j = 0; j < hash_table->buckets[i].subbucket_num; j++) {
-            (void)pthread_rwlock_wrlock(&hash_table->buckets[i].subbuckets[j].rwlock);
-            ms_hash_node* subbucket_head = hash_table->buckets[i].subbuckets[j].nodes;
-            ms_hash_node* tmp;
-            while (subbucket_head) {
-                tmp = subbucket_head;
-                subbucket_head = subbucket_head->link_next;
-                ms_database_aligned_free(tmp);
+    if (hash_table->buckets != NULL) {
+        /* free all rwlock of stage-2 hash_bucket. */
+        for (i = 0; i < hash_table->bucket_num; i++) {
+            for (j = 0; j < hash_table->buckets[i].subbucket_num; j++) {
+                (void)pthread_rwlock_wrlock(&hash_table->buckets[i].subbuckets[j].rwlock);
+                ms_hash_node* subbucket_head = hash_table->buckets[i].subbuckets[j].nodes;
+                ms_hash_node* tmp;
+                while (subbucket_head) {
+                    tmp = subbucket_head;
+                    subbucket_head = subbucket_head->link_next;
+                    ms_database_aligned_free(tmp);
+                }
+                (void)pthread_rwlock_unlock(&hash_table->buckets[i].subbuckets[j].rwlock);
+                (void)pthread_rwlock_destroy(&hash_table->buckets[i].subbuckets[j].rwlock);
             }
-            (void)pthread_rwlock_unlock(&hash_table->buckets[i].subbuckets[j].rwlock);
-            (void)pthread_rwlock_destroy(&hash_table->buckets[i].subbuckets[j].rwlock);
         }
-    }
-
-    if (hash_table->buckets) {
         ms_database_aligned_free(hash_table->buckets);
         hash_table->buckets = NULL;
     }

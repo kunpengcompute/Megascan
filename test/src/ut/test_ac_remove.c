@@ -4,8 +4,11 @@
  */
 #include <string.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include "ktest.h"
 #include "../../../ms/include/ms.h"
+#include "../../../ms/include/ms_ac.h"
+#include "../../../ms/include/ms_allocator.h"
 #include "../../../ms/include/ms_handler.h"
 #include "../../../ms/include/ms_compile.h"
 #include "../../../ms/include/ms_rule.h"
@@ -17,6 +20,43 @@ static ms_rule_t make_rule(uint32_t alias, const char *s)
     rule.key = (uint8_t *)s;
     rule.key_len = (uint32_t)strlen(s);
     return rule;
+}
+
+typedef struct {
+    uint32_t malloc_count;
+    uint32_t fail_on_malloc;
+} failing_alloc_state_t;
+
+static failing_alloc_state_t g_failing_alloc_state;
+
+static void reset_failing_alloc_state(void)
+{
+    memset(&g_failing_alloc_state, 0, sizeof(g_failing_alloc_state));
+}
+
+static void *failing_db_alloc(size_t size)
+{
+    g_failing_alloc_state.malloc_count++;
+    if (g_failing_alloc_state.fail_on_malloc != 0 &&
+        g_failing_alloc_state.malloc_count == g_failing_alloc_state.fail_on_malloc) {
+        return NULL;
+    }
+    return malloc(size);
+}
+
+static void *failing_db_calloc(size_t nmemb, size_t size)
+{
+    return calloc(nmemb, size);
+}
+
+static void failing_db_free(void *ptr)
+{
+    free(ptr);
+}
+
+static void reset_allocators(void)
+{
+    (void)ms_set_allocator(NULL, NULL, NULL);
 }
 
 static void expect_match(ms_handler_t *handler, const char *data, int expected)
@@ -289,6 +329,37 @@ static void test_ac_remove_nonexistent_rule()
     EXPECT_EQ(ms_handler_destroy(&handler), MS_SUCCESS);
 }
 
+static void test_ac_remove_rebuild_alloc_failure_cleans_partial_table(void)
+{
+    ms_handler_t handler = {0};
+    ACAutomaton *automaton;
+    ms_rule_t add_rules[] = {
+        make_rule(9001, "a"),
+        make_rule(9002, "b"),
+    };
+    ms_rule_t remove_a[] = {
+        make_rule(9001, "a"),
+    };
+
+    EXPECT_EQ(ms_handler_init(&handler, MS_MATCHER_TYPE_AC, 0, 0), MS_SUCCESS);
+    EXPECT_EQ(ms_add_rule(&handler, add_rules, (uint32_t)(sizeof(add_rules) / sizeof(add_rules[0]))), MS_SUCCESS);
+
+    reset_failing_alloc_state();
+    g_failing_alloc_state.fail_on_malloc = 3;
+    EXPECT_EQ(ms_set_database_allocator(failing_db_alloc, failing_db_calloc, failing_db_free), MS_SUCCESS);
+
+    EXPECT_EQ(ms_remove_rule(&handler, remove_a, 1), MS_MALLOC_FAIL);
+
+    automaton = (ACAutomaton *)handler.ms_matcher;
+    EXPECT_TRUE(automaton != NULL);
+    EXPECT_TRUE(automaton->table == NULL);
+    EXPECT_TRUE(automaton->output == NULL);
+    EXPECT_TRUE(automaton->output_size == NULL);
+
+    reset_allocators();
+    EXPECT_EQ(ms_handler_destroy(&handler), MS_SUCCESS);
+}
+
 KTEST_ADD_TEST_CASE(SuiteRuleRemoveCompat, test_ac_remove_basic_exact);
 KTEST_ADD_TEST_CASE(SuiteRuleRemoveCompat, test_ac_remove_shared_prefix_prune);
 KTEST_ADD_TEST_CASE(SuiteRuleRemoveCompat, test_ac_remove_overlap_and_fail_rebuild);
@@ -297,3 +368,4 @@ KTEST_ADD_TEST_CASE(SuiteRuleRemoveCompat, test_ac_remove_to_empty_and_boundarie
 KTEST_ADD_TEST_CASE(SuiteRuleRemoveCompat, test_ac_remove_complex_rule_set_regression);
 KTEST_ADD_TEST_CASE(SuiteRuleRemoveCompat, test_ac_remove_deleted_rule_as_multi_fail_target);
 KTEST_ADD_TEST_CASE(SuiteRuleRemoveCompat, test_ac_remove_nonexistent_rule);
+KTEST_ADD_TEST_CASE(SuiteRuleRemoveCompat, test_ac_remove_rebuild_alloc_failure_cleans_partial_table);

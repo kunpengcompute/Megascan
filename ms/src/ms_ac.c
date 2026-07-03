@@ -289,42 +289,67 @@ static int do_ac_table_build(uint32_t *table, int **output, int *output_size,
 
 static int ac_table_build(ACAutomaton *automaton)
 {
+    uint32_t *table = NULL;
+    int **output = NULL;
+    int *output_size = NULL;
+    int ret;
+
     if (automaton->id_count != 0 &&
         (SIZE_MAX / automaton->id_count) < BYTE_MAX_SIZE * sizeof(uint32_t)) {
         return MS_MALLOC_FAIL;
     }
-    automaton->table = (uint32_t *)ms_malloc(sizeof(uint32_t) * automaton->id_count * BYTE_MAX_SIZE);
-    if (automaton->table == NULL) {
-        return MS_MALLOC_FAIL;
+    table = (uint32_t *)ms_malloc(sizeof(uint32_t) * automaton->id_count * BYTE_MAX_SIZE);
+    if (table == NULL) {
+        ret = MS_MALLOC_FAIL;
+        goto error_cleanup;
     }
 
     if (automaton->id_count != 0 && (SIZE_MAX / automaton->id_count) < sizeof(int *)) {
-        return MS_MALLOC_FAIL;
+        ret = MS_MALLOC_FAIL;
+        goto error_cleanup;
     }
-    automaton->output = (int **)ms_malloc(sizeof(int *) * automaton->id_count);
-    if (automaton->output == NULL) {
-        return MS_MALLOC_FAIL;
+    output = (int **)ms_malloc(sizeof(int *) * automaton->id_count);
+    if (output == NULL) {
+        ret = MS_MALLOC_FAIL;
+        goto error_cleanup;
     }
-    memset(automaton->output, 0, sizeof(int *) * automaton->id_count);
+    memset(output, 0, sizeof(int *) * automaton->id_count);
 
     if (automaton->id_count != 0 && (SIZE_MAX / automaton->id_count) < sizeof(int)) {
-        return MS_MALLOC_FAIL;
+        ret = MS_MALLOC_FAIL;
+        goto error_cleanup;
     }
-    automaton->output_size = (int *)ms_malloc(sizeof(int) * automaton->id_count);
-    if (automaton->output_size == NULL) {
-        return MS_MALLOC_FAIL;
+    output_size = (int *)ms_malloc(sizeof(int) * automaton->id_count);
+    if (output_size == NULL) {
+        ret = MS_MALLOC_FAIL;
+        goto error_cleanup;
     }
-    memset(automaton->output_size, 0, sizeof(int) * automaton->id_count);
+    memset(output_size, 0, sizeof(int) * automaton->id_count);
 
     // fill the change table content.
-    int ret = do_ac_table_build(automaton->table, automaton->output,
-                                automaton->output_size, automaton->root,
-                                automaton->id_count);
+    ret = do_ac_table_build(table, output, output_size, automaton->root,
+                            automaton->id_count);
     if (ret != MS_SUCCESS) {
-        return ret;
+        goto error_cleanup;
     }
 
+    automaton->table = table;
+    automaton->output = output;
+    automaton->output_size = output_size;
     return MS_SUCCESS;
+
+error_cleanup:
+    ms_free(table);
+    if (output != NULL) {
+        ms_free(output);
+    }
+    if (output_size != NULL) {
+        ms_free(output_size);
+    }
+    automaton->table = NULL;
+    automaton->output = NULL;
+    automaton->output_size = NULL;
+    return ret;
 }
 
 int ac_automaton_build(ACAutomaton *automaton)

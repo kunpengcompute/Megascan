@@ -44,7 +44,7 @@ void ms_database_from_handler(ms_database_t *db, const ms_handler_t *handler)
 }
 
 static int ms_database_init_state(ms_database_t *db, ms_matcher_type type,
-                                    uint32_t buckets, uint32_t secondary_buckets)
+                                     uint32_t buckets, uint32_t secondary_buckets)
 {
     int ret = MS_SUCCESS;
 
@@ -64,6 +64,11 @@ static int ms_database_init_state(ms_database_t *db, ms_matcher_type type,
                 return ret;
             }
             ret = hash_table_build(db->ms_matcher, secondary_buckets);
+            if (ret != MS_SUCCESS) {
+                (void)hash_table_destroy(db->ms_matcher);
+                db->ms_matcher = NULL;
+                return ret;
+            }
             break;
         case MS_MATCHER_TYPE_AC:
             db->ms_matcher = ms_database_malloc(sizeof(ACAutomaton));

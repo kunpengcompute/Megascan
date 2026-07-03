@@ -23,6 +23,7 @@ static allocator_counter_t g_db_counter;
 static allocator_counter_t g_scratch_counter;
 static allocator_counter_t g_stream_counter;
 static allocator_counter_t g_all_counter;
+static uint32_t g_db_fail_on_alloc;
 
 static void reset_counter(allocator_counter_t *counter)
 {
@@ -35,6 +36,7 @@ static void reset_all_counters(void)
     reset_counter(&g_scratch_counter);
     reset_counter(&g_stream_counter);
     reset_counter(&g_all_counter);
+    g_db_fail_on_alloc = 0;
 }
 
 static void *counter_alloc(allocator_counter_t *counter, size_t size)
@@ -57,7 +59,11 @@ static void counter_free(allocator_counter_t *counter, void *ptr)
 
 static void *db_alloc(size_t size)
 {
-    return counter_alloc(&g_db_counter, size);
+    g_db_counter.alloc_count++;
+    if (g_db_fail_on_alloc != 0 && g_db_counter.alloc_count == g_db_fail_on_alloc) {
+        return NULL;
+    }
+    return malloc(size);
 }
 
 static void *db_calloc(size_t nmemb, size_t size)
@@ -173,6 +179,38 @@ static void test_allocator_hash_uses_database_allocator(void)
     EXPECT_NE(g_db_counter.alloc_count + g_db_counter.calloc_count, 0U);
     EXPECT_NE(g_db_counter.free_count, 0U);
     EXPECT_EQ(g_stream_counter.alloc_count + g_stream_counter.calloc_count, 0U);
+    reset_allocators();
+}
+
+static void test_allocator_hash_init_failure_frees_created_table(void)
+{
+    ms_handler_t handler = {0};
+
+    reset_all_counters();
+    g_db_fail_on_alloc = 2;
+    EXPECT_EQ(ms_set_database_allocator(db_alloc, db_calloc, db_free), MS_SUCCESS);
+
+    EXPECT_EQ(ms_handler_init(&handler, MS_MATCHER_TYPE_HASH, 16, 8), MS_MALLOC_FAIL);
+    EXPECT_TRUE(handler.ms_matcher == NULL);
+    EXPECT_EQ(g_db_counter.alloc_count, 2U);
+    EXPECT_EQ(g_db_counter.free_count, 1U);
+
+    reset_allocators();
+}
+
+static void test_allocator_hash_database_init_failure_frees_created_table(void)
+{
+    ms_database_t *db = NULL;
+
+    reset_all_counters();
+    g_db_fail_on_alloc = 2;
+    EXPECT_EQ(ms_set_database_allocator(db_alloc, db_calloc, db_free), MS_SUCCESS);
+
+    EXPECT_EQ(ms_create_database(&db, MS_MATCHER_TYPE_HASH, 16, 8), MS_MALLOC_FAIL);
+    EXPECT_TRUE(db == NULL);
+    EXPECT_EQ(g_db_counter.alloc_count, 2U);
+    EXPECT_EQ(g_db_counter.free_count, 2U);
+
     reset_allocators();
 }
 
@@ -305,6 +343,8 @@ static void test_allocator_database_stream_uses_stream_allocator(void)
 
 KTEST_ADD_TEST_CASE(SuiteAllocatorRouting, test_allocator_set_all_covers_database_and_stream_paths);
 KTEST_ADD_TEST_CASE(SuiteAllocatorRouting, test_allocator_hash_uses_database_allocator);
+KTEST_ADD_TEST_CASE(SuiteAllocatorRouting, test_allocator_hash_init_failure_frees_created_table);
+KTEST_ADD_TEST_CASE(SuiteAllocatorRouting, test_allocator_hash_database_init_failure_frees_created_table);
 KTEST_ADD_TEST_CASE(SuiteAllocatorRouting, test_allocator_stream_uses_stream_allocator);
 KTEST_ADD_TEST_CASE(SuiteAllocatorRouting, test_allocator_database_lifecycle_uses_database_allocator);
 KTEST_ADD_TEST_CASE(SuiteAllocatorRouting, test_allocator_scratch_uses_scratch_allocator);

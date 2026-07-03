@@ -32,6 +32,11 @@ int ms_handler_init(ms_handler_t *handler, ms_matcher_type type, uint32_t bucket
             if (ret)
                 return ret;
             ret = hash_table_build(handler->ms_matcher, secondary_buckets);
+            if (ret) {
+                (void)hash_table_destroy(handler->ms_matcher);
+                handler->ms_matcher = NULL;
+                return ret;
+            }
             break;
         case MS_MATCHER_TYPE_AC:
             handler->ms_matcher = ms_database_malloc(sizeof(ACAutomaton));
