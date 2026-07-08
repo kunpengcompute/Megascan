@@ -5,7 +5,7 @@
 #define MS_HASH_H
 #include <stdint.h>
 #include <pthread.h>
-#include "ms.h"
+#include "ms_common.h"
 
 typedef struct __ms_hash_node {
     struct __ms_hash_node *link_pre, *link_next;

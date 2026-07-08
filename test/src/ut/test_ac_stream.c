@@ -1,11 +1,15 @@
 /*
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * Description: AC stream unit tests
+ * Description: legacy AC rule stream compatibility unit tests
  */
 #include <string.h>
 #include <stdint.h>
 #include "ktest.h"
 #include "../../../ms/include/ms.h"
+#include "../../../ms/include/ms_handler.h"
+#include "../../../ms/include/ms_compile.h"
+#include "../../../ms/include/ms_rule.h"
+#include "../../../ms/include/ms_runtime.h"
 
 static ms_rule_t make_rule(uint32_t alias, const char *s)
 {
@@ -16,6 +20,11 @@ static ms_rule_t make_rule(uint32_t alias, const char *s)
     rule.key_len = (uint32_t)strlen(s);
 
     return rule;
+}
+
+static int scan_stream_raw(ms_stream_t *stream, const uint8_t *data, uint32_t len)
+{
+    return ms_scan_rule_stream(stream, data, len);
 }
 
 static int scan_stream_by_blocks(ms_handler_t *handler, const char *data, uint32_t stream_blocks)
@@ -31,7 +40,7 @@ static int scan_stream_by_blocks(ms_handler_t *handler, const char *data, uint32
         return MS_INVALID_PARA;
     }
 
-    ret = ms_open_stream(handler, &stream);
+    ret = ms_open_handler_stream(handler, &stream);
     EXPECT_EQ(ret, MS_SUCCESS);
     if (ret != MS_SUCCESS) {
         return ret;
@@ -48,7 +57,7 @@ static int scan_stream_by_blocks(ms_handler_t *handler, const char *data, uint32
             cur = len - pos;
         }
 
-        ret = ms_scan_stream(stream, (const uint8_t *)(data + pos), cur);
+        ret = scan_stream_raw(stream, (const uint8_t *)(data + pos), cur);
         if (ret == MS_SUCCESS) {
             final_ret = MS_SUCCESS;
         } else if (ret != MS_FIND_FAIL) {
@@ -59,7 +68,7 @@ static int scan_stream_by_blocks(ms_handler_t *handler, const char *data, uint32
         pos += cur;
     }
 
-    EXPECT_EQ(ms_close_stream(stream), MS_SUCCESS);
+    EXPECT_EQ(ms_close_handler_stream(stream), MS_SUCCESS);
     return final_ret;
 }
 
@@ -83,11 +92,11 @@ static void test_ac_stream_cross_chunk_match(void)
     EXPECT_EQ(ms_find_rule(&handler, &block_query2), MS_FIND_FAIL);
 
     /* Stream mode keeps AC state between chunks. */
-    EXPECT_EQ(ms_open_stream(&handler, &stream), MS_SUCCESS);
-    EXPECT_EQ(ms_scan_stream(stream, (const uint8_t *)"xx123", 5), MS_FIND_FAIL);
-    EXPECT_EQ(ms_scan_stream(stream, (const uint8_t *)"45yy", 4), MS_SUCCESS);
+    EXPECT_EQ(ms_open_handler_stream(&handler, &stream), MS_SUCCESS);
+    EXPECT_EQ(scan_stream_raw(stream, (const uint8_t *)"xx123", 5), MS_FIND_FAIL);
+    EXPECT_EQ(scan_stream_raw(stream, (const uint8_t *)"45yy", 4), MS_SUCCESS);
 
-    EXPECT_EQ(ms_close_stream(stream), MS_SUCCESS);
+    EXPECT_EQ(ms_close_handler_stream(stream), MS_SUCCESS);
     EXPECT_EQ(ms_handler_destroy(&handler), MS_SUCCESS);
 }
 
@@ -124,12 +133,12 @@ static void test_ac_stream_multi_chunk_match(void)
     EXPECT_EQ(ms_handler_init(&handler, MS_MATCHER_TYPE_AC, 0, 0), MS_SUCCESS);
     EXPECT_EQ(ms_add_rule(&handler, rules, 1), MS_SUCCESS);
 
-    EXPECT_EQ(ms_open_stream(&handler, &stream), MS_SUCCESS);
-    EXPECT_EQ(ms_scan_stream(stream, (const uint8_t *)"ab", 2), MS_FIND_FAIL);
-    EXPECT_EQ(ms_scan_stream(stream, (const uint8_t *)"cd", 2), MS_FIND_FAIL);
-    EXPECT_EQ(ms_scan_stream(stream, (const uint8_t *)"ef", 2), MS_SUCCESS);
+    EXPECT_EQ(ms_open_handler_stream(&handler, &stream), MS_SUCCESS);
+    EXPECT_EQ(scan_stream_raw(stream, (const uint8_t *)"ab", 2), MS_FIND_FAIL);
+    EXPECT_EQ(scan_stream_raw(stream, (const uint8_t *)"cd", 2), MS_FIND_FAIL);
+    EXPECT_EQ(scan_stream_raw(stream, (const uint8_t *)"ef", 2), MS_SUCCESS);
 
-    EXPECT_EQ(ms_close_stream(stream), MS_SUCCESS);
+    EXPECT_EQ(ms_close_handler_stream(stream), MS_SUCCESS);
     EXPECT_EQ(ms_handler_destroy(&handler), MS_SUCCESS);
 }
 
@@ -146,20 +155,20 @@ static void test_ac_stream_independent_streams(void)
     EXPECT_EQ(ms_handler_init(&handler, MS_MATCHER_TYPE_AC, 0, 0), MS_SUCCESS);
     EXPECT_EQ(ms_add_rule(&handler, rules, 1), MS_SUCCESS);
 
-    EXPECT_EQ(ms_open_stream(&handler, &stream1), MS_SUCCESS);
-    EXPECT_EQ(ms_open_stream(&handler, &stream2), MS_SUCCESS);
+    EXPECT_EQ(ms_open_handler_stream(&handler, &stream1), MS_SUCCESS);
+    EXPECT_EQ(ms_open_handler_stream(&handler, &stream2), MS_SUCCESS);
 
-    EXPECT_EQ(ms_scan_stream(stream1, (const uint8_t *)"abc", 3), MS_FIND_FAIL);
-    EXPECT_EQ(ms_scan_stream(stream2, (const uint8_t *)"xxx", 3), MS_FIND_FAIL);
+    EXPECT_EQ(scan_stream_raw(stream1, (const uint8_t *)"abc", 3), MS_FIND_FAIL);
+    EXPECT_EQ(scan_stream_raw(stream2, (const uint8_t *)"xxx", 3), MS_FIND_FAIL);
 
     /* stream1 continues from "abc", so "def" completes the rule. */
-    EXPECT_EQ(ms_scan_stream(stream1, (const uint8_t *)"def", 3), MS_SUCCESS);
+    EXPECT_EQ(scan_stream_raw(stream1, (const uint8_t *)"def", 3), MS_SUCCESS);
 
     /* stream2 is independent and should not inherit stream1's state. */
-    EXPECT_EQ(ms_scan_stream(stream2, (const uint8_t *)"def", 3), MS_FIND_FAIL);
+    EXPECT_EQ(scan_stream_raw(stream2, (const uint8_t *)"def", 3), MS_FIND_FAIL);
 
-    EXPECT_EQ(ms_close_stream(stream1), MS_SUCCESS);
-    EXPECT_EQ(ms_close_stream(stream2), MS_SUCCESS);
+    EXPECT_EQ(ms_close_handler_stream(stream1), MS_SUCCESS);
+    EXPECT_EQ(ms_close_handler_stream(stream2), MS_SUCCESS);
     EXPECT_EQ(ms_handler_destroy(&handler), MS_SUCCESS);
 }
 
@@ -177,16 +186,16 @@ static void test_ac_stream_interleaved_streams(void)
     EXPECT_EQ(ms_handler_init(&handler, MS_MATCHER_TYPE_AC, 0, 0), MS_SUCCESS);
     EXPECT_EQ(ms_add_rule(&handler, rules, 2), MS_SUCCESS);
 
-    EXPECT_EQ(ms_open_stream(&handler, &stream1), MS_SUCCESS);
-    EXPECT_EQ(ms_open_stream(&handler, &stream2), MS_SUCCESS);
+    EXPECT_EQ(ms_open_handler_stream(&handler, &stream1), MS_SUCCESS);
+    EXPECT_EQ(ms_open_handler_stream(&handler, &stream2), MS_SUCCESS);
 
-    EXPECT_EQ(ms_scan_stream(stream1, (const uint8_t *)"abc", 3), MS_FIND_FAIL);
-    EXPECT_EQ(ms_scan_stream(stream2, (const uint8_t *)"12", 2), MS_FIND_FAIL);
-    EXPECT_EQ(ms_scan_stream(stream1, (const uint8_t *)"def", 3), MS_SUCCESS);
-    EXPECT_EQ(ms_scan_stream(stream2, (const uint8_t *)"345", 3), MS_SUCCESS);
+    EXPECT_EQ(scan_stream_raw(stream1, (const uint8_t *)"abc", 3), MS_FIND_FAIL);
+    EXPECT_EQ(scan_stream_raw(stream2, (const uint8_t *)"12", 2), MS_FIND_FAIL);
+    EXPECT_EQ(scan_stream_raw(stream1, (const uint8_t *)"def", 3), MS_SUCCESS);
+    EXPECT_EQ(scan_stream_raw(stream2, (const uint8_t *)"345", 3), MS_SUCCESS);
 
-    EXPECT_EQ(ms_close_stream(stream1), MS_SUCCESS);
-    EXPECT_EQ(ms_close_stream(stream2), MS_SUCCESS);
+    EXPECT_EQ(ms_close_handler_stream(stream1), MS_SUCCESS);
+    EXPECT_EQ(ms_close_handler_stream(stream2), MS_SUCCESS);
     EXPECT_EQ(ms_handler_destroy(&handler), MS_SUCCESS);
 }
 
@@ -203,11 +212,11 @@ static void test_ac_stream_prefix_and_long_rule(void)
     EXPECT_EQ(ms_handler_init(&handler, MS_MATCHER_TYPE_AC, 0, 0), MS_SUCCESS);
     EXPECT_EQ(ms_add_rule(&handler, rules, 2), MS_SUCCESS);
 
-    EXPECT_EQ(ms_open_stream(&handler, &stream), MS_SUCCESS);
-    EXPECT_EQ(ms_scan_stream(stream, (const uint8_t *)"xx123", 5), MS_SUCCESS);
-    EXPECT_EQ(ms_scan_stream(stream, (const uint8_t *)"45yy", 4), MS_SUCCESS);
+    EXPECT_EQ(ms_open_handler_stream(&handler, &stream), MS_SUCCESS);
+    EXPECT_EQ(scan_stream_raw(stream, (const uint8_t *)"xx123", 5), MS_SUCCESS);
+    EXPECT_EQ(scan_stream_raw(stream, (const uint8_t *)"45yy", 4), MS_SUCCESS);
 
-    EXPECT_EQ(ms_close_stream(stream), MS_SUCCESS);
+    EXPECT_EQ(ms_close_handler_stream(stream), MS_SUCCESS);
     EXPECT_EQ(ms_handler_destroy(&handler), MS_SUCCESS);
 }
 
@@ -224,11 +233,11 @@ static void test_ac_stream_match_then_continue(void)
     EXPECT_EQ(ms_handler_init(&handler, MS_MATCHER_TYPE_AC, 0, 0), MS_SUCCESS);
     EXPECT_EQ(ms_add_rule(&handler, rules, 2), MS_SUCCESS);
 
-    EXPECT_EQ(ms_open_stream(&handler, &stream), MS_SUCCESS);
-    EXPECT_EQ(ms_scan_stream(stream, (const uint8_t *)"xxabc", 5), MS_SUCCESS);
-    EXPECT_EQ(ms_scan_stream(stream, (const uint8_t *)"yydef", 5), MS_SUCCESS);
+    EXPECT_EQ(ms_open_handler_stream(&handler, &stream), MS_SUCCESS);
+    EXPECT_EQ(scan_stream_raw(stream, (const uint8_t *)"xxabc", 5), MS_SUCCESS);
+    EXPECT_EQ(scan_stream_raw(stream, (const uint8_t *)"yydef", 5), MS_SUCCESS);
 
-    EXPECT_EQ(ms_close_stream(stream), MS_SUCCESS);
+    EXPECT_EQ(ms_close_handler_stream(stream), MS_SUCCESS);
     EXPECT_EQ(ms_handler_destroy(&handler), MS_SUCCESS);
 }
 
@@ -244,18 +253,18 @@ static void test_ac_stream_reset(void)
     EXPECT_EQ(ms_handler_init(&handler, MS_MATCHER_TYPE_AC, 0, 0), MS_SUCCESS);
     EXPECT_EQ(ms_add_rule(&handler, rules, 1), MS_SUCCESS);
 
-    EXPECT_EQ(ms_open_stream(&handler, &stream), MS_SUCCESS);
+    EXPECT_EQ(ms_open_handler_stream(&handler, &stream), MS_SUCCESS);
 
-    EXPECT_EQ(ms_scan_stream(stream, (const uint8_t *)"abc", 3), MS_FIND_FAIL);
+    EXPECT_EQ(scan_stream_raw(stream, (const uint8_t *)"abc", 3), MS_FIND_FAIL);
     EXPECT_EQ(ms_reset_stream(stream), MS_SUCCESS);
 
     /*
      * After reset, the stream no longer remembers "abc",
      * so scanning "def" alone should not match "abcdef".
      */
-    EXPECT_EQ(ms_scan_stream(stream, (const uint8_t *)"def", 3), MS_FIND_FAIL);
+    EXPECT_EQ(scan_stream_raw(stream, (const uint8_t *)"def", 3), MS_FIND_FAIL);
 
-    EXPECT_EQ(ms_close_stream(stream), MS_SUCCESS);
+    EXPECT_EQ(ms_close_handler_stream(stream), MS_SUCCESS);
     EXPECT_EQ(ms_handler_destroy(&handler), MS_SUCCESS);
 }
 
@@ -271,12 +280,12 @@ static void test_ac_stream_empty_chunk_keeps_state(void)
     EXPECT_EQ(ms_handler_init(&handler, MS_MATCHER_TYPE_AC, 0, 0), MS_SUCCESS);
     EXPECT_EQ(ms_add_rule(&handler, rules, 1), MS_SUCCESS);
 
-    EXPECT_EQ(ms_open_stream(&handler, &stream), MS_SUCCESS);
-    EXPECT_EQ(ms_scan_stream(stream, (const uint8_t *)"abc", 3), MS_FIND_FAIL);
-    EXPECT_EQ(ms_scan_stream(stream, (const uint8_t *)"", 0), MS_FIND_FAIL);
-    EXPECT_EQ(ms_scan_stream(stream, (const uint8_t *)"de", 2), MS_SUCCESS);
+    EXPECT_EQ(ms_open_handler_stream(&handler, &stream), MS_SUCCESS);
+    EXPECT_EQ(scan_stream_raw(stream, (const uint8_t *)"abc", 3), MS_FIND_FAIL);
+    EXPECT_EQ(scan_stream_raw(stream, (const uint8_t *)"", 0), MS_FIND_FAIL);
+    EXPECT_EQ(scan_stream_raw(stream, (const uint8_t *)"de", 2), MS_SUCCESS);
 
-    EXPECT_EQ(ms_close_stream(stream), MS_SUCCESS);
+    EXPECT_EQ(ms_close_handler_stream(stream), MS_SUCCESS);
     EXPECT_EQ(ms_handler_destroy(&handler), MS_SUCCESS);
 }
 
@@ -297,25 +306,25 @@ static void test_ac_stream_stale_after_remove(void)
     EXPECT_EQ(ms_handler_init(&handler, MS_MATCHER_TYPE_AC, 0, 0), MS_SUCCESS);
     EXPECT_EQ(ms_add_rule(&handler, rules, 2), MS_SUCCESS);
 
-    EXPECT_EQ(ms_open_stream(&handler, &stream), MS_SUCCESS);
-    EXPECT_EQ(ms_scan_stream(stream, (const uint8_t *)"abc", 3), MS_FIND_FAIL);
+    EXPECT_EQ(ms_open_handler_stream(&handler, &stream), MS_SUCCESS);
+    EXPECT_EQ(scan_stream_raw(stream, (const uint8_t *)"abc", 3), MS_FIND_FAIL);
 
     /*
      * Removing rules rebuilds the AC table and reindexes states.
      * The old stream state must be treated as stale.
      */
     EXPECT_EQ(ms_remove_rule(&handler, remove_rule, 1), MS_SUCCESS);
-    EXPECT_EQ(ms_scan_stream(stream, (const uint8_t *)"de", 2), MS_STREAM_STALE);
+    EXPECT_EQ(scan_stream_raw(stream, (const uint8_t *)"de", 2), MS_STREAM_STALE);
 
     /*
      * reset_stream refreshes generation and returns to root state.
      * The removed rule should no longer match.
      */
     EXPECT_EQ(ms_reset_stream(stream), MS_SUCCESS);
-    EXPECT_EQ(ms_scan_stream(stream, (const uint8_t *)"abcde", 5), MS_FIND_FAIL);
-    EXPECT_EQ(ms_scan_stream(stream, (const uint8_t *)"xyz", 3), MS_SUCCESS);
+    EXPECT_EQ(scan_stream_raw(stream, (const uint8_t *)"abcde", 5), MS_FIND_FAIL);
+    EXPECT_EQ(scan_stream_raw(stream, (const uint8_t *)"xyz", 3), MS_SUCCESS);
 
-    EXPECT_EQ(ms_close_stream(stream), MS_SUCCESS);
+    EXPECT_EQ(ms_close_handler_stream(stream), MS_SUCCESS);
     EXPECT_EQ(ms_handler_destroy(&handler), MS_SUCCESS);
 }
 
@@ -334,12 +343,12 @@ static void test_ac_stream_remove_fail_keeps_stream_valid(void)
     EXPECT_EQ(ms_handler_init(&handler, MS_MATCHER_TYPE_AC, 0, 0), MS_SUCCESS);
     EXPECT_EQ(ms_add_rule(&handler, rules, 1), MS_SUCCESS);
 
-    EXPECT_EQ(ms_open_stream(&handler, &stream), MS_SUCCESS);
-    EXPECT_EQ(ms_scan_stream(stream, (const uint8_t *)"abc", 3), MS_FIND_FAIL);
+    EXPECT_EQ(ms_open_handler_stream(&handler, &stream), MS_SUCCESS);
+    EXPECT_EQ(scan_stream_raw(stream, (const uint8_t *)"abc", 3), MS_FIND_FAIL);
     EXPECT_EQ(ms_remove_rule(&handler, remove_rule, 1), MS_FIND_FAIL);
-    EXPECT_EQ(ms_scan_stream(stream, (const uint8_t *)"de", 2), MS_SUCCESS);
+    EXPECT_EQ(scan_stream_raw(stream, (const uint8_t *)"de", 2), MS_SUCCESS);
 
-    EXPECT_EQ(ms_close_stream(stream), MS_SUCCESS);
+    EXPECT_EQ(ms_close_handler_stream(stream), MS_SUCCESS);
     EXPECT_EQ(ms_handler_destroy(&handler), MS_SUCCESS);
 }
 
@@ -352,36 +361,37 @@ static void test_ac_stream_invalid_usage(void)
         make_rule(5001, "abc"),
     };
 
-    EXPECT_EQ(ms_open_stream(NULL, &stream), MS_INVALID_PARA);
-    EXPECT_EQ(ms_open_stream(&handler, NULL), MS_INVALID_PARA);
+    EXPECT_EQ(ms_open_handler_stream(NULL, &stream), MS_INVALID_PARA);
+    EXPECT_EQ(ms_open_handler_stream(&handler, NULL), MS_INVALID_PARA);
     EXPECT_EQ(ms_reset_stream(NULL), MS_INVALID_PARA);
-    EXPECT_EQ(ms_close_stream(NULL), MS_INVALID_PARA);
+    EXPECT_EQ(ms_close_handler_stream(NULL), MS_INVALID_PARA);
 
     EXPECT_EQ(ms_handler_init(&handler, MS_MATCHER_TYPE_AC, 0, 0), MS_SUCCESS);
 
     /* Cannot open stream before AC rules are built. */
-    EXPECT_EQ(ms_open_stream(&handler, &stream), MS_INVALID_PARA);
+    EXPECT_EQ(ms_open_handler_stream(&handler, &stream), MS_INVALID_PARA);
 
     EXPECT_EQ(ms_add_rule(&handler, rules, 1), MS_SUCCESS);
-    EXPECT_EQ(ms_open_stream(&handler, &stream), MS_SUCCESS);
-    EXPECT_EQ(ms_open_stream(&handler, &stream), MS_INVALID_PARA);
+    EXPECT_EQ(ms_open_handler_stream(&handler, &stream), MS_SUCCESS);
+    EXPECT_EQ(ms_open_handler_stream(&handler, &stream), MS_INVALID_PARA);
 
-    EXPECT_EQ(ms_scan_stream(NULL, (const uint8_t *)"abc", 3), MS_INVALID_PARA);
-    EXPECT_EQ(ms_scan_stream(stream, NULL, 3), MS_INVALID_PARA);
+    EXPECT_EQ(scan_stream_raw(NULL, (const uint8_t *)"abc", 3), MS_INVALID_PARA);
+    EXPECT_EQ(scan_stream_raw(stream, NULL, 3), MS_INVALID_PARA);
 
-    EXPECT_EQ(ms_close_stream(stream), MS_SUCCESS);
+    EXPECT_EQ(ms_close_handler_stream(stream), MS_SUCCESS);
     EXPECT_EQ(ms_handler_destroy(&handler), MS_SUCCESS);
 }
 
-KTEST_ADD_TEST_CASE(SuiteAcStream, test_ac_stream_cross_chunk_match);
-KTEST_ADD_TEST_CASE(SuiteAcStream, test_ac_stream_hscollider_style_splits);
-KTEST_ADD_TEST_CASE(SuiteAcStream, test_ac_stream_multi_chunk_match);
-KTEST_ADD_TEST_CASE(SuiteAcStream, test_ac_stream_independent_streams);
-KTEST_ADD_TEST_CASE(SuiteAcStream, test_ac_stream_interleaved_streams);
-KTEST_ADD_TEST_CASE(SuiteAcStream, test_ac_stream_prefix_and_long_rule);
-KTEST_ADD_TEST_CASE(SuiteAcStream, test_ac_stream_match_then_continue);
-KTEST_ADD_TEST_CASE(SuiteAcStream, test_ac_stream_reset);
-KTEST_ADD_TEST_CASE(SuiteAcStream, test_ac_stream_empty_chunk_keeps_state);
-KTEST_ADD_TEST_CASE(SuiteAcStream, test_ac_stream_stale_after_remove);
-KTEST_ADD_TEST_CASE(SuiteAcStream, test_ac_stream_remove_fail_keeps_stream_valid);
-KTEST_ADD_TEST_CASE(SuiteAcStream, test_ac_stream_invalid_usage);
+KTEST_ADD_TEST_CASE(SuiteRuleStreamCompat, test_ac_stream_cross_chunk_match);
+KTEST_ADD_TEST_CASE(SuiteRuleStreamCompat, test_ac_stream_hscollider_style_splits);
+KTEST_ADD_TEST_CASE(SuiteRuleStreamCompat, test_ac_stream_multi_chunk_match);
+KTEST_ADD_TEST_CASE(SuiteRuleStreamCompat, test_ac_stream_independent_streams);
+KTEST_ADD_TEST_CASE(SuiteRuleStreamCompat, test_ac_stream_interleaved_streams);
+KTEST_ADD_TEST_CASE(SuiteRuleStreamCompat, test_ac_stream_prefix_and_long_rule);
+KTEST_ADD_TEST_CASE(SuiteRuleStreamCompat, test_ac_stream_match_then_continue);
+KTEST_ADD_TEST_CASE(SuiteRuleStreamCompat, test_ac_stream_reset);
+KTEST_ADD_TEST_CASE(SuiteRuleStreamCompat, test_ac_stream_empty_chunk_keeps_state);
+KTEST_ADD_TEST_CASE(SuiteRuleStreamCompat, test_ac_stream_stale_after_remove);
+KTEST_ADD_TEST_CASE(SuiteRuleStreamCompat, test_ac_stream_remove_fail_keeps_stream_valid);
+KTEST_ADD_TEST_CASE(SuiteRuleStreamCompat, test_ac_stream_invalid_usage);
+

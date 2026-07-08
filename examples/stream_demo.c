@@ -2,6 +2,10 @@
 #include <stdint.h>
 #include <string.h>
 #include "ms.h"
+#include "ms_handler.h"
+#include "ms_compile.h"
+#include "ms_rule.h"
+#include "ms_runtime.h"
 
 /*
  * 本 demo 覆盖 AC stream 的主要使用场景：
@@ -58,6 +62,11 @@ static void expect_ret(const char *name, int got, int expected)
     g_failures++;
 }
 
+static int scan_stream_raw(ms_stream_t *stream, const uint8_t *data, uint32_t len)
+{
+    return ms_scan_rule_stream(stream, data, len);
+}
+
 /*
  * 按指定块数切分同一段语料并使用 stream 扫描，
  * 用于模拟 hyperscan hscollider -t 风格的多切分测试。
@@ -75,7 +84,7 @@ static int scan_stream_by_blocks(ms_handler_t *handler, const char *data, uint32
         return MS_INVALID_PARA;
     }
 
-    ret = ms_open_stream(handler, &stream);
+    ret = ms_open_handler_stream(handler, &stream);
     if (ret != MS_SUCCESS) {
         return ret;
     }
@@ -91,7 +100,7 @@ static int scan_stream_by_blocks(ms_handler_t *handler, const char *data, uint32
             cur = len - pos;
         }
 
-        ret = ms_scan_stream(stream, (const uint8_t *)(data + pos), cur);
+        ret = scan_stream_raw(stream, (const uint8_t *)(data + pos), cur);
         if (ret == MS_SUCCESS) {
             final_ret = MS_SUCCESS;
         } else if (ret != MS_FIND_FAIL) {
@@ -102,7 +111,7 @@ static int scan_stream_by_blocks(ms_handler_t *handler, const char *data, uint32
         pos += cur;
     }
 
-    ret = ms_close_stream(stream);
+    ret = ms_close_handler_stream(stream);
     if (ret != MS_SUCCESS) {
         return ret;
     }
@@ -132,11 +141,11 @@ static void test_cross_chunk_match(void)
     expect_ret("block xx123", ms_find_rule(&handler, &block_query1), MS_FIND_FAIL);
     expect_ret("block 45yy", ms_find_rule(&handler, &block_query2), MS_FIND_FAIL);
 
-    expect_ret("open stream", ms_open_stream(&handler, &stream), MS_SUCCESS);
-    expect_ret("scan xx123", ms_scan_stream(stream, (const uint8_t *)"xx123", 5), MS_FIND_FAIL);
-    expect_ret("scan 45yy", ms_scan_stream(stream, (const uint8_t *)"45yy", 4), MS_SUCCESS);
+    expect_ret("open stream", ms_open_handler_stream(&handler, &stream), MS_SUCCESS);
+    expect_ret("scan xx123", scan_stream_raw(stream, (const uint8_t *)"xx123", 5), MS_FIND_FAIL);
+    expect_ret("scan 45yy", scan_stream_raw(stream, (const uint8_t *)"45yy", 4), MS_SUCCESS);
 
-    ret = ms_close_stream(stream);
+    ret = ms_close_handler_stream(stream);
     expect_ret("close stream", ret, MS_SUCCESS);
     expect_ret("destroy", ms_handler_destroy(&handler), MS_SUCCESS);
 }
@@ -178,13 +187,13 @@ static void test_multi_chunk_match(void)
 
     expect_ret("init", ms_handler_init(&handler, MS_MATCHER_TYPE_AC, 0, 0), MS_SUCCESS);
     expect_ret("add rules", ms_add_rule(&handler, rules, 1), MS_SUCCESS);
-    expect_ret("open stream", ms_open_stream(&handler, &stream), MS_SUCCESS);
+    expect_ret("open stream", ms_open_handler_stream(&handler, &stream), MS_SUCCESS);
 
-    expect_ret("scan ab", ms_scan_stream(stream, (const uint8_t *)"ab", 2), MS_FIND_FAIL);
-    expect_ret("scan cd", ms_scan_stream(stream, (const uint8_t *)"cd", 2), MS_FIND_FAIL);
-    expect_ret("scan ef", ms_scan_stream(stream, (const uint8_t *)"ef", 2), MS_SUCCESS);
+    expect_ret("scan ab", scan_stream_raw(stream, (const uint8_t *)"ab", 2), MS_FIND_FAIL);
+    expect_ret("scan cd", scan_stream_raw(stream, (const uint8_t *)"cd", 2), MS_FIND_FAIL);
+    expect_ret("scan ef", scan_stream_raw(stream, (const uint8_t *)"ef", 2), MS_SUCCESS);
 
-    expect_ret("close stream", ms_close_stream(stream), MS_SUCCESS);
+    expect_ret("close stream", ms_close_handler_stream(stream), MS_SUCCESS);
     expect_ret("destroy", ms_handler_destroy(&handler), MS_SUCCESS);
 }
 
@@ -204,16 +213,16 @@ static void test_interleaved_streams(void)
 
     expect_ret("init", ms_handler_init(&handler, MS_MATCHER_TYPE_AC, 0, 0), MS_SUCCESS);
     expect_ret("add rules", ms_add_rule(&handler, rules, 2), MS_SUCCESS);
-    expect_ret("open stream1", ms_open_stream(&handler, &stream1), MS_SUCCESS);
-    expect_ret("open stream2", ms_open_stream(&handler, &stream2), MS_SUCCESS);
+    expect_ret("open stream1", ms_open_handler_stream(&handler, &stream1), MS_SUCCESS);
+    expect_ret("open stream2", ms_open_handler_stream(&handler, &stream2), MS_SUCCESS);
 
-    expect_ret("stream1 abc", ms_scan_stream(stream1, (const uint8_t *)"abc", 3), MS_FIND_FAIL);
-    expect_ret("stream2 12", ms_scan_stream(stream2, (const uint8_t *)"12", 2), MS_FIND_FAIL);
-    expect_ret("stream1 def", ms_scan_stream(stream1, (const uint8_t *)"def", 3), MS_SUCCESS);
-    expect_ret("stream2 345", ms_scan_stream(stream2, (const uint8_t *)"345", 3), MS_SUCCESS);
+    expect_ret("stream1 abc", scan_stream_raw(stream1, (const uint8_t *)"abc", 3), MS_FIND_FAIL);
+    expect_ret("stream2 12", scan_stream_raw(stream2, (const uint8_t *)"12", 2), MS_FIND_FAIL);
+    expect_ret("stream1 def", scan_stream_raw(stream1, (const uint8_t *)"def", 3), MS_SUCCESS);
+    expect_ret("stream2 345", scan_stream_raw(stream2, (const uint8_t *)"345", 3), MS_SUCCESS);
 
-    expect_ret("close stream1", ms_close_stream(stream1), MS_SUCCESS);
-    expect_ret("close stream2", ms_close_stream(stream2), MS_SUCCESS);
+    expect_ret("close stream1", ms_close_handler_stream(stream1), MS_SUCCESS);
+    expect_ret("close stream2", ms_close_handler_stream(stream2), MS_SUCCESS);
     expect_ret("destroy", ms_handler_destroy(&handler), MS_SUCCESS);
 }
 
@@ -234,14 +243,14 @@ static void test_prefix_and_continue(void)
 
     expect_ret("init", ms_handler_init(&handler, MS_MATCHER_TYPE_AC, 0, 0), MS_SUCCESS);
     expect_ret("add rules", ms_add_rule(&handler, rules, 4), MS_SUCCESS);
-    expect_ret("open stream", ms_open_stream(&handler, &stream), MS_SUCCESS);
+    expect_ret("open stream", ms_open_handler_stream(&handler, &stream), MS_SUCCESS);
 
-    expect_ret("short prefix hit", ms_scan_stream(stream, (const uint8_t *)"xx123", 5), MS_SUCCESS);
-    expect_ret("long prefix hit", ms_scan_stream(stream, (const uint8_t *)"45yy", 4), MS_SUCCESS);
-    expect_ret("later hit abc", ms_scan_stream(stream, (const uint8_t *)"abc", 3), MS_SUCCESS);
-    expect_ret("later hit def", ms_scan_stream(stream, (const uint8_t *)"def", 3), MS_SUCCESS);
+    expect_ret("short prefix hit", scan_stream_raw(stream, (const uint8_t *)"xx123", 5), MS_SUCCESS);
+    expect_ret("long prefix hit", scan_stream_raw(stream, (const uint8_t *)"45yy", 4), MS_SUCCESS);
+    expect_ret("later hit abc", scan_stream_raw(stream, (const uint8_t *)"abc", 3), MS_SUCCESS);
+    expect_ret("later hit def", scan_stream_raw(stream, (const uint8_t *)"def", 3), MS_SUCCESS);
 
-    expect_ret("close stream", ms_close_stream(stream), MS_SUCCESS);
+    expect_ret("close stream", ms_close_handler_stream(stream), MS_SUCCESS);
     expect_ret("destroy", ms_handler_destroy(&handler), MS_SUCCESS);
 }
 
@@ -260,16 +269,16 @@ static void test_reset_and_empty_chunk(void)
 
     expect_ret("init", ms_handler_init(&handler, MS_MATCHER_TYPE_AC, 0, 0), MS_SUCCESS);
     expect_ret("add rules", ms_add_rule(&handler, rules, 2), MS_SUCCESS);
-    expect_ret("open stream", ms_open_stream(&handler, &stream), MS_SUCCESS);
+    expect_ret("open stream", ms_open_handler_stream(&handler, &stream), MS_SUCCESS);
 
-    expect_ret("scan abc", ms_scan_stream(stream, (const uint8_t *)"abc", 3), MS_FIND_FAIL);
-    expect_ret("empty chunk", ms_scan_stream(stream, (const uint8_t *)"", 0), MS_FIND_FAIL);
-    expect_ret("scan de after empty", ms_scan_stream(stream, (const uint8_t *)"de", 2), MS_SUCCESS);
+    expect_ret("scan abc", scan_stream_raw(stream, (const uint8_t *)"abc", 3), MS_FIND_FAIL);
+    expect_ret("empty chunk", scan_stream_raw(stream, (const uint8_t *)"", 0), MS_FIND_FAIL);
+    expect_ret("scan de after empty", scan_stream_raw(stream, (const uint8_t *)"de", 2), MS_SUCCESS);
 
     expect_ret("reset", ms_reset_stream(stream), MS_SUCCESS);
-    expect_ret("scan def after reset", ms_scan_stream(stream, (const uint8_t *)"def", 3), MS_FIND_FAIL);
+    expect_ret("scan def after reset", scan_stream_raw(stream, (const uint8_t *)"def", 3), MS_FIND_FAIL);
 
-    expect_ret("close stream", ms_close_stream(stream), MS_SUCCESS);
+    expect_ret("close stream", ms_close_handler_stream(stream), MS_SUCCESS);
     expect_ret("destroy", ms_handler_destroy(&handler), MS_SUCCESS);
 }
 
@@ -291,17 +300,17 @@ static void test_remove_and_stale(void)
 
     expect_ret("init", ms_handler_init(&handler, MS_MATCHER_TYPE_AC, 0, 0), MS_SUCCESS);
     expect_ret("add rules", ms_add_rule(&handler, rules, 2), MS_SUCCESS);
-    expect_ret("open stream", ms_open_stream(&handler, &stream), MS_SUCCESS);
+    expect_ret("open stream", ms_open_handler_stream(&handler, &stream), MS_SUCCESS);
 
-    expect_ret("scan abc", ms_scan_stream(stream, (const uint8_t *)"abc", 3), MS_FIND_FAIL);
+    expect_ret("scan abc", scan_stream_raw(stream, (const uint8_t *)"abc", 3), MS_FIND_FAIL);
     expect_ret("remove abcde", ms_remove_rule(&handler, remove_abcde, 1), MS_SUCCESS);
-    expect_ret("scan stale stream", ms_scan_stream(stream, (const uint8_t *)"de", 2), MS_STREAM_STALE);
+    expect_ret("scan stale stream", scan_stream_raw(stream, (const uint8_t *)"de", 2), MS_STREAM_STALE);
 
     expect_ret("reset after stale", ms_reset_stream(stream), MS_SUCCESS);
-    expect_ret("removed rule no match", ms_scan_stream(stream, (const uint8_t *)"abcde", 5), MS_FIND_FAIL);
-    expect_ret("remaining rule match", ms_scan_stream(stream, (const uint8_t *)"xyz", 3), MS_SUCCESS);
+    expect_ret("removed rule no match", scan_stream_raw(stream, (const uint8_t *)"abcde", 5), MS_FIND_FAIL);
+    expect_ret("remaining rule match", scan_stream_raw(stream, (const uint8_t *)"xyz", 3), MS_SUCCESS);
 
-    expect_ret("close stream", ms_close_stream(stream), MS_SUCCESS);
+    expect_ret("close stream", ms_close_handler_stream(stream), MS_SUCCESS);
     expect_ret("destroy", ms_handler_destroy(&handler), MS_SUCCESS);
 }
 
@@ -322,13 +331,13 @@ static void test_remove_fail_keeps_stream_valid(void)
 
     expect_ret("init", ms_handler_init(&handler, MS_MATCHER_TYPE_AC, 0, 0), MS_SUCCESS);
     expect_ret("add rules", ms_add_rule(&handler, rules, 1), MS_SUCCESS);
-    expect_ret("open stream", ms_open_stream(&handler, &stream), MS_SUCCESS);
+    expect_ret("open stream", ms_open_handler_stream(&handler, &stream), MS_SUCCESS);
 
-    expect_ret("scan abc", ms_scan_stream(stream, (const uint8_t *)"abc", 3), MS_FIND_FAIL);
+    expect_ret("scan abc", scan_stream_raw(stream, (const uint8_t *)"abc", 3), MS_FIND_FAIL);
     expect_ret("remove missing", ms_remove_rule(&handler, remove_missing, 1), MS_FIND_FAIL);
-    expect_ret("scan de still valid", ms_scan_stream(stream, (const uint8_t *)"de", 2), MS_SUCCESS);
+    expect_ret("scan de still valid", scan_stream_raw(stream, (const uint8_t *)"de", 2), MS_SUCCESS);
 
-    expect_ret("close stream", ms_close_stream(stream), MS_SUCCESS);
+    expect_ret("close stream", ms_close_handler_stream(stream), MS_SUCCESS);
     expect_ret("destroy", ms_handler_destroy(&handler), MS_SUCCESS);
 }
 
@@ -343,21 +352,21 @@ static void test_invalid_usage(void)
 
     printf("\n== invalid usage ==\n");
 
-    expect_ret("open NULL handler", ms_open_stream(NULL, &stream), MS_INVALID_PARA);
-    expect_ret("open NULL stream pointer", ms_open_stream(&handler, NULL), MS_INVALID_PARA);
+    expect_ret("open NULL handler", ms_open_handler_stream(NULL, &stream), MS_INVALID_PARA);
+    expect_ret("open NULL stream pointer", ms_open_handler_stream(&handler, NULL), MS_INVALID_PARA);
     expect_ret("reset NULL", ms_reset_stream(NULL), MS_INVALID_PARA);
-    expect_ret("close NULL", ms_close_stream(NULL), MS_INVALID_PARA);
+    expect_ret("close NULL", ms_close_handler_stream(NULL), MS_INVALID_PARA);
 
     expect_ret("init", ms_handler_init(&handler, MS_MATCHER_TYPE_AC, 0, 0), MS_SUCCESS);
-    expect_ret("open before build", ms_open_stream(&handler, &stream), MS_INVALID_PARA);
+    expect_ret("open before build", ms_open_handler_stream(&handler, &stream), MS_INVALID_PARA);
 
     expect_ret("add rules", ms_add_rule(&handler, rules, 1), MS_SUCCESS);
-    expect_ret("open stream", ms_open_stream(&handler, &stream), MS_SUCCESS);
-    expect_ret("open into non-null stream", ms_open_stream(&handler, &stream), MS_INVALID_PARA);
-    expect_ret("scan NULL stream", ms_scan_stream(NULL, (const uint8_t *)"abc", 3), MS_INVALID_PARA);
-    expect_ret("scan NULL data", ms_scan_stream(stream, NULL, 3), MS_INVALID_PARA);
+    expect_ret("open stream", ms_open_handler_stream(&handler, &stream), MS_SUCCESS);
+    expect_ret("open into non-null stream", ms_open_handler_stream(&handler, &stream), MS_INVALID_PARA);
+    expect_ret("scan NULL stream", scan_stream_raw(NULL, (const uint8_t *)"abc", 3), MS_INVALID_PARA);
+    expect_ret("scan NULL data", scan_stream_raw(stream, NULL, 3), MS_INVALID_PARA);
 
-    expect_ret("close stream", ms_close_stream(stream), MS_SUCCESS);
+    expect_ret("close stream", ms_close_handler_stream(stream), MS_SUCCESS);
     expect_ret("destroy", ms_handler_destroy(&handler), MS_SUCCESS);
 }
 
@@ -382,3 +391,4 @@ int main(void)
     printf("\nSTREAM DEMO TESTS FAILED: %d\n", g_failures);
     return 1;
 }
+

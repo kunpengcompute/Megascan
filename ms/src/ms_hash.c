@@ -5,7 +5,6 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
-#include <errno.h>
 #include "ms_hash.h"
 #include "ms_allocator.h"
 
@@ -30,7 +29,6 @@ static uint32_t hash_func_djb2_hash32(const uint8_t *key, uint32_t key_len)
 
 int hash_table_create(ms_hash **hash_table, uint32_t buckets, uint16_t key_size)
 {
-    int ret;
     ms_hash *table = NULL;
 
     if (hash_table == NULL || buckets == 0) {
@@ -39,8 +37,8 @@ int hash_table_create(ms_hash **hash_table, uint32_t buckets, uint16_t key_size)
 
     *hash_table = NULL;
 
-    ret = posix_memalign((void **)(&(table)), ALIGN_SIZE, sizeof(ms_hash));
-    if (ret || table == NULL) {
+    table = (ms_hash *)ms_database_aligned_alloc(sizeof(ms_hash), ALIGN_SIZE);
+    if (table == NULL) {
         return MS_MALLOC_FAIL;
     }
 
@@ -76,8 +74,8 @@ int hash_table_build(ms_hash *hash_table, uint32_t secondary_buckets)
     malloc_size += ALIGN(sizeof(ms_hash_bucket) * buckets_cnt);
     malloc_size += ALIGN(sizeof(ms_hash_subbucket) * buckets_cnt * subbuckets_cnt);
 
-    ret = posix_memalign((void **)(&malloc_ptr), ALIGN_SIZE, malloc_size);
-    if (ret || malloc_ptr == NULL) {
+    malloc_ptr = (uint8_t *)ms_database_aligned_alloc(malloc_size, ALIGN_SIZE);
+    if (malloc_ptr == NULL) {
         return MS_MALLOC_FAIL;
     }
 
@@ -109,7 +107,7 @@ error:
             pthread_rwlock_destroy(&hash_table->buckets[k].subbuckets[l].rwlock);
         }
     }
-    ms_free(hash_table->buckets);
+    ms_database_aligned_free(hash_table->buckets);
     hash_table->buckets = NULL;
     return ret;
 }
@@ -136,7 +134,6 @@ int hash_table_add(ms_hash *hash_table, uint32_t alias, const uint8_t *key, uint
 {
     uint32_t hash, bucket_idx, subbucket_idx;
     ms_hash_node *node = NULL;
-    int ret;
 
     if (hash_table == NULL || key == NULL || key_len == 0 || key_len > hash_table->key_size) {
         return MS_INVALID_PARA;
@@ -156,8 +153,8 @@ int hash_table_add(ms_hash *hash_table, uint32_t alias, const uint8_t *key, uint
     }
     pthread_rwlock_unlock(&hash_table->buckets[bucket_idx].subbuckets[subbucket_idx].rwlock);
 
-    ret = posix_memalign((void **)(&node), ALIGN_SIZE, sizeof(ms_hash_node) + hash_table->key_size);
-    if (ret || node == NULL) {
+    node = (ms_hash_node *)ms_database_aligned_alloc(sizeof(ms_hash_node) + hash_table->key_size, ALIGN_SIZE);
+    if (node == NULL) {
         return MS_MALLOC_FAIL;
     }
 
@@ -240,7 +237,7 @@ int hash_table_remove(ms_hash *hash_table, const uint8_t *key, uint32_t key_len)
         
         if (node->link_next)
             node->link_next->link_pre = node->link_pre;
-        ms_free(node);
+        ms_database_aligned_free(node);
         hash_table->buckets[bucket_idx].subbuckets[subbucket_idx].node_num--;
     }
     pthread_rwlock_unlock(&hash_table->buckets[bucket_idx].subbuckets[subbucket_idx].rwlock);
@@ -257,28 +254,27 @@ int hash_table_destroy(ms_hash *hash_table)
         return MS_INVALID_PARA;
     }
 
-    /* free all rwlock of stage-2 hash_bucket. */
-    for (i = 0; i < hash_table->bucket_num; i++) {
-        for (j = 0; j < hash_table->buckets[i].subbucket_num; j++) {
-            (void)pthread_rwlock_wrlock(&hash_table->buckets[i].subbuckets[j].rwlock);
-            ms_hash_node* subbucket_head = hash_table->buckets[i].subbuckets[j].nodes;
-            ms_hash_node* tmp;
-            while (subbucket_head) {
-                tmp = subbucket_head;
-                subbucket_head = subbucket_head->link_next;
-                ms_free(tmp);
+    if (hash_table->buckets != NULL) {
+        /* free all rwlock of stage-2 hash_bucket. */
+        for (i = 0; i < hash_table->bucket_num; i++) {
+            for (j = 0; j < hash_table->buckets[i].subbucket_num; j++) {
+                (void)pthread_rwlock_wrlock(&hash_table->buckets[i].subbuckets[j].rwlock);
+                ms_hash_node* subbucket_head = hash_table->buckets[i].subbuckets[j].nodes;
+                ms_hash_node* tmp;
+                while (subbucket_head) {
+                    tmp = subbucket_head;
+                    subbucket_head = subbucket_head->link_next;
+                    ms_database_aligned_free(tmp);
+                }
+                (void)pthread_rwlock_unlock(&hash_table->buckets[i].subbuckets[j].rwlock);
+                (void)pthread_rwlock_destroy(&hash_table->buckets[i].subbuckets[j].rwlock);
             }
-            (void)pthread_rwlock_unlock(&hash_table->buckets[i].subbuckets[j].rwlock);
-            (void)pthread_rwlock_destroy(&hash_table->buckets[i].subbuckets[j].rwlock);
         }
-    }
-
-    if (hash_table->buckets) {
-        ms_free(hash_table->buckets);
+        ms_database_aligned_free(hash_table->buckets);
         hash_table->buckets = NULL;
     }
 
-    ms_free(hash_table);
+    ms_database_aligned_free(hash_table);
     return MS_SUCCESS;
 }
 

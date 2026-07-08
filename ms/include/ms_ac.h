@@ -5,7 +5,9 @@
 #define MS_AC_H
 
 #include <stdbool.h>
-#include "ms.h"
+#include <stdint.h>
+
+#include "ms_common.h"
 
 #define BYTE_MAX_SIZE 256  // number of state transition conditions in bytes
 
@@ -29,7 +31,10 @@ typedef struct {
     uint32_t *table;
     int **output;
     uint64_t generation;
+    int *output_size;
 } ACAutomaton;
+
+typedef int (*ms_ac_match_cb)(uint32_t alias, uint64_t end_offset, void *ctx);
 
 int ac_automaton_init(ACAutomaton *automaton);
 int ac_automaton_destroy(ACAutomaton *automaton);
@@ -38,5 +43,7 @@ int ac_automaton_build(ACAutomaton* automaton);
 int ac_automaton_match(ACAutomaton *automaton, const uint8_t *data, uint32_t len);
 int ac_automaton_remove(ACAutomaton *automaton, uint32_t alias, const uint8_t *pattern, uint32_t len);
 int ac_automaton_match_state(ACAutomaton *automaton, const uint8_t *data, uint32_t len, uint32_t *node_index);
+int ac_automaton_match_state_cb(ACAutomaton *automaton, const uint8_t *data, uint32_t len,
+    uint32_t *node_index, ms_ac_match_cb cb, void *ctx);
 
 #endif
