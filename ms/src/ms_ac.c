@@ -786,7 +786,7 @@ int ac_automaton_match_state_cb(ACAutomaton *automaton,
 
     if (automaton == NULL || automaton->table == NULL ||
         automaton->output == NULL || automaton->output_size == NULL ||
-        data == NULL || node_index == NULL) {
+        data == NULL || node_index == NULL || cb == NULL) {
         return MS_INVALID_PARA;
     }
 
@@ -801,9 +801,6 @@ int ac_automaton_match_state_cb(ACAutomaton *automaton,
             for (j = 0; j < automaton->output_size[state]; j++) {
                 int ret;
 
-                if (cb == NULL) {
-                    continue;
-                }
                 ret = cb((uint32_t)automaton->output[state][j], (uint64_t)i + 1, ctx);
                 if (ret != MS_SUCCESS) {
                     *node_index = state;
@@ -822,7 +819,24 @@ int ac_automaton_match_state(ACAutomaton *automaton,
                              uint32_t len,
                              uint32_t *node_index)
 {
-    return ac_automaton_match_state_cb(automaton, data, len, node_index, NULL, NULL);
+    uint32_t state;
+    int table_ret = MS_FIND_FAIL;
+
+    if (automaton == NULL || automaton->table == NULL ||
+        automaton->output == NULL || data == NULL || node_index == NULL) {
+        return MS_INVALID_PARA;
+    }
+
+    state = *node_index;
+    for (uint32_t i = 0; i < len; i++) {
+        state = automaton->table[(uint64_t)state * BYTE_MAX_SIZE + data[i]];
+        if (automaton->output[state] != NULL) {
+            table_ret = MS_SUCCESS;
+        }
+    }
+
+    *node_index = state;
+    return table_ret;
 }
 
 int ac_automaton_match(ACAutomaton *automaton, const uint8_t *data, uint32_t len)
