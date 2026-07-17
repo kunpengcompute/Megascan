@@ -20,12 +20,14 @@ set(PROJECT_LINK_DIR
 
 set(CMAKE_BUILD_TYPE Debug)
 set(CMAKE_CXX_FLAGS
-    "-march=armv8-a+crc \
-    -g \
+    "-g \
     -Wall \
     -Wdate-time \
     -Wextra"
 )
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64|ARM64)$")
+    set(CMAKE_CXX_FLAGS "-march=armv8-a+crc ${CMAKE_CXX_FLAGS}")
+endif()
 add_link_options(--coverage)
 
 LINK_DIRECTORIES(${PROJECT_LINK_DIR}
@@ -40,3 +42,4 @@ endif()
 
 add_subdirectory(public)
 add_subdirectory(src)
+add_subdirectory(demo)
