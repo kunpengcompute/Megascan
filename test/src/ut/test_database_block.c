@@ -63,6 +63,37 @@ static void test_database_scan_clears_scratch_per_block(void)
     EXPECT_EQ(ms_free_database(db), MS_SUCCESS);
 }
 
+static void test_database_scan_reports_only_final_candidates(void)
+{
+    ms_database_t *db = NULL;
+    ms_scratch_t *scratch = NULL;
+    const char *expr[] = {"abc", "def", "101&102", "!101"};
+    uint32_t ids[] = {101, 102, 1001, 1002};
+    uint32_t flags[] = {
+        MS_FLAG_QUIET, MS_FLAG_QUIET,
+        MS_FLAG_COMBINATION, MS_FLAG_COMBINATION
+    };
+    uint32_t out_ids[2] = {0};
+    uint32_t out_count = 0;
+
+    EXPECT_EQ(ms_compile_database_multi(&db, MS_MATCHER_TYPE_AC, 0, 0,
+                                          expr, flags, ids, 4), MS_SUCCESS);
+    EXPECT_EQ(ms_alloc_scratch(db, &scratch), MS_SUCCESS);
+
+    EXPECT_EQ(ms_scan_database(db, (const uint8_t *)"xxxx", 4,
+                                 scratch, out_ids, &out_count, 2), MS_SUCCESS);
+    EXPECT_EQ(out_count, 1U);
+    EXPECT_EQ(out_ids[0], 1002U);
+
+    EXPECT_EQ(ms_scan_database(db, (const uint8_t *)"abcdef", 6,
+                                 scratch, out_ids, &out_count, 2), MS_SUCCESS);
+    EXPECT_EQ(out_count, 1U);
+    EXPECT_EQ(out_ids[0], 1001U);
+
+    EXPECT_EQ(ms_free_scratch(scratch), MS_SUCCESS);
+    EXPECT_EQ(ms_free_database(db), MS_SUCCESS);
+}
+
 static void test_database_scan_rejects_wrong_scratch(void)
 {
     ms_database_t *db1 = NULL;
@@ -86,6 +117,35 @@ static void test_database_scan_rejects_wrong_scratch(void)
     EXPECT_EQ(ms_free_scratch(scratch), MS_SUCCESS);
     EXPECT_EQ(ms_free_database(db1), MS_SUCCESS);
     EXPECT_EQ(ms_free_database(db2), MS_SUCCESS);
+}
+
+static void test_database_scan_repeats_plain_external_id(void)
+{
+    ms_database_t *db = NULL;
+    ms_scratch_t *scratch = NULL;
+    const char *expr[] = {"abc"};
+    uint32_t ids[] = {UINT32_MAX - 7u};
+    uint32_t flags[] = {MS_FLAG_NONE};
+    uint32_t out_ids[1] = {0};
+    uint32_t out_count = 0;
+    uint32_t i;
+
+    EXPECT_EQ(ms_compile_database_multi(&db, MS_MATCHER_TYPE_AC, 0, 0,
+                                          expr, flags, ids, 1), MS_SUCCESS);
+    EXPECT_EQ(ms_alloc_scratch(db, &scratch), MS_SUCCESS);
+
+    for (i = 0; i < 2; i++) {
+        out_ids[0] = 0;
+        out_count = 0;
+        EXPECT_EQ(ms_scan_database(db, (const uint8_t *)"abcabc", 6,
+                                     scratch, out_ids, &out_count, 1),
+                  MS_SUCCESS);
+        EXPECT_EQ(out_count, 1U);
+        EXPECT_EQ(out_ids[0], UINT32_MAX - 7u);
+    }
+
+    EXPECT_EQ(ms_free_scratch(scratch), MS_SUCCESS);
+    EXPECT_EQ(ms_free_database(db), MS_SUCCESS);
 }
 
 static void test_database_block_invalid_parameters(void)
@@ -130,5 +190,7 @@ static void test_database_block_invalid_parameters(void)
 
 KTEST_ADD_TEST_CASE(SuiteDatabaseBlock, test_database_scan_with_explicit_scratch);
 KTEST_ADD_TEST_CASE(SuiteDatabaseBlock, test_database_scan_clears_scratch_per_block);
+KTEST_ADD_TEST_CASE(SuiteDatabaseBlock, test_database_scan_reports_only_final_candidates);
 KTEST_ADD_TEST_CASE(SuiteDatabaseBlock, test_database_scan_rejects_wrong_scratch);
+KTEST_ADD_TEST_CASE(SuiteDatabaseBlock, test_database_scan_repeats_plain_external_id);
 KTEST_ADD_TEST_CASE(SuiteDatabaseBlock, test_database_block_invalid_parameters);

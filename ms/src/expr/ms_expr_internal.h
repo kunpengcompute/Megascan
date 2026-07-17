@@ -42,8 +42,15 @@ typedef struct {
     uint32_t **lkey_to_ckeys;
     uint32_t *lkey_to_ckey_counts;
     uint32_t *lkey_to_ckey_capacities;
+    uint32_t *lkey_to_expr_indexes;
+    uint32_t lkey_to_ckey_capacity;
+    /* Only combinations that can become true without an active lkey need final evaluation. */
+    uint32_t *final_ckeys;
+    uint32_t final_ckey_count;
+    uint32_t final_ckey_capacity;
     uint32_t logical_count;
     uint32_t ekey_count;
+    bool ac_aliases_are_lkeys;
 } ms_compile_context_t;
 
 typedef struct {
@@ -57,6 +64,8 @@ typedef struct {
     uint32_t *ids;
     uint32_t count;
     uint32_t capacity;
+    uint8_t *seen_vector;
+    uint32_t seen_count;
 } ms_compile_result_t;
 
 typedef struct {
@@ -72,6 +81,8 @@ typedef struct {
     uint32_t active_ckey_capacity;
     uint32_t *result_ids;
     uint32_t result_capacity;
+    uint8_t *result_seen_vector;
+    uint32_t result_seen_count;
     uint32_t *new_combination_indexes;
     uint32_t new_combination_capacity;
     uint32_t *new_exhaustion_indexes;
@@ -85,6 +96,13 @@ int ms_compile_context_find_lkey(const ms_compile_context_t *ctx,
                                    uint32_t *lkey);
 const ms_compile_expr_t *ms_compile_context_find_expr(const ms_compile_context_t *ctx,
                                                           uint32_t id);
+const ms_compile_expr_t *ms_compile_context_find_expr_by_lkey(
+    const ms_compile_context_t *ctx, uint32_t lkey);
+const ms_compile_expr_t *ms_compile_context_find_expr_for_alias(
+    const ms_compile_context_t *ctx, uint32_t alias);
+int ms_compile_context_alias_to_lkey(const ms_compile_context_t *ctx,
+                                       uint32_t alias,
+                                       uint32_t *lkey);
 uint32_t ms_compile_logical_byte_count(uint32_t logical_count);
 int ms_compile_context_add_expr(ms_compile_context_t *ctx,
                                   uint32_t id,
@@ -134,6 +152,8 @@ int ms_compile_context_collect_ckeys(const ms_compile_context_t *ctx,
                                        uint32_t ckey_capacity,
                                        uint32_t *ckey_count);
 int ms_compile_result_add(ms_compile_result_t *result, uint32_t id);
+int ms_compile_result_add_key(ms_compile_result_t *result, uint32_t id,
+                                uint32_t key);
 void ms_compile_result_destroy(ms_compile_result_t *result);
 void ms_compile_index_list_destroy(ms_compile_index_list_t *list);
 int ms_compile_eval_active_combinations(const ms_compile_context_t *ctx,

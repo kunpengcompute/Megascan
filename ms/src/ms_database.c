@@ -3,6 +3,7 @@
  */
 #include "ms_database.h"
 #include "ms_ac.h"
+#include "ms_acdb.h"
 #include "ms_allocator.h"
 #include "ms_compile.h"
 #include "ms_hash.h"
@@ -40,6 +41,9 @@ void ms_database_from_handler(ms_database_t *db, const ms_handler_t *handler)
     db->ms_matcher = handler->ms_matcher;
     db->ms_compile_ctx = handler->ms_compile_ctx;
     db->type = handler->type;
+    db->backend = handler->type == MS_MATCHER_TYPE_AC
+                      ? MS_DATABASE_BACKEND_LEGACY_AC
+                      : MS_DATABASE_BACKEND_NATIVE;
     db->is_built = handler->is_built;
 }
 
@@ -71,11 +75,8 @@ static int ms_database_init_state(ms_database_t *db, ms_matcher_type type,
             }
             break;
         case MS_MATCHER_TYPE_AC:
-            db->ms_matcher = ms_database_malloc(sizeof(ACAutomaton));
-            if (db->ms_matcher == NULL) {
-                return MS_MALLOC_FAIL;
-            }
-            ret = ac_automaton_init(db->ms_matcher);
+            ret = ms_acdb_create((ms_acdb_t **)&db->ms_matcher);
+            db->backend = MS_DATABASE_BACKEND_COMPACT_AC;
             break;
         default:
             return MS_INVALID_PARA;
@@ -111,8 +112,12 @@ static int ms_database_destroy_state(ms_database_t *db)
             (void)hash_table_destroy(db->ms_matcher);
             break;
         case MS_MATCHER_TYPE_AC:
-            (void)ac_automaton_destroy(db->ms_matcher);
-            ms_database_free(db->ms_matcher);
+            if (db->backend == MS_DATABASE_BACKEND_COMPACT_AC) {
+                ms_acdb_destroy((ms_acdb_t *)db->ms_matcher);
+            } else {
+                (void)ac_automaton_destroy(db->ms_matcher);
+                ms_database_free(db->ms_matcher);
+            }
             break;
         default:
             return MS_INVALID_PARA;
@@ -120,6 +125,7 @@ static int ms_database_destroy_state(ms_database_t *db)
 
     db->ms_matcher = NULL;
     db->type = MS_MATCHER_NONE;
+    db->backend = MS_DATABASE_BACKEND_NATIVE;
     db->is_built = false;
     return MS_SUCCESS;
 }

@@ -9,12 +9,15 @@ add_library(ms SHARED
     src/expr/ms_expr_scan_stream.c
     src/ms_hash.c
     src/ms_ac.c
+    src/ms_acdb.c
     src/ms_stream.c
     src/ms_logical.c
     src/ms_allocator.c
     src/ms_database.c
     src/ms_scratch.c
 )
+
+option(MS_ENABLE_PROFILING "Keep symbols and frame pointers for profiling" OFF)
 
 target_include_directories(ms PRIVATE
     include
@@ -23,7 +26,13 @@ target_include_directories(ms PRIVATE
 
 target_compile_options(ms PRIVATE -Wall -Werror -fvisibility=hidden -fstack-protector-strong -D_FORTIFY_SOURCE=2 -O2 -fpie -fpic -ftrapv)
 
-target_link_options(ms PRIVATE -s -Wl,-z,relro,-z,now,-z,noexecstack -pie)
+if(MS_ENABLE_PROFILING)
+    target_compile_options(ms PRIVATE -g3 -fno-omit-frame-pointer)
+else()
+    target_link_options(ms PRIVATE -s)
+endif()
+
+target_link_options(ms PRIVATE -Wl,-z,relro,-z,now,-z,noexecstack -pie)
 
 # 设置输出路径
 set_target_properties(ms

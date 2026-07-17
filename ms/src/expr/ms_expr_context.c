@@ -70,6 +70,56 @@ const ms_compile_expr_t *ms_compile_context_find_expr(const ms_compile_context_t
     return NULL;
 }
 
+const ms_compile_expr_t *ms_compile_context_find_expr_by_lkey(
+    const ms_compile_context_t *ctx, uint32_t lkey)
+{
+    uint32_t index;
+
+    if (ctx == NULL || lkey >= ctx->logical_count ||
+        ctx->lkey_to_expr_indexes == NULL) {
+        return NULL;
+    }
+
+    index = ctx->lkey_to_expr_indexes[lkey];
+    if (index == UINT32_MAX || index >= ctx->expr_count ||
+        ctx->exprs[index].lkey != lkey) {
+        return NULL;
+    }
+    return &ctx->exprs[index];
+}
+
+const ms_compile_expr_t *ms_compile_context_find_expr_for_alias(
+    const ms_compile_context_t *ctx, uint32_t alias)
+{
+    if (ctx == NULL) {
+        return NULL;
+    }
+    if (ctx->ac_aliases_are_lkeys) {
+        return ms_compile_context_find_expr_by_lkey(ctx, alias);
+    }
+    return ms_compile_context_find_expr(ctx, alias);
+}
+
+int ms_compile_context_alias_to_lkey(const ms_compile_context_t *ctx,
+                                       uint32_t alias,
+                                       uint32_t *lkey)
+{
+    const ms_compile_expr_t *expr;
+
+    if (ctx == NULL || lkey == NULL) {
+        return MS_INVALID_PARA;
+    }
+    if (ctx->ac_aliases_are_lkeys) {
+        expr = ms_compile_context_find_expr_by_lkey(ctx, alias);
+        if (expr == NULL) {
+            return MS_FIND_FAIL;
+        }
+        *lkey = alias;
+        return MS_SUCCESS;
+    }
+    return ms_compile_context_find_lkey(ctx, alias, lkey);
+}
+
 uint32_t ms_compile_logical_byte_count(uint32_t logical_count)
 {
     return (logical_count + 8u - 1) / 8u;
@@ -81,6 +131,9 @@ static int ms_compile_context_reserve_lkey_relations(ms_compile_context_t *ctx,
     uint32_t **new_lkey_to_ckeys = NULL;
     uint32_t *new_counts = NULL;
     uint32_t *new_capacities = NULL;
+    uint32_t *new_expr_indexes = NULL;
+    uint32_t new_capacity;
+    uint32_t i;
 
     if (ctx == NULL) {
         return MS_INVALID_PARA;
@@ -88,11 +141,26 @@ static int ms_compile_context_reserve_lkey_relations(ms_compile_context_t *ctx,
     if (logical_count <= ctx->logical_count) {
         return MS_SUCCESS;
     }
+    if (logical_count <= ctx->lkey_to_ckey_capacity) {
+        ctx->logical_count = logical_count;
+        return MS_SUCCESS;
+    }
 
-    new_lkey_to_ckeys = (uint32_t **)ms_calloc(logical_count, sizeof(uint32_t *));
-    new_counts = (uint32_t *)ms_calloc(logical_count, sizeof(uint32_t));
-    new_capacities = (uint32_t *)ms_calloc(logical_count, sizeof(uint32_t));
-    if (new_lkey_to_ckeys == NULL || new_counts == NULL || new_capacities == NULL) {
+    new_capacity = ctx->lkey_to_ckey_capacity ? ctx->lkey_to_ckey_capacity * 2u : 4u;
+    while (new_capacity < logical_count) {
+        if (new_capacity > UINT32_MAX / 2u) {
+            new_capacity = logical_count;
+            break;
+        }
+        new_capacity *= 2u;
+    }
+
+    new_lkey_to_ckeys = (uint32_t **)ms_calloc(new_capacity, sizeof(uint32_t *));
+    new_counts = (uint32_t *)ms_calloc(new_capacity, sizeof(uint32_t));
+    new_capacities = (uint32_t *)ms_calloc(new_capacity, sizeof(uint32_t));
+    new_expr_indexes = (uint32_t *)ms_calloc(new_capacity, sizeof(uint32_t));
+    if (new_lkey_to_ckeys == NULL || new_counts == NULL ||
+        new_capacities == NULL || new_expr_indexes == NULL) {
         if (new_lkey_to_ckeys != NULL) {
             ms_free(new_lkey_to_ckeys);
         }
@@ -102,7 +170,13 @@ static int ms_compile_context_reserve_lkey_relations(ms_compile_context_t *ctx,
         if (new_capacities != NULL) {
             ms_free(new_capacities);
         }
+        if (new_expr_indexes != NULL) {
+            ms_free(new_expr_indexes);
+        }
         return MS_MALLOC_FAIL;
+    }
+    for (i = 0; i < new_capacity; i++) {
+        new_expr_indexes[i] = UINT32_MAX;
     }
 
     if (ctx->lkey_to_ckeys != NULL) {
@@ -117,11 +191,18 @@ static int ms_compile_context_reserve_lkey_relations(ms_compile_context_t *ctx,
         (void)memcpy(new_capacities, ctx->lkey_to_ckey_capacities, ctx->logical_count * sizeof(uint32_t));
         ms_free(ctx->lkey_to_ckey_capacities);
     }
+    if (ctx->lkey_to_expr_indexes != NULL) {
+        (void)memcpy(new_expr_indexes, ctx->lkey_to_expr_indexes,
+                     ctx->logical_count * sizeof(uint32_t));
+        ms_free(ctx->lkey_to_expr_indexes);
+    }
 
     ctx->lkey_to_ckeys = new_lkey_to_ckeys;
     ctx->lkey_to_ckey_counts = new_counts;
     ctx->lkey_to_ckey_capacities = new_capacities;
+    ctx->lkey_to_expr_indexes = new_expr_indexes;
     ctx->logical_count = logical_count;
+    ctx->lkey_to_ckey_capacity = new_capacity;
     return MS_SUCCESS;
 }
 
@@ -341,6 +422,32 @@ static int ms_compile_context_reserve_combs(ms_compile_context_t *ctx)
     return MS_SUCCESS;
 }
 
+static int ms_compile_context_reserve_final_ckeys(ms_compile_context_t *ctx)
+{
+    uint32_t *final_ckeys = NULL;
+    uint32_t new_capacity;
+
+    if (ctx->final_ckey_count < ctx->final_ckey_capacity) {
+        return MS_SUCCESS;
+    }
+
+    new_capacity = ctx->final_ckey_capacity ? ctx->final_ckey_capacity * 2 : 4;
+    final_ckeys = (uint32_t *)ms_calloc(new_capacity, sizeof(uint32_t));
+    if (final_ckeys == NULL) {
+        return MS_MALLOC_FAIL;
+    }
+
+    if (ctx->final_ckeys != NULL) {
+        (void)memcpy(final_ckeys, ctx->final_ckeys,
+                     ctx->final_ckey_count * sizeof(uint32_t));
+        ms_free(ctx->final_ckeys);
+    }
+
+    ctx->final_ckeys = final_ckeys;
+    ctx->final_ckey_capacity = new_capacity;
+    return MS_SUCCESS;
+}
+
 int ms_compile_context_add_expr(ms_compile_context_t *ctx,
                                   uint32_t id,
                                   uint32_t flags,
@@ -351,10 +458,6 @@ int ms_compile_context_add_expr(ms_compile_context_t *ctx,
         return ret;
     }
 
-    ctx->exprs[ctx->expr_count].id = id;
-    ctx->exprs[ctx->expr_count].flags = flags;
-    ctx->exprs[ctx->expr_count].lkey = lkey;
-    ctx->expr_count++;
     if (ctx->logical_count <= lkey) {
         ret = ms_compile_context_reserve_lkey_relations(ctx, lkey + 1);
         if (ret != MS_SUCCESS) {
@@ -362,6 +465,16 @@ int ms_compile_context_add_expr(ms_compile_context_t *ctx,
         }
         ctx->logical_count = lkey + 1;
     }
+    if (ctx->lkey_to_expr_indexes == NULL ||
+        ctx->lkey_to_expr_indexes[lkey] != UINT32_MAX) {
+        return MS_INVALID_PARA;
+    }
+
+    ctx->exprs[ctx->expr_count].id = id;
+    ctx->exprs[ctx->expr_count].flags = flags;
+    ctx->exprs[ctx->expr_count].lkey = lkey;
+    ctx->lkey_to_expr_indexes[lkey] = ctx->expr_count;
+    ctx->expr_count++;
     return MS_SUCCESS;
 }
 
@@ -398,6 +511,12 @@ int ms_compile_context_add_comb(ms_compile_context_t *ctx,
     if (ret != MS_SUCCESS) {
         return ret;
     }
+    if (can_match_without_active_lkey) {
+        ret = ms_compile_context_reserve_final_ckeys(ctx);
+        if (ret != MS_SUCCESS) {
+            return ret;
+        }
+    }
 
     if ((flags & MS_FLAG_SINGLEMATCH) != 0) {
         ekey = ctx->ekey_count++;
@@ -431,6 +550,9 @@ int ms_compile_context_add_comb(ms_compile_context_t *ctx,
             ctx->ekey_count--;
         }
         return ret;
+    }
+    if (can_match_without_active_lkey) {
+        ctx->final_ckeys[ctx->final_ckey_count++] = ckey;
     }
     (void)memset(tree, 0, sizeof(*tree));
     tree->result = UINT32_MAX;
@@ -481,6 +603,22 @@ static void ms_compile_context_reassign_comb_keys(ms_compile_context_t *ctx)
     ctx->ekey_count = ekey;
 }
 
+static void ms_compile_context_rebuild_final_ckeys(ms_compile_context_t *ctx)
+{
+    uint32_t i;
+
+    if (ctx == NULL) {
+        return;
+    }
+
+    ctx->final_ckey_count = 0;
+    for (i = 0; i < ctx->comb_count; i++) {
+        if (ctx->combs[i].can_match_without_active_lkey) {
+            ctx->final_ckeys[ctx->final_ckey_count++] = ctx->combs[i].ckey;
+        }
+    }
+}
+
 static void ms_compile_context_clear_lkey_relations(ms_compile_context_t *ctx)
 {
     uint32_t i;
@@ -516,6 +654,7 @@ static int ms_compile_context_rebuild_comb_relations(ms_compile_context_t *ctx)
 
     ms_compile_context_clear_lkey_relations(ctx);
     ms_compile_context_reassign_comb_keys(ctx);
+    ms_compile_context_rebuild_final_ckeys(ctx);
     for (i = 0; i < ctx->comb_count; i++) {
         ret = ms_compile_context_add_comb_relations(ctx, &ctx->combs[i].tree,
                                                       i, ctx->combs[i].lkey_start);
@@ -605,6 +744,17 @@ static int ms_compile_context_remove_expr_id(ms_compile_context_t *ctx, uint32_t
         }
         ctx->expr_count--;
         (void)memset(&ctx->exprs[ctx->expr_count], 0, sizeof(ctx->exprs[ctx->expr_count]));
+        if (ctx->lkey_to_expr_indexes != NULL) {
+            uint32_t key;
+
+            ctx->lkey_to_expr_indexes[lkey] = UINT32_MAX;
+            for (key = 0; key < ctx->logical_count; key++) {
+                if (ctx->lkey_to_expr_indexes[key] != UINT32_MAX &&
+                    ctx->lkey_to_expr_indexes[key] > i) {
+                    ctx->lkey_to_expr_indexes[key]--;
+                }
+            }
+        }
         return MS_SUCCESS;
     }
 
@@ -731,6 +881,12 @@ void ms_compile_context_free(ms_compile_context_t *ctx)
     }
     if (ctx->lkey_to_ckey_capacities != NULL) {
         ms_free(ctx->lkey_to_ckey_capacities);
+    }
+    if (ctx->lkey_to_expr_indexes != NULL) {
+        ms_free(ctx->lkey_to_expr_indexes);
+    }
+    if (ctx->final_ckeys != NULL) {
+        ms_free(ctx->final_ckeys);
     }
 
     ms_free(ctx);

@@ -6,11 +6,62 @@
 
 #include "ms.h"
 #include "ms_ac.h"
+#include "ms_acdb.h"
 #include "ms_allocator.h"
 #include "ms_runtime.h"
 #include "ms_rule_internal.h"
 #include "ms_stream_internal.h"
 #include "expr/ms_expr_internal.h"
+
+static void ms_stream_dirty_bytes_destroy(ms_stream_dirty_bytes_t *dirty)
+{
+    if (dirty == NULL) {
+        return;
+    }
+
+    ms_stream_free(dirty->marked);
+    ms_stream_free(dirty->indexes);
+    (void)memset(dirty, 0, sizeof(*dirty));
+}
+
+static void ms_stream_dirty_bytes_clear(ms_stream_dirty_bytes_t *dirty,
+                                        uint8_t *vector)
+{
+    uint32_t i;
+
+    if (dirty == NULL || vector == NULL) {
+        return;
+    }
+    for (i = 0; i < dirty->count; i++) {
+        uint32_t index = dirty->indexes[i];
+
+        if (index < dirty->byte_count) {
+            vector[index] = 0;
+            dirty->marked[index] = 0;
+        }
+    }
+    dirty->count = 0;
+}
+
+static void ms_stream_dirty_state_destroy(ms_stream_t *stream)
+{
+    if (stream == NULL) {
+        return;
+    }
+    ms_stream_dirty_bytes_destroy(&stream->logical_dirty);
+    ms_stream_dirty_bytes_destroy(&stream->combination_dirty);
+    ms_stream_dirty_bytes_destroy(&stream->exhaustion_dirty);
+}
+
+static void ms_stream_dirty_state_clear(ms_stream_t *stream)
+{
+    ms_stream_dirty_bytes_clear(&stream->logical_dirty,
+                                stream->logical_vector);
+    ms_stream_dirty_bytes_clear(&stream->combination_dirty,
+                                stream->combination_vector);
+    ms_stream_dirty_bytes_clear(&stream->exhaustion_dirty,
+                                stream->exhaustion_vector);
+}
 
 static int ms_open_stream_view(const ms_database_t *database,
                                  ms_handler_t *legacy_handler,
@@ -18,7 +69,6 @@ static int ms_open_stream_view(const ms_database_t *database,
                                  ms_stream_t **stream)
 {
     int ret;
-    ACAutomaton *automaton;
     ms_stream_t *s = NULL;
 
     if (db_view == NULL || stream == NULL || *stream != NULL) {
@@ -34,12 +84,16 @@ static int ms_open_stream_view(const ms_database_t *database,
         return MS_MALLOC_FAIL;
     }
 
-    automaton = (ACAutomaton *)db_view->ms_matcher;
     s->database = database;
     s->legacy_handler = legacy_handler;
     s->database_view = *db_view;
-    s->automaton = automaton;
-    s->generation = automaton->generation;
+    if (db_view->backend == MS_DATABASE_BACKEND_COMPACT_AC) {
+        s->acdb = (const ms_acdb_t *)db_view->ms_matcher;
+        s->generation = ms_acdb_generation(s->acdb);
+    } else {
+        s->automaton = (ACAutomaton *)db_view->ms_matcher;
+        s->generation = s->automaton->generation;
+    }
     ret = ms_compile_stream_state_init(&s->database_view,
                                          &s->logical_vector,
                                          &s->logical_count,
@@ -165,11 +219,15 @@ int ms_scan_rule_stream(ms_stream_t *stream, const uint8_t *data, uint32_t len)
     uint32_t id_capacity;
     int ret;
 
-    if (stream == NULL || stream->automaton == NULL || data == NULL) {
+    if (stream == NULL ||
+        (stream->automaton == NULL && stream->acdb == NULL) || data == NULL) {
         return MS_INVALID_PARA;
     }
 
-    if (stream->generation != stream->automaton->generation) {
+    if ((stream->automaton != NULL &&
+         stream->generation != stream->automaton->generation) ||
+        (stream->acdb != NULL &&
+         stream->generation != ms_acdb_generation(stream->acdb))) {
         return MS_STREAM_STALE;
     }
 
@@ -197,12 +255,16 @@ __attribute__((visibility("default")))
 int ms_scan_expr_stream(ms_stream_t *stream, const uint8_t *data, uint32_t len,
                           uint32_t *ids, uint32_t *id_count, uint32_t id_capacity)
 {
-    if (stream == NULL || stream->automaton == NULL ||
+    if (stream == NULL ||
+        (stream->automaton == NULL && stream->acdb == NULL) ||
         data == NULL || id_count == NULL || (id_capacity != 0 && ids == NULL)) {
         return MS_INVALID_PARA;
     }
 
-    if (stream->generation != stream->automaton->generation) {
+    if ((stream->automaton != NULL &&
+         stream->generation != stream->automaton->generation) ||
+        (stream->acdb != NULL &&
+         stream->generation != ms_acdb_generation(stream->acdb))) {
         return MS_STREAM_STALE;
     }
 
@@ -225,12 +287,16 @@ int ms_scan_expr_stream_flush(ms_stream_t *stream,
                                 uint32_t *id_count,
                                 uint32_t id_capacity)
 {
-    if (stream == NULL || stream->automaton == NULL ||
+    if (stream == NULL ||
+        (stream->automaton == NULL && stream->acdb == NULL) ||
         id_count == NULL || (id_capacity != 0 && ids == NULL)) {
         return MS_INVALID_PARA;
     }
 
-    if (stream->generation != stream->automaton->generation) {
+    if ((stream->automaton != NULL &&
+         stream->generation != stream->automaton->generation) ||
+        (stream->acdb != NULL &&
+         stream->generation != ms_acdb_generation(stream->acdb))) {
         return MS_STREAM_STALE;
     }
 
@@ -247,9 +313,9 @@ __attribute__((visibility("default")))
 int ms_reset_stream(ms_stream_t *stream)
 {
     int ret;
-    uint32_t bytes;
 
-    if (stream == NULL || stream->automaton == NULL) {
+    if (stream == NULL ||
+        (stream->automaton == NULL && stream->acdb == NULL)) {
         return MS_INVALID_PARA;
     }
 
@@ -260,6 +326,7 @@ int ms_reset_stream(ms_stream_t *stream)
             return MS_INVALID_PARA;
         }
 
+        ms_stream_dirty_state_destroy(stream);
         ms_compile_stream_state_destroy(stream->logical_vector,
                                           stream->combination_vector,
                                           stream->exhaustion_vector);
@@ -271,6 +338,7 @@ int ms_reset_stream(ms_stream_t *stream)
         stream->exhaustion_count = 0;
         ms_database_from_handler(&stream->database_view, stream->legacy_handler);
         stream->automaton = (ACAutomaton *)stream->database_view.ms_matcher;
+        stream->acdb = NULL;
         ret = ms_compile_stream_state_init(&stream->database_view,
                                              &stream->logical_vector,
                                              &stream->logical_count,
@@ -287,20 +355,11 @@ int ms_reset_stream(ms_stream_t *stream)
 
     stream->node_index = 0;
     stream->offset = 0;
-    stream->generation = stream->automaton->generation;
+    stream->generation = stream->acdb != NULL
+                             ? ms_acdb_generation(stream->acdb)
+                             : stream->automaton->generation;
 
-    bytes = ms_compile_logical_byte_count(stream->logical_count);
-    if (bytes != 0) {
-        (void)memset(stream->logical_vector, 0, bytes);
-    }
-    bytes = ms_compile_logical_byte_count(stream->combination_count);
-    if (bytes != 0) {
-        (void)memset(stream->combination_vector, 0, bytes);
-    }
-    bytes = ms_compile_logical_byte_count(stream->exhaustion_count);
-    if (bytes != 0) {
-        (void)memset(stream->exhaustion_vector, 0, bytes);
-    }
+    ms_stream_dirty_state_clear(stream);
 
     return MS_SUCCESS;
 }
@@ -312,6 +371,7 @@ int ms_close_handler_stream(ms_stream_t *stream)
         return MS_INVALID_PARA;
     }
 
+    ms_stream_dirty_state_destroy(stream);
     ms_compile_stream_state_destroy(stream->logical_vector,
                                       stream->combination_vector,
                                       stream->exhaustion_vector);

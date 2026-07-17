@@ -5,11 +5,21 @@
 
 #include "ms_database.h"
 #include "ms_ac.h"
+#include "ms_acdb.h"
 #include "ms_allocator.h"
 #include "ms_runtime.h"
 #include "ms_database_internal.h"
 #include "ms_stream_internal.h"
 #include "expr/ms_expr_internal.h"
+
+typedef struct {
+    uint8_t *marked;
+    uint32_t byte_count;
+    uint32_t *indexes;
+    uint8_t *original_values;
+    uint32_t count;
+    uint32_t capacity;
+} ms_state_change_log_t;
 
 struct ms_scratch {
     const ms_database_t *db;
@@ -24,7 +34,140 @@ struct ms_scratch {
     uint32_t capture_count;
     uint32_t capture_capacity;
     ms_compile_runtime_workspace_t workspace;
+    ms_state_change_log_t logical_changes;
+    ms_state_change_log_t combination_changes;
+    ms_state_change_log_t exhaustion_changes;
+    ms_state_change_log_t result_seen_changes;
+    bool block_state_dirty;
 };
+
+static int ms_scratch_track_block_results(const ms_compile_context_t *ctx,
+                                          ms_scratch_t *scratch);
+static int ms_scratch_track_result_key(ms_scratch_t *scratch, uint32_t key);
+
+static void ms_state_change_log_destroy(ms_state_change_log_t *log)
+{
+    if (log == NULL) {
+        return;
+    }
+    ms_scratch_free(log->marked);
+    ms_scratch_free(log->indexes);
+    ms_scratch_free(log->original_values);
+    (void)memset(log, 0, sizeof(*log));
+}
+
+static int ms_state_change_log_reserve(ms_state_change_log_t *log)
+{
+    uint32_t new_capacity;
+    uint32_t *new_indexes;
+    uint8_t *new_values;
+
+    if (log->count < log->capacity) {
+        return MS_SUCCESS;
+    }
+    new_capacity = log->capacity == 0 ? 64u : log->capacity * 2u;
+    if (new_capacity < log->capacity || new_capacity > log->byte_count) {
+        new_capacity = log->byte_count;
+    }
+    if (new_capacity <= log->capacity) {
+        return MS_INVALID_PARA;
+    }
+
+    new_indexes = (uint32_t *)ms_scratch_calloc(new_capacity,
+                                                 sizeof(uint32_t));
+    new_values = (uint8_t *)ms_scratch_calloc(new_capacity, sizeof(uint8_t));
+    if (new_indexes == NULL || new_values == NULL) {
+        ms_scratch_free(new_indexes);
+        ms_scratch_free(new_values);
+        return MS_MALLOC_FAIL;
+    }
+    if (log->count != 0) {
+        (void)memcpy(new_indexes, log->indexes,
+                     log->count * sizeof(uint32_t));
+        (void)memcpy(new_values, log->original_values,
+                     log->count * sizeof(uint8_t));
+    }
+    ms_scratch_free(log->indexes);
+    ms_scratch_free(log->original_values);
+    log->indexes = new_indexes;
+    log->original_values = new_values;
+    log->capacity = new_capacity;
+    return MS_SUCCESS;
+}
+
+static int ms_state_change_log_mark(ms_state_change_log_t *log,
+                                    uint8_t *vector, uint32_t bit_count,
+                                    uint32_t key)
+{
+    uint32_t byte_count = ms_compile_logical_byte_count(bit_count);
+    uint32_t byte_index;
+    int ret;
+
+    if (log == NULL || vector == NULL || key >= bit_count) {
+        return MS_INVALID_PARA;
+    }
+    if (log->marked == NULL) {
+        log->marked = (uint8_t *)ms_scratch_calloc(byte_count, sizeof(uint8_t));
+        if (log->marked == NULL) {
+            return MS_MALLOC_FAIL;
+        }
+        log->byte_count = byte_count;
+    } else if (log->byte_count != byte_count) {
+        return MS_INVALID_PARA;
+    }
+
+    byte_index = key / 8u;
+    if (log->marked[byte_index] != 0) {
+        return MS_SUCCESS;
+    }
+    ret = ms_state_change_log_reserve(log);
+    if (ret != MS_SUCCESS) {
+        return ret;
+    }
+    log->marked[byte_index] = 1;
+    log->indexes[log->count] = byte_index;
+    log->original_values[log->count] = vector[byte_index];
+    log->count++;
+    return MS_SUCCESS;
+}
+
+static void ms_state_change_log_finish(ms_state_change_log_t *log,
+                                       uint8_t *vector, bool restore)
+{
+    uint32_t i;
+
+    if (log == NULL) {
+        return;
+    }
+    for (i = 0; i < log->count; i++) {
+        uint32_t index = log->indexes[i];
+
+        if (restore && vector != NULL) {
+            vector[index] = log->original_values[i];
+        }
+        log->marked[index] = 0;
+    }
+    log->count = 0;
+}
+
+static void ms_state_change_log_clear_vector(ms_state_change_log_t *log,
+                                             uint8_t *vector)
+{
+    uint32_t i;
+
+    if (log == NULL) {
+        return;
+    }
+    for (i = 0; i < log->count; i++) {
+        uint32_t index = log->indexes[i];
+
+        if (vector != NULL) {
+            vector[index] = 0;
+        }
+        log->marked[index] = 0;
+    }
+    log->count = 0;
+}
 
 static void ms_scratch_workspace_destroy(ms_compile_runtime_workspace_t *workspace)
 {
@@ -36,6 +179,7 @@ static void ms_scratch_workspace_destroy(ms_compile_runtime_workspace_t *workspa
     ms_scratch_free(workspace->active_ckey_vector);
     ms_scratch_free(workspace->active_ckeys);
     ms_scratch_free(workspace->result_ids);
+    ms_scratch_free(workspace->result_seen_vector);
     ms_scratch_free(workspace->new_combination_indexes);
     ms_scratch_free(workspace->new_exhaustion_indexes);
     (void)memset(workspace, 0, sizeof(*workspace));
@@ -46,6 +190,7 @@ static int ms_scratch_workspace_init(const ms_compile_context_t *ctx,
 {
     uint32_t logical_bytes;
     uint32_t active_bytes;
+    uint32_t result_bytes;
 
     if (workspace == NULL) {
         return MS_INVALID_PARA;
@@ -53,7 +198,8 @@ static int ms_scratch_workspace_init(const ms_compile_context_t *ctx,
     if (ctx == NULL) {
         return MS_SUCCESS;
     }
-    if (ctx->expr_count > UINT32_MAX - ctx->comb_count) {
+    if (ctx->expr_count > UINT32_MAX - ctx->comb_count ||
+        ctx->logical_count > UINT32_MAX - ctx->comb_count) {
         return MS_INVALID_PARA;
     }
 
@@ -61,10 +207,11 @@ static int ms_scratch_workspace_init(const ms_compile_context_t *ctx,
     active_bytes = ms_compile_logical_byte_count(ctx->comb_count);
     workspace->active_ckey_capacity = ctx->comb_count;
     workspace->result_capacity = ctx->expr_count + ctx->comb_count;
+    workspace->result_seen_count = ctx->logical_count + ctx->comb_count;
     workspace->new_combination_capacity = ctx->comb_count;
     workspace->new_exhaustion_capacity = ctx->ekey_count;
 
-    if (logical_bytes != 0) {
+    if (ctx->comb_count != 0 && logical_bytes != 0) {
         workspace->final_logical_vector = (uint8_t *)ms_scratch_calloc(
             logical_bytes, sizeof(uint8_t));
     }
@@ -82,17 +229,25 @@ static int ms_scratch_workspace_init(const ms_compile_context_t *ctx,
         workspace->result_ids = (uint32_t *)ms_scratch_calloc(
             workspace->result_capacity, sizeof(uint32_t));
     }
+    if (workspace->result_seen_count != 0) {
+        result_bytes = ms_compile_logical_byte_count(workspace->result_seen_count);
+        workspace->result_seen_vector = (uint8_t *)ms_scratch_calloc(
+            result_bytes, sizeof(uint8_t));
+    }
     if (ctx->ekey_count != 0) {
         workspace->new_exhaustion_indexes = (uint32_t *)ms_scratch_calloc(
             ctx->ekey_count, sizeof(uint32_t));
     }
 
-    if ((logical_bytes != 0 && workspace->final_logical_vector == NULL) ||
+    if ((ctx->comb_count != 0 && logical_bytes != 0 &&
+         workspace->final_logical_vector == NULL) ||
         (active_bytes != 0 && workspace->active_ckey_vector == NULL) ||
         (ctx->comb_count != 0 &&
          (workspace->active_ckeys == NULL ||
           workspace->new_combination_indexes == NULL)) ||
         (workspace->result_capacity != 0 && workspace->result_ids == NULL) ||
+        (workspace->result_seen_count != 0 &&
+         workspace->result_seen_vector == NULL) ||
         (ctx->ekey_count != 0 && workspace->new_exhaustion_indexes == NULL)) {
         ms_scratch_workspace_destroy(workspace);
         return MS_MALLOC_FAIL;
@@ -160,18 +315,104 @@ int MS_CDECL ms_free_scratch(ms_scratch_t *scratch)
     if (scratch->offsets != NULL) {
         ms_scratch_free(scratch->offsets);
     }
+    ms_state_change_log_destroy(&scratch->logical_changes);
+    ms_state_change_log_destroy(&scratch->combination_changes);
+    ms_state_change_log_destroy(&scratch->exhaustion_changes);
+    ms_state_change_log_destroy(&scratch->result_seen_changes);
     ms_scratch_workspace_destroy(&scratch->workspace);
     ms_scratch_free(scratch);
     return MS_SUCCESS;
 }
 
+static void ms_scratch_clear_key(uint8_t *vector, uint32_t count,
+                                 uint32_t key)
+{
+    if (vector != NULL && key < count) {
+        vector[key / 8u] &= (uint8_t)~(1u << (key % 8u));
+    }
+}
+
+static void ms_scratch_clear_combination_state(
+    ms_scratch_t *scratch, const ms_compile_context_t *ctx, uint32_t ckey)
+{
+    const ms_compile_comb_t *comb;
+    uint32_t i;
+
+    if (ckey >= ctx->comb_count) {
+        return;
+    }
+    comb = &ctx->combs[ckey];
+    for (i = 0; i < comb->tree.op_count; i++) {
+        uint32_t lkey = comb->tree.ops[i].id;
+
+        ms_scratch_clear_key(scratch->logical_vector,
+                             scratch->logical_count, lkey);
+        ms_scratch_clear_key(scratch->workspace.final_logical_vector,
+                             scratch->logical_count, lkey);
+    }
+    ms_scratch_clear_key(scratch->combination_vector,
+                         scratch->combination_count, ckey);
+    if (comb->ekey != UINT32_MAX) {
+        ms_scratch_clear_key(scratch->exhaustion_vector,
+                             scratch->exhaustion_count, comb->ekey);
+    }
+}
+
+static void ms_scratch_clear_compact_ac_state(
+    ms_scratch_t *scratch, const ms_compile_context_t *ctx)
+{
+    uint32_t i;
+
+    for (i = 0; i < scratch->capture_count; i++) {
+        uint32_t lkey;
+        uint32_t j;
+
+        if (ms_compile_context_alias_to_lkey(ctx, scratch->aliases[i],
+                                             &lkey) != MS_SUCCESS ||
+            lkey >= ctx->logical_count) {
+            continue;
+        }
+        ms_scratch_clear_key(scratch->logical_vector,
+                             scratch->logical_count, lkey);
+        ms_scratch_clear_key(scratch->workspace.final_logical_vector,
+                             scratch->logical_count, lkey);
+        for (j = 0; j < ctx->lkey_to_ckey_counts[lkey]; j++) {
+            ms_scratch_clear_combination_state(
+                scratch, ctx, ctx->lkey_to_ckeys[lkey][j]);
+        }
+    }
+    for (i = 0; i < ctx->final_ckey_count; i++) {
+        ms_scratch_clear_combination_state(scratch, ctx,
+                                           ctx->final_ckeys[i]);
+    }
+}
+
 static void ms_scratch_clear_state(ms_scratch_t *scratch)
 {
+    const ms_compile_context_t *ctx =
+        (const ms_compile_context_t *)scratch->db->ms_compile_ctx;
     uint32_t bytes;
 
-    bytes = ms_compile_logical_byte_count(scratch->logical_count);
-    if (scratch->logical_vector != NULL && bytes != 0) {
-        (void)memset(scratch->logical_vector, 0, bytes);
+    ms_state_change_log_clear_vector(
+        &scratch->result_seen_changes,
+        scratch->workspace.result_seen_vector);
+
+    if (ctx != NULL && ctx->ac_aliases_are_lkeys) {
+        ms_scratch_clear_compact_ac_state(scratch, ctx);
+        return;
+    } else {
+        bytes = ms_compile_logical_byte_count(scratch->logical_count);
+        if (scratch->logical_vector != NULL && bytes != 0) {
+            (void)memset(scratch->logical_vector, 0, bytes);
+        }
+        if (scratch->workspace.final_logical_vector != NULL && bytes != 0) {
+            (void)memset(scratch->workspace.final_logical_vector, 0, bytes);
+        }
+        bytes = ms_compile_logical_byte_count(
+            scratch->workspace.result_seen_count);
+        if (scratch->workspace.result_seen_vector != NULL && bytes != 0) {
+            (void)memset(scratch->workspace.result_seen_vector, 0, bytes);
+        }
     }
 
     bytes = ms_compile_logical_byte_count(scratch->combination_count);
@@ -183,6 +424,19 @@ static void ms_scratch_clear_state(ms_scratch_t *scratch)
     if (scratch->exhaustion_vector != NULL && bytes != 0) {
         (void)memset(scratch->exhaustion_vector, 0, bytes);
     }
+}
+
+static void ms_scratch_begin_scan(ms_scratch_t *scratch)
+{
+    if (scratch->block_state_dirty) {
+        ms_scratch_clear_state(scratch);
+    } else {
+        ms_state_change_log_clear_vector(
+            &scratch->result_seen_changes,
+            scratch->workspace.result_seen_vector);
+    }
+    scratch->block_state_dirty = false;
+    scratch->capture_count = 0;
 }
 
 static int ms_scratch_capture_reserve(ms_scratch_t *scratch)
@@ -268,16 +522,29 @@ int MS_CDECL ms_scan_database(const ms_database_t *db,
     }
 
     *id_count = 0;
-    ms_scratch_clear_state(scratch);
-    scratch->capture_count = 0;
-    scan_ret = ac_automaton_match_state_cb((ACAutomaton *)db->ms_matcher,
-                                           data, len, &node_index,
-                                           ms_scratch_capture_alias,
-                                           scratch);
+    ms_scratch_begin_scan(scratch);
+    if (db->backend == MS_DATABASE_BACKEND_COMPACT_AC) {
+        scan_ret = ms_acdb_match_state_cb((const ms_acdb_t *)db->ms_matcher,
+                                          data, len, &node_index,
+                                          ms_scratch_capture_alias,
+                                          scratch);
+    } else {
+        scan_ret = ac_automaton_match_state_cb((ACAutomaton *)db->ms_matcher,
+                                               data, len, &node_index,
+                                               ms_scratch_capture_alias,
+                                               scratch);
+    }
     if (scan_ret != MS_SUCCESS && scan_ret != MS_FIND_FAIL) {
         return scan_ret;
     }
 
+    ret = ms_scratch_track_block_results(
+        (const ms_compile_context_t *)db->ms_compile_ctx, scratch);
+    if (ret != MS_SUCCESS) {
+        return ret;
+    }
+
+    scratch->block_state_dirty = true;
     ret = ms_compile_eval_stream_matches_with_workspace(
         db,
         scratch->aliases,
@@ -301,49 +568,281 @@ int MS_CDECL ms_scan_database(const ms_database_t *db,
     return ret;
 }
 
-static int ms_scratch_load_stream_state(const ms_stream_t *stream,
-                                          ms_scratch_t *scratch)
+static int ms_stream_dirty_bytes_reserve(ms_stream_dirty_bytes_t *dirty)
 {
-    uint32_t bytes;
+    uint32_t new_capacity;
+    uint32_t *new_indexes;
 
-    if (stream->logical_count != scratch->logical_count ||
-        stream->combination_count != scratch->combination_count ||
-        stream->exhaustion_count != scratch->exhaustion_count) {
+    if (dirty->count < dirty->capacity) {
+        return MS_SUCCESS;
+    }
+    new_capacity = dirty->capacity == 0 ? 64u : dirty->capacity * 2u;
+    if (new_capacity < dirty->capacity || new_capacity > dirty->byte_count) {
+        new_capacity = dirty->byte_count;
+    }
+    if (new_capacity <= dirty->capacity) {
         return MS_INVALID_PARA;
     }
 
-    bytes = ms_compile_logical_byte_count(stream->logical_count);
-    if (bytes != 0) {
-        (void)memcpy(scratch->logical_vector, stream->logical_vector, bytes);
+    new_indexes = (uint32_t *)ms_stream_calloc(new_capacity,
+                                                sizeof(uint32_t));
+    if (new_indexes == NULL) {
+        return MS_MALLOC_FAIL;
     }
-    bytes = ms_compile_logical_byte_count(stream->combination_count);
-    if (bytes != 0) {
-        (void)memcpy(scratch->combination_vector, stream->combination_vector, bytes);
+    if (dirty->count != 0) {
+        (void)memcpy(new_indexes, dirty->indexes,
+                     dirty->count * sizeof(uint32_t));
     }
-    bytes = ms_compile_logical_byte_count(stream->exhaustion_count);
-    if (bytes != 0) {
-        (void)memcpy(scratch->exhaustion_vector, stream->exhaustion_vector, bytes);
+    ms_stream_free(dirty->indexes);
+    dirty->indexes = new_indexes;
+    dirty->capacity = new_capacity;
+    return MS_SUCCESS;
+}
+
+static int ms_stream_dirty_bytes_add(ms_stream_dirty_bytes_t *dirty,
+                                     uint32_t byte_count,
+                                     uint32_t byte_index)
+{
+    int ret;
+
+    if (dirty->marked == NULL) {
+        dirty->marked = (uint8_t *)ms_stream_calloc(byte_count,
+                                                    sizeof(uint8_t));
+        if (dirty->marked == NULL) {
+            return MS_MALLOC_FAIL;
+        }
+        dirty->byte_count = byte_count;
+    } else if (dirty->byte_count != byte_count) {
+        return MS_INVALID_PARA;
+    }
+    if (byte_index >= byte_count) {
+        return MS_INVALID_PARA;
+    }
+    if (dirty->marked[byte_index] != 0) {
+        return MS_SUCCESS;
+    }
+    ret = ms_stream_dirty_bytes_reserve(dirty);
+    if (ret != MS_SUCCESS) {
+        return ret;
+    }
+    dirty->marked[byte_index] = 1;
+    dirty->indexes[dirty->count++] = byte_index;
+    return MS_SUCCESS;
+}
+
+static int ms_stream_dirty_bytes_add_log(ms_stream_dirty_bytes_t *dirty,
+                                         uint32_t bit_count,
+                                         const ms_state_change_log_t *log)
+{
+    uint32_t byte_count = ms_compile_logical_byte_count(bit_count);
+    uint32_t i;
+    int ret;
+
+    for (i = 0; i < log->count; i++) {
+        ret = ms_stream_dirty_bytes_add(dirty, byte_count, log->indexes[i]);
+        if (ret != MS_SUCCESS) {
+            return ret;
+        }
     }
     return MS_SUCCESS;
 }
 
-static void ms_scratch_commit_stream_state(ms_stream_t *stream,
-                                             const ms_scratch_t *scratch)
+static int ms_scratch_log_combination_state(ms_scratch_t *scratch,
+                                            ms_stream_t *stream,
+                                            const ms_compile_comb_t *comb)
 {
-    uint32_t bytes;
+    uint32_t i;
+    int ret;
 
-    bytes = ms_compile_logical_byte_count(stream->logical_count);
-    if (bytes != 0) {
-        (void)memcpy(stream->logical_vector, scratch->logical_vector, bytes);
+    if (comb == NULL || comb->ckey >= stream->combination_count) {
+        return MS_INVALID_PARA;
     }
-    bytes = ms_compile_logical_byte_count(stream->combination_count);
-    if (bytes != 0) {
-        (void)memcpy(stream->combination_vector, scratch->combination_vector, bytes);
+    for (i = 0; i < comb->tree.op_count; i++) {
+        ret = ms_state_change_log_mark(&scratch->logical_changes,
+                                       stream->logical_vector,
+                                       stream->logical_count,
+                                       comb->tree.ops[i].id);
+        if (ret != MS_SUCCESS) {
+            return ret;
+        }
     }
-    bytes = ms_compile_logical_byte_count(stream->exhaustion_count);
-    if (bytes != 0) {
-        (void)memcpy(stream->exhaustion_vector, scratch->exhaustion_vector, bytes);
+    ret = ms_state_change_log_mark(&scratch->combination_changes,
+                                   stream->combination_vector,
+                                   stream->combination_count, comb->ckey);
+    if (ret != MS_SUCCESS) {
+        return ret;
     }
+    if (comb->ekey != UINT32_MAX) {
+        ret = ms_state_change_log_mark(&scratch->exhaustion_changes,
+                                       stream->exhaustion_vector,
+                                       stream->exhaustion_count, comb->ekey);
+    }
+    return ret;
+}
+
+static int ms_scratch_prepare_stream_changes(ms_stream_t *stream,
+                                             ms_scratch_t *scratch,
+                                             bool final_flush)
+{
+    const ms_compile_context_t *ctx =
+        (const ms_compile_context_t *)stream->database_view.ms_compile_ctx;
+    uint32_t i;
+    int ret;
+
+    if (ctx == NULL) {
+        return MS_INVALID_PARA;
+    }
+    if (final_flush) {
+        for (i = 0; i < ctx->final_ckey_count; i++) {
+            uint32_t ckey = ctx->final_ckeys[i];
+
+            if (ckey >= ctx->comb_count) {
+                return MS_INVALID_PARA;
+            }
+            ret = ms_scratch_track_result_key(scratch,
+                                              ctx->logical_count + ckey);
+            if (ret == MS_SUCCESS) {
+                ret = ms_scratch_log_combination_state(scratch, stream,
+                                                       &ctx->combs[ckey]);
+            }
+            if (ret != MS_SUCCESS) {
+                return ret;
+            }
+        }
+        return MS_SUCCESS;
+    }
+
+    for (i = 0; i < scratch->capture_count; i++) {
+        uint32_t lkey;
+        uint32_t j;
+
+        ret = ms_compile_context_alias_to_lkey(ctx, scratch->aliases[i],
+                                               &lkey);
+        if (ret == MS_FIND_FAIL) {
+            continue;
+        }
+        if (ret != MS_SUCCESS || lkey >= ctx->logical_count) {
+            return ret == MS_SUCCESS ? MS_INVALID_PARA : ret;
+        }
+        ret = ms_scratch_track_result_key(scratch, lkey);
+        if (ret != MS_SUCCESS) {
+            return ret;
+        }
+        if (ctx->comb_count == 0) {
+            continue;
+        }
+        ret = ms_state_change_log_mark(&scratch->logical_changes,
+                                       stream->logical_vector,
+                                       stream->logical_count, lkey);
+        if (ret != MS_SUCCESS) {
+            return ret;
+        }
+        for (j = 0; j < ctx->lkey_to_ckey_counts[lkey]; j++) {
+            uint32_t ckey = ctx->lkey_to_ckeys[lkey][j];
+
+            if (ckey >= ctx->comb_count) {
+                return MS_INVALID_PARA;
+            }
+            ret = ms_scratch_track_result_key(scratch,
+                                              ctx->logical_count + ckey);
+            if (ret == MS_SUCCESS) {
+                ret = ms_scratch_log_combination_state(scratch, stream,
+                                                       &ctx->combs[ckey]);
+            }
+            if (ret != MS_SUCCESS) {
+                return ret;
+            }
+        }
+    }
+    return MS_SUCCESS;
+}
+
+static void ms_scratch_finish_stream_changes(ms_stream_t *stream,
+                                             ms_scratch_t *scratch,
+                                             bool restore)
+{
+    ms_state_change_log_finish(&scratch->logical_changes,
+                               stream->logical_vector, restore);
+    ms_state_change_log_finish(&scratch->combination_changes,
+                               stream->combination_vector, restore);
+    ms_state_change_log_finish(&scratch->exhaustion_changes,
+                               stream->exhaustion_vector, restore);
+}
+
+static int ms_scratch_commit_stream_changes(ms_stream_t *stream,
+                                            ms_scratch_t *scratch)
+{
+    int ret;
+
+    ret = ms_stream_dirty_bytes_add_log(&stream->logical_dirty,
+                                        stream->logical_count,
+                                        &scratch->logical_changes);
+    if (ret == MS_SUCCESS) {
+        ret = ms_stream_dirty_bytes_add_log(&stream->combination_dirty,
+                                            stream->combination_count,
+                                            &scratch->combination_changes);
+    }
+    if (ret == MS_SUCCESS) {
+        ret = ms_stream_dirty_bytes_add_log(&stream->exhaustion_dirty,
+                                            stream->exhaustion_count,
+                                            &scratch->exhaustion_changes);
+    }
+    ms_scratch_finish_stream_changes(stream, scratch, ret != MS_SUCCESS);
+    return ret;
+}
+
+static int ms_scratch_track_result_key(ms_scratch_t *scratch, uint32_t key)
+{
+    return ms_state_change_log_mark(
+        &scratch->result_seen_changes,
+        scratch->workspace.result_seen_vector,
+        scratch->workspace.result_seen_count, key);
+}
+
+static int ms_scratch_track_block_results(const ms_compile_context_t *ctx,
+                                          ms_scratch_t *scratch)
+{
+    uint32_t i;
+    int ret;
+
+    if (ctx == NULL) {
+        return MS_INVALID_PARA;
+    }
+    for (i = 0; i < scratch->capture_count; i++) {
+        uint32_t lkey;
+        uint32_t j;
+
+        if (ms_compile_context_alias_to_lkey(ctx, scratch->aliases[i],
+                                             &lkey) != MS_SUCCESS ||
+            lkey >= ctx->logical_count) {
+            continue;
+        }
+        ret = ms_scratch_track_result_key(scratch, lkey);
+        if (ret != MS_SUCCESS) {
+            return ret;
+        }
+        for (j = 0; j < ctx->lkey_to_ckey_counts[lkey]; j++) {
+            uint32_t ckey = ctx->lkey_to_ckeys[lkey][j];
+
+            if (ckey < ctx->comb_count) {
+                ret = ms_scratch_track_result_key(
+                    scratch, ctx->logical_count + ckey);
+                if (ret != MS_SUCCESS) {
+                    return ret;
+                }
+            }
+        }
+    }
+    for (i = 0; i < ctx->final_ckey_count; i++) {
+        if (ctx->final_ckeys[i] < ctx->comb_count) {
+            ret = ms_scratch_track_result_key(
+                scratch, ctx->logical_count + ctx->final_ckeys[i]);
+            if (ret != MS_SUCCESS) {
+                return ret;
+            }
+        }
+    }
+    return MS_SUCCESS;
 }
 
 static int ms_validate_database_stream_scratch(const ms_stream_t *stream,
@@ -351,7 +850,8 @@ static int ms_validate_database_stream_scratch(const ms_stream_t *stream,
 {
     const ms_database_t *expected_db;
 
-    if (stream == NULL || scratch == NULL || stream->automaton == NULL ||
+    if (stream == NULL || scratch == NULL ||
+        (stream->automaton == NULL && stream->acdb == NULL) ||
         stream->database_view.ms_compile_ctx == NULL) {
         return MS_INVALID_PARA;
     }
@@ -359,7 +859,10 @@ static int ms_validate_database_stream_scratch(const ms_stream_t *stream,
     if (scratch->db != expected_db) {
         return MS_INVALID_PARA;
     }
-    if (stream->generation != stream->automaton->generation) {
+    if ((stream->automaton != NULL &&
+         stream->generation != stream->automaton->generation) ||
+        (stream->acdb != NULL &&
+         stream->generation != ms_acdb_generation(stream->acdb))) {
         return MS_STREAM_STALE;
     }
     return MS_SUCCESS;
@@ -385,20 +888,28 @@ int MS_CDECL ms_scan_stream(ms_stream_t *stream,
     if (ret != MS_SUCCESS) {
         return ret;
     }
-    ret = ms_scratch_load_stream_state(stream, scratch);
-    if (ret != MS_SUCCESS) {
-        return ret;
-    }
-
     *id_count = 0;
-    scratch->capture_count = 0;
+    ms_scratch_begin_scan(scratch);
     next_node_index = stream->node_index;
-    scan_ret = ac_automaton_match_state_cb(stream->automaton, data, len,
-                                           &next_node_index,
-                                           ms_scratch_capture_alias,
-                                           scratch);
+    if (stream->acdb != NULL) {
+        scan_ret = ms_acdb_match_state_cb(stream->acdb, data, len,
+                                          &next_node_index,
+                                          ms_scratch_capture_alias,
+                                          scratch);
+    } else {
+        scan_ret = ac_automaton_match_state_cb(stream->automaton, data, len,
+                                               &next_node_index,
+                                               ms_scratch_capture_alias,
+                                               scratch);
+    }
     if (scan_ret != MS_SUCCESS && scan_ret != MS_FIND_FAIL) {
         return scan_ret;
+    }
+
+    ret = ms_scratch_prepare_stream_changes(stream, scratch, false);
+    if (ret != MS_SUCCESS) {
+        ms_scratch_finish_stream_changes(stream, scratch, false);
+        return ret;
     }
 
     ret = ms_compile_eval_stream_matches_with_workspace(
@@ -406,12 +917,12 @@ int MS_CDECL ms_scan_stream(ms_stream_t *stream,
         scratch->aliases,
         scratch->offsets,
         scratch->capture_count,
-        scratch->logical_vector,
-        scratch->logical_count,
-        scratch->combination_vector,
-        scratch->combination_count,
-        scratch->exhaustion_vector,
-        scratch->exhaustion_count,
+        stream->logical_vector,
+        stream->logical_count,
+        stream->combination_vector,
+        stream->combination_count,
+        stream->exhaustion_vector,
+        stream->exhaustion_count,
         stream->offset,
         stream->offset + len,
         false,
@@ -421,9 +932,17 @@ int MS_CDECL ms_scan_stream(ms_stream_t *stream,
         id_capacity,
         &scratch->workspace);
     if (ret == MS_SUCCESS || ret == MS_FIND_FAIL) {
+        int eval_ret = ret;
+        int commit_ret = ms_scratch_commit_stream_changes(stream, scratch);
+
+        if (commit_ret != MS_SUCCESS) {
+            return commit_ret;
+        }
         stream->node_index = next_node_index;
         stream->offset += len;
-        ms_scratch_commit_stream_state(stream, scratch);
+        ret = eval_ret;
+    } else {
+        ms_scratch_finish_stream_changes(stream, scratch, true);
     }
     return ret;
 }
@@ -444,23 +963,24 @@ int MS_CDECL ms_flush_stream(ms_stream_t *stream,
     if (ret != MS_SUCCESS) {
         return ret;
     }
-    ret = ms_scratch_load_stream_state(stream, scratch);
+    *id_count = 0;
+    ms_scratch_begin_scan(scratch);
+    ret = ms_scratch_prepare_stream_changes(stream, scratch, true);
     if (ret != MS_SUCCESS) {
+        ms_scratch_finish_stream_changes(stream, scratch, false);
         return ret;
     }
-
-    *id_count = 0;
     ret = ms_compile_eval_stream_matches_with_workspace(
         &stream->database_view,
         NULL,
         NULL,
         0,
-        scratch->logical_vector,
-        scratch->logical_count,
-        scratch->combination_vector,
-        scratch->combination_count,
-        scratch->exhaustion_vector,
-        scratch->exhaustion_count,
+        stream->logical_vector,
+        stream->logical_count,
+        stream->combination_vector,
+        stream->combination_count,
+        stream->exhaustion_vector,
+        stream->exhaustion_count,
         stream->offset,
         stream->offset,
         true,
@@ -470,7 +990,15 @@ int MS_CDECL ms_flush_stream(ms_stream_t *stream,
         id_capacity,
         &scratch->workspace);
     if (ret == MS_SUCCESS || ret == MS_FIND_FAIL) {
-        ms_scratch_commit_stream_state(stream, scratch);
+        int eval_ret = ret;
+        int commit_ret = ms_scratch_commit_stream_changes(stream, scratch);
+
+        if (commit_ret != MS_SUCCESS) {
+            return commit_ret;
+        }
+        ret = eval_ret;
+    } else {
+        ms_scratch_finish_stream_changes(stream, scratch, true);
     }
     return ret;
 }
