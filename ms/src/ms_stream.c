@@ -176,7 +176,7 @@ int ms_open_handler_stream(ms_handler_t *handler, ms_stream_t **stream)
 }
 
 __attribute__((visibility("default")))
-int MS_CDECL ms_open_stream(const ms_database_t *db, ms_stream_t **stream)
+int ms_open_stream(const ms_database_t *db, ms_stream_t **stream)
 {
     if (db == NULL || db->type != MS_MATCHER_TYPE_AC ||
         db->ms_matcher == NULL || !db->is_built ||

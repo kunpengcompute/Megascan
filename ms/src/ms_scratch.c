@@ -326,7 +326,7 @@ static int ms_scratch_refresh(ms_scratch_t *scratch)
 }
 
 __attribute__((visibility("default")))
-int MS_CDECL ms_alloc_scratch(const ms_database_t *db, ms_scratch_t **scratch)
+int ms_alloc_scratch(const ms_database_t *db, ms_scratch_t **scratch)
 {
     ms_scratch_t *new_scratch;
     int ret;
@@ -370,7 +370,7 @@ int MS_CDECL ms_alloc_scratch(const ms_database_t *db, ms_scratch_t **scratch)
 }
 
 __attribute__((visibility("default")))
-int MS_CDECL ms_free_scratch(ms_scratch_t *scratch)
+int ms_free_scratch(ms_scratch_t *scratch)
 {
     if (scratch == NULL) {
         return MS_INVALID_PARA;
@@ -568,7 +568,7 @@ static int ms_scratch_capture_alias(uint32_t alias, uint64_t end_offset, void *c
 }
 
 __attribute__((visibility("default")))
-int MS_CDECL ms_scan_database(const ms_database_t *db,
+int ms_scan_database(const ms_database_t *db,
                                   const uint8_t *data,
                                   uint32_t len,
                                   ms_scratch_t *scratch,
@@ -944,7 +944,7 @@ static int ms_validate_database_stream_scratch(const ms_stream_t *stream,
 }
 
 __attribute__((visibility("default")))
-int MS_CDECL ms_scan_stream(ms_stream_t *stream,
+int ms_scan_stream(ms_stream_t *stream,
                                 const uint8_t *data,
                                 uint32_t len,
                                 ms_scratch_t *scratch,
@@ -1023,7 +1023,7 @@ int MS_CDECL ms_scan_stream(ms_stream_t *stream,
 }
 
 __attribute__((visibility("default")))
-int MS_CDECL ms_flush_stream(ms_stream_t *stream,
+int ms_flush_stream(ms_stream_t *stream,
                                  ms_scratch_t *scratch,
                                  uint32_t *ids,
                                  uint32_t *id_count,
@@ -1079,7 +1079,7 @@ int MS_CDECL ms_flush_stream(ms_stream_t *stream,
 }
 
 __attribute__((visibility("default")))
-int MS_CDECL ms_close_stream(ms_stream_t *stream,
+int ms_close_stream(ms_stream_t *stream,
                                  ms_scratch_t *scratch,
                                  uint32_t *ids,
                                  uint32_t *id_count,

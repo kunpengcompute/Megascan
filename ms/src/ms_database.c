@@ -131,7 +131,7 @@ static int ms_database_destroy_state(ms_database_t *db)
 }
 
 __attribute__((visibility("default")))
-int MS_CDECL ms_create_database(ms_database_t **db, ms_matcher_type type,
+int ms_create_database(ms_database_t **db, ms_matcher_type type,
                                     uint32_t buckets, uint32_t secondary_buckets)
 {
     ms_database_t *new_db;
@@ -158,7 +158,7 @@ int MS_CDECL ms_create_database(ms_database_t **db, ms_matcher_type type,
 }
 
 __attribute__((visibility("default")))
-int MS_CDECL ms_compile_database_multi(ms_database_t **db,
+int ms_compile_database_multi(ms_database_t **db,
                                            ms_matcher_type type,
                                            uint32_t buckets,
                                            uint32_t secondary_buckets,
@@ -172,7 +172,7 @@ int MS_CDECL ms_compile_database_multi(ms_database_t **db,
 }
 
 __attribute__((visibility("default")))
-int MS_CDECL ms_compile_database_multi_ext(ms_database_t **db,
+int ms_compile_database_multi_ext(ms_database_t **db,
                                                ms_matcher_type type,
                                                uint32_t buckets,
                                                uint32_t secondary_buckets,
@@ -213,7 +213,7 @@ int MS_CDECL ms_compile_database_multi_ext(ms_database_t **db,
 }
 
 __attribute__((visibility("default")))
-int MS_CDECL ms_find_database_rule(const ms_database_t *db, ms_rule_t *rule)
+int ms_find_database_rule(const ms_database_t *db, ms_rule_t *rule)
 {
     if (db == NULL || rule == NULL) {
         return MS_INVALID_PARA;
@@ -324,7 +324,7 @@ fail:
 }
 
 __attribute__((visibility("default")))
-int MS_CDECL ms_remove_database_rule(ms_database_t *db,
+int ms_remove_database_rule(ms_database_t *db,
                                       const ms_rule_t *rule,
                                       uint32_t rule_num)
 {
@@ -353,7 +353,7 @@ int MS_CDECL ms_remove_database_rule(ms_database_t *db,
 }
 
 __attribute__((visibility("default")))
-int MS_CDECL ms_free_database(ms_database_t *db)
+int ms_free_database(ms_database_t *db)
 {
     int ret;
 

@@ -32,19 +32,19 @@ const demo_scenario_t g_demo_scenario_runtime_config = {
     demo_allocator_apis
 };
 
-static void *MS_CDECL demo_alloc(size_t size)
+static void *demo_alloc(size_t size)
 {
     g_allocs++;
     return malloc(size);
 }
 
-static void *MS_CDECL demo_calloc(size_t nmemb, size_t size)
+static void *demo_calloc(size_t nmemb, size_t size)
 {
     g_callocs++;
     return calloc(nmemb, size);
 }
 
-static void MS_CDECL demo_free(void *ptr)
+static void demo_free(void *ptr)
 {
     g_frees++;
     free(ptr);

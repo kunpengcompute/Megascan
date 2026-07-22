@@ -639,19 +639,19 @@ static size_t g_test_allocs;
 static size_t g_test_callocs;
 static size_t g_test_frees;
 
-static void *MS_CDECL demo_test_alloc(size_t size)
+static void *demo_test_alloc(size_t size)
 {
     g_test_allocs++;
     return malloc(size);
 }
 
-static void *MS_CDECL demo_test_calloc(size_t nmemb, size_t size)
+static void *demo_test_calloc(size_t nmemb, size_t size)
 {
     g_test_callocs++;
     return calloc(nmemb, size);
 }
 
-static void MS_CDECL demo_test_free(void *ptr)
+static void demo_test_free(void *ptr)
 {
     g_test_frees++;
     free(ptr);

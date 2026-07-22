@@ -8,24 +8,12 @@
 #include <stdint.h>
 
 /**
- * @brief 跨平台调用约定宏
- * 
- * 在 Windows 上使用 __cdecl 调用约定，确保回调函数的参数传递和栈清理方式正确。
- * 在 Linux/Unix 上默认就是 cdecl，无需额外声明。
- */
-#if defined(_WIN32)
-#define MS_CDECL __cdecl
-#else
-#define MS_CDECL
-#endif
-
-/**
  * @brief 内存分配函数指针类型
  * 
  * @param size 要分配的内存大小（字节）
  * @return 成功返回分配的内存指针，失败返回 NULL
  */
-typedef void *(MS_CDECL *ms_alloc_t)(size_t size);
+typedef void *(*ms_alloc_t)(size_t size);
 
 /**
  * @brief 内存分配并初始化函数指针类型
@@ -36,14 +24,14 @@ typedef void *(MS_CDECL *ms_alloc_t)(size_t size);
  * @param size 每个元素的大小（字节）
  * @return 成功返回分配并清零的内存指针，失败返回 NULL
  */
-typedef void *(MS_CDECL *ms_calloc_t)(size_t nmemb, size_t size);
+typedef void *(*ms_calloc_t)(size_t nmemb, size_t size);
 
 /**
  * @brief 内存释放函数指针类型
  * 
  * @param ptr 要释放的内存指针（可以是 NULL）
  */
-typedef void (MS_CDECL *ms_free_t)(void *ptr);
+typedef void (*ms_free_t)(void *ptr);
 
 /**
  * @brief 检查内存地址是否对齐的宏
@@ -131,7 +119,7 @@ ms_free_t ms_get_db_free(void);
  * @param free_func 自定义 free 函数
  * @return MS_SUCCESS 表示成功
  */
-int MS_CDECL ms_set_allocator(ms_alloc_t alloc_func, ms_calloc_t calloc_func, ms_free_t free_func);
+int ms_set_allocator(ms_alloc_t alloc_func, ms_calloc_t calloc_func, ms_free_t free_func);
 
 /**
  * @brief 设置数据库内存分配器
@@ -144,7 +132,7 @@ int MS_CDECL ms_set_allocator(ms_alloc_t alloc_func, ms_calloc_t calloc_func, ms
  * @param free_func 自定义 free 函数
  * @return MS_SUCCESS 表示成功
  */
-int MS_CDECL ms_set_database_allocator(ms_alloc_t alloc_func, ms_calloc_t calloc_func,
+int ms_set_database_allocator(ms_alloc_t alloc_func, ms_calloc_t calloc_func,
                                            ms_free_t free_func);
 
 /**
@@ -158,7 +146,7 @@ int MS_CDECL ms_set_database_allocator(ms_alloc_t alloc_func, ms_calloc_t calloc
  * @param free_func 自定义 free 函数
  * @return MS_SUCCESS 表示成功
  */
-int MS_CDECL ms_set_scratch_allocator(ms_alloc_t alloc_func, ms_calloc_t calloc_func,
+int ms_set_scratch_allocator(ms_alloc_t alloc_func, ms_calloc_t calloc_func,
                                           ms_free_t free_func);
 
 /**
@@ -172,7 +160,7 @@ int MS_CDECL ms_set_scratch_allocator(ms_alloc_t alloc_func, ms_calloc_t calloc_
  * @param free_func 自定义 free 函数
  * @return MS_SUCCESS 表示成功
  */
-int MS_CDECL ms_set_stream_allocator(ms_alloc_t alloc_func, ms_calloc_t calloc_func,
+int ms_set_stream_allocator(ms_alloc_t alloc_func, ms_calloc_t calloc_func,
                                          ms_free_t free_func);
 
 /**
@@ -186,7 +174,7 @@ int MS_CDECL ms_set_stream_allocator(ms_alloc_t alloc_func, ms_calloc_t calloc_f
  * @param free_func 自定义 free 函数
  * @return MS_SUCCESS 表示成功
  */
-int MS_CDECL ms_set_misc_allocator(ms_alloc_t alloc_func, ms_calloc_t calloc_func,
+int ms_set_misc_allocator(ms_alloc_t alloc_func, ms_calloc_t calloc_func,
                                        ms_free_t free_func);
 
 /**

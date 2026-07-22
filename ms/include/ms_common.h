@@ -58,6 +58,6 @@ typedef struct ms_stream ms_stream_t;
  * @free_func: Memory deallocation function pointer.
  * @return: 0 for success, an error code(negative number) for failure.
  */
-int MS_CDECL ms_set_allocator(ms_alloc_t alloc_func, ms_calloc_t calloc_func, ms_free_t free_func);
+int ms_set_allocator(ms_alloc_t alloc_func, ms_calloc_t calloc_func, ms_free_t free_func);
 
 #endif
