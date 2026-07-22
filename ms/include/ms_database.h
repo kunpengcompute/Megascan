@@ -141,6 +141,24 @@ int MS_CDECL ms_scan_database(const ms_database_t *db,
 int MS_CDECL ms_find_database_rule(const ms_database_t *db, ms_rule_t *rule);
 
 /**
+ * @brief Remove rules from a compiled AC database.
+ *
+ * Plain rules are identified by id, key and key length. Combination rules are
+ * identified by id and use a NULL key with key length zero. Removing a plain
+ * rule also removes combinations that depend on it, matching ms_remove_rule()
+ * semantics. A multi-rule request is atomic: either every requested removal
+ * is committed, or the database remains unchanged.
+ *
+ * Existing streams become stale and return MS_STREAM_STALE until reset with
+ * ms_reset_stream(). Existing scratch objects are refreshed automatically on
+ * their next scan. Callers must externally synchronize removal with scans.
+ * HASH databases are not supported by this API.
+ */
+int MS_CDECL ms_remove_database_rule(ms_database_t *db,
+                                      const ms_rule_t *rule,
+                                      uint32_t rule_num);
+
+/**
  * @brief Open a stream from a database.
  *
  * Only AC databases support stream mode. Stream object and persistent stream

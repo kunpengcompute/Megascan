@@ -32,6 +32,21 @@ bool ms_compile_context_has_id(const ms_compile_context_t *ctx, uint32_t id)
     return false;
 }
 
+bool ms_compile_context_has_comb_id(const ms_compile_context_t *ctx, uint32_t id)
+{
+    uint32_t i;
+
+    if (ctx == NULL) {
+        return false;
+    }
+    for (i = 0; i < ctx->comb_count; i++) {
+        if (ctx->combs[i].id == id) {
+            return true;
+        }
+    }
+    return false;
+}
+
 int ms_compile_context_find_lkey(const ms_compile_context_t *ctx,
                                    uint32_t id,
                                    uint32_t *lkey)
@@ -778,6 +793,80 @@ int ms_compile_context_remove_id(ms_compile_context_t *ctx, uint32_t id)
     }
 
     return ms_compile_context_remove_comb_id(ctx, id);
+}
+
+static int ms_compile_logical_tree_clone(const ms_logical_tree_t *tree,
+                                         ms_logical_tree_t *clone)
+{
+    if (tree == NULL || clone == NULL) {
+        return MS_INVALID_PARA;
+    }
+    (void)memset(clone, 0, sizeof(*clone));
+    clone->result = tree->result;
+    if (tree->op_count == 0) {
+        return MS_SUCCESS;
+    }
+    if (tree->ops == NULL) {
+        return MS_INVALID_PARA;
+    }
+    clone->ops = (ms_logical_op_t *)ms_calloc(tree->op_count,
+                                               sizeof(*clone->ops));
+    if (clone->ops == NULL) {
+        return MS_MALLOC_FAIL;
+    }
+    (void)memcpy(clone->ops, tree->ops,
+                 tree->op_count * sizeof(*tree->ops));
+    clone->op_count = tree->op_count;
+    clone->op_capacity = tree->op_count;
+    return MS_SUCCESS;
+}
+
+int ms_compile_context_clone(const ms_compile_context_t *ctx,
+                              ms_compile_context_t **clone)
+{
+    ms_compile_context_t *new_ctx;
+    uint32_t i;
+    int ret;
+
+    if (ctx == NULL || clone == NULL || *clone != NULL) {
+        return MS_INVALID_PARA;
+    }
+    new_ctx = (ms_compile_context_t *)ms_calloc(1, sizeof(*new_ctx));
+    if (new_ctx == NULL) {
+        return MS_MALLOC_FAIL;
+    }
+    new_ctx->ac_aliases_are_lkeys = ctx->ac_aliases_are_lkeys;
+    for (i = 0; i < ctx->expr_count; i++) {
+        ret = ms_compile_context_add_expr(new_ctx, ctx->exprs[i].id,
+                                           ctx->exprs[i].flags,
+                                           ctx->exprs[i].lkey);
+        if (ret != MS_SUCCESS) {
+            ms_compile_context_free(new_ctx);
+            return ret;
+        }
+    }
+    for (i = 0; i < ctx->comb_count; i++) {
+        ms_logical_tree_t tree;
+        ms_expr_ext_t ext = {
+            MS_EXT_FLAG_MIN_OFFSET | MS_EXT_FLAG_MAX_OFFSET,
+            ctx->combs[i].min_offset,
+            ctx->combs[i].max_offset
+        };
+
+        ret = ms_compile_logical_tree_clone(&ctx->combs[i].tree, &tree);
+        if (ret == MS_SUCCESS) {
+            ret = ms_compile_context_add_comb(new_ctx, ctx->combs[i].id,
+                                               ctx->combs[i].flags,
+                                               &ext, &tree);
+        }
+        ms_logical_tree_destroy(&tree);
+        if (ret != MS_SUCCESS) {
+            ms_compile_context_free(new_ctx);
+            return ret;
+        }
+    }
+    *clone = new_ctx;
+    return MS_SUCCESS;
 }
 
 static int ms_compile_append_context_impl(ms_compile_context_t **ctx_slot,

@@ -233,6 +233,35 @@ static void test_database_stream_invalid_parameters(void)
     EXPECT_EQ(ms_free_database(db), MS_SUCCESS);
 }
 
+static void test_database_remove_marks_stream_stale_and_reset_rebinds(void)
+{
+    ms_database_t *db = NULL;
+    ms_scratch_t *scratch = NULL;
+    ms_stream_t *stream = NULL;
+    const char *expr[] = {"abc", "def"};
+    uint32_t ids[] = {101, 102};
+    ms_rule_t remove_rule = {101, 3, (uint8_t *)"abc"};
+    uint32_t out_ids[2] = {0};
+    uint32_t out_count = 0;
+
+    EXPECT_EQ(ms_compile_database_multi(&db, MS_MATCHER_TYPE_AC, 0, 0,
+                                          expr, NULL, ids, 2), MS_SUCCESS);
+    EXPECT_EQ(ms_alloc_scratch(db, &scratch), MS_SUCCESS);
+    EXPECT_EQ(ms_open_stream(db, &stream), MS_SUCCESS);
+    EXPECT_EQ(ms_remove_database_rule(db, &remove_rule, 1), MS_SUCCESS);
+    EXPECT_EQ(ms_scan_stream(stream, (const uint8_t *)"def", 3, scratch,
+                               out_ids, &out_count, 2), MS_STREAM_STALE);
+    EXPECT_EQ(ms_reset_stream(stream), MS_SUCCESS);
+    EXPECT_EQ(ms_scan_stream(stream, (const uint8_t *)"abcdef", 6, scratch,
+                               out_ids, &out_count, 2), MS_SUCCESS);
+    EXPECT_EQ(out_count, 1U);
+    EXPECT_EQ(out_ids[0], 102U);
+
+    EXPECT_EQ(ms_close_stream(stream, scratch, out_ids, &out_count, 2), MS_SUCCESS);
+    EXPECT_EQ(ms_free_scratch(scratch), MS_SUCCESS);
+    EXPECT_EQ(ms_free_database(db), MS_SUCCESS);
+}
+
 KTEST_ADD_TEST_CASE(SuiteDatabaseStream, test_database_open_stream_and_scan_combination);
 KTEST_ADD_TEST_CASE(SuiteDatabaseStream, test_database_stream_uses_explicit_scratch);
 KTEST_ADD_TEST_CASE(SuiteDatabaseStream, test_database_stream_close_reports_final_combination);
@@ -240,3 +269,4 @@ KTEST_ADD_TEST_CASE(SuiteDatabaseStream, test_database_stream_rejects_wrong_scra
 KTEST_ADD_TEST_CASE(SuiteDatabaseStream, test_database_stream_rolls_back_failed_scan_and_resets_sparse_state);
 KTEST_ADD_TEST_CASE(SuiteDatabaseStream, test_database_stream_does_not_leak_interleaved_block_state);
 KTEST_ADD_TEST_CASE(SuiteDatabaseStream, test_database_stream_invalid_parameters);
+KTEST_ADD_TEST_CASE(SuiteDatabaseStream, test_database_remove_marks_stream_stale_and_reset_rebinds);

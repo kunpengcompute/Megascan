@@ -91,6 +91,7 @@ typedef struct {
 
 bool ms_compile_is_combination(const uint32_t *flags, uint32_t index);
 bool ms_compile_context_has_id(const ms_compile_context_t *ctx, uint32_t id);
+bool ms_compile_context_has_comb_id(const ms_compile_context_t *ctx, uint32_t id);
 int ms_compile_context_find_lkey(const ms_compile_context_t *ctx,
                                    uint32_t id,
                                    uint32_t *lkey);
@@ -115,6 +116,8 @@ int ms_compile_context_add_comb(ms_compile_context_t *ctx,
                                   ms_logical_tree_t *tree);
 int ms_compile_context_remove_comb_id(ms_compile_context_t *ctx, uint32_t id);
 int ms_compile_context_remove_id(ms_compile_context_t *ctx, uint32_t id);
+int ms_compile_context_clone(const ms_compile_context_t *ctx,
+                              ms_compile_context_t **clone);
 int ms_compile_append_context(ms_handler_t *handler,
                                 ms_compile_context_t *new_ctx);
 int ms_compile_append_database_context(ms_database_t *db,

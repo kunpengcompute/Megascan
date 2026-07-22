@@ -23,6 +23,7 @@ typedef struct {
 
 struct ms_scratch {
     const ms_database_t *db;
+    uint64_t generation;
     uint8_t *logical_vector;
     uint32_t logical_count;
     uint8_t *combination_vector;
@@ -256,6 +257,74 @@ static int ms_scratch_workspace_init(const ms_compile_context_t *ctx,
     return MS_SUCCESS;
 }
 
+static uint64_t ms_scratch_database_generation(const ms_database_t *db)
+{
+    if (db == NULL || db->type != MS_MATCHER_TYPE_AC || db->ms_matcher == NULL) {
+        return 0;
+    }
+    if (db->backend == MS_DATABASE_BACKEND_COMPACT_AC) {
+        return ms_acdb_generation((const ms_acdb_t *)db->ms_matcher);
+    }
+    return ((const ACAutomaton *)db->ms_matcher)->generation;
+}
+
+static int ms_scratch_refresh(ms_scratch_t *scratch)
+{
+    const ms_database_t *db;
+    ms_compile_runtime_workspace_t workspace = {0};
+    uint8_t *logical_vector = NULL;
+    uint8_t *combination_vector = NULL;
+    uint8_t *exhaustion_vector = NULL;
+    uint32_t logical_count = 0;
+    uint32_t combination_count = 0;
+    uint32_t exhaustion_count = 0;
+    uint64_t generation;
+    int ret;
+
+    if (scratch == NULL || scratch->db == NULL) {
+        return MS_INVALID_PARA;
+    }
+    db = scratch->db;
+    generation = ms_scratch_database_generation(db);
+    if (scratch->generation == generation) {
+        return MS_SUCCESS;
+    }
+
+    ret = ms_compile_scratch_state_init(db, &logical_vector, &logical_count,
+                                         &combination_vector, &combination_count,
+                                         &exhaustion_vector, &exhaustion_count);
+    if (ret == MS_SUCCESS) {
+        ret = ms_scratch_workspace_init(
+            (const ms_compile_context_t *)db->ms_compile_ctx, &workspace);
+    }
+    if (ret != MS_SUCCESS) {
+        ms_compile_scratch_state_destroy(logical_vector, combination_vector,
+                                          exhaustion_vector);
+        ms_scratch_workspace_destroy(&workspace);
+        return ret;
+    }
+
+    ms_compile_scratch_state_destroy(scratch->logical_vector,
+                                      scratch->combination_vector,
+                                      scratch->exhaustion_vector);
+    ms_scratch_workspace_destroy(&scratch->workspace);
+    ms_state_change_log_destroy(&scratch->logical_changes);
+    ms_state_change_log_destroy(&scratch->combination_changes);
+    ms_state_change_log_destroy(&scratch->exhaustion_changes);
+    ms_state_change_log_destroy(&scratch->result_seen_changes);
+    scratch->logical_vector = logical_vector;
+    scratch->logical_count = logical_count;
+    scratch->combination_vector = combination_vector;
+    scratch->combination_count = combination_count;
+    scratch->exhaustion_vector = exhaustion_vector;
+    scratch->exhaustion_count = exhaustion_count;
+    scratch->workspace = workspace;
+    scratch->capture_count = 0;
+    scratch->block_state_dirty = false;
+    scratch->generation = generation;
+    return MS_SUCCESS;
+}
+
 __attribute__((visibility("default")))
 int MS_CDECL ms_alloc_scratch(const ms_database_t *db, ms_scratch_t **scratch)
 {
@@ -272,6 +341,7 @@ int MS_CDECL ms_alloc_scratch(const ms_database_t *db, ms_scratch_t **scratch)
     }
 
     new_scratch->db = db;
+    new_scratch->generation = ms_scratch_database_generation(db);
     ret = ms_compile_scratch_state_init(db,
                                           &new_scratch->logical_vector,
                                           &new_scratch->logical_count,
@@ -519,6 +589,11 @@ int MS_CDECL ms_scan_database(const ms_database_t *db,
         db->ms_matcher == NULL || !db->is_built ||
         db->ms_compile_ctx == NULL) {
         return MS_INVALID_PARA;
+    }
+
+    ret = ms_scratch_refresh(scratch);
+    if (ret != MS_SUCCESS) {
+        return ret;
     }
 
     *id_count = 0;
@@ -846,7 +921,7 @@ static int ms_scratch_track_block_results(const ms_compile_context_t *ctx,
 }
 
 static int ms_validate_database_stream_scratch(const ms_stream_t *stream,
-                                                 const ms_scratch_t *scratch)
+                                                 ms_scratch_t *scratch)
 {
     const ms_database_t *expected_db;
 
@@ -865,7 +940,7 @@ static int ms_validate_database_stream_scratch(const ms_stream_t *stream,
          stream->generation != ms_acdb_generation(stream->acdb))) {
         return MS_STREAM_STALE;
     }
-    return MS_SUCCESS;
+    return ms_scratch_refresh(scratch);
 }
 
 __attribute__((visibility("default")))

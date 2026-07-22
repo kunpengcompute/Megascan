@@ -243,9 +243,20 @@ int ms_acdb_build(ms_acdb_t *acdb, const ms_rule_t *rules, uint32_t rule_count)
     uint32_t i;
     int ret = MS_SUCCESS;
 
-    if (acdb == NULL || rules == NULL || rule_count == 0 ||
+    if (acdb == NULL || (rule_count != 0 && rules == NULL) ||
         acdb->states != NULL) {
         return MS_INVALID_PARA;
+    }
+
+    if (rule_count == 0) {
+        acdb->states = (ms_acdb_state_t *)ms_database_calloc(
+            1, sizeof(*acdb->states));
+        if (acdb->states == NULL) {
+            return MS_MALLOC_FAIL;
+        }
+        acdb->state_count = 1;
+        acdb->generation++;
+        return MS_SUCCESS;
     }
 
     if (!ms_acdb_size_is_valid(rule_count, sizeof(*refs)) ||
@@ -390,6 +401,220 @@ end:
         ms_acdb_clear_compiled(acdb);
     }
     return ret;
+}
+
+static int ms_acdb_export_rules(const ms_acdb_t *acdb,
+                                ms_rule_t **rules_out,
+                                uint32_t *rule_count_out,
+                                uint8_t **keys_out)
+{
+    ms_rule_t *rules = NULL;
+    uint8_t *keys = NULL;
+    uint32_t *parents = NULL;
+    uint32_t *depths = NULL;
+    uint8_t *incoming = NULL;
+    size_t key_bytes = 0;
+    size_t key_offset = 0;
+    uint32_t rule_index = 0;
+    uint32_t i;
+    int ret = MS_SUCCESS;
+
+    if (acdb == NULL || acdb->states == NULL || rules_out == NULL ||
+        rule_count_out == NULL || keys_out == NULL || *rules_out != NULL ||
+        *keys_out != NULL) {
+        return MS_INVALID_PARA;
+    }
+    *rule_count_out = 0;
+    if (acdb->output_count == 0) {
+        return MS_SUCCESS;
+    }
+    if (!ms_acdb_size_is_valid(acdb->state_count, sizeof(uint32_t)) ||
+        !ms_acdb_size_is_valid(acdb->state_count, sizeof(uint8_t)) ||
+        !ms_acdb_size_is_valid(acdb->output_count, sizeof(ms_rule_t))) {
+        return MS_MALLOC_FAIL;
+    }
+    /* Reconstruct keys only during deletion; normal databases keep no rule copy. */
+    parents = (uint32_t *)ms_database_calloc(acdb->state_count,
+                                             sizeof(uint32_t));
+    depths = (uint32_t *)ms_database_calloc(acdb->state_count,
+                                            sizeof(uint32_t));
+    incoming = (uint8_t *)ms_database_calloc(acdb->state_count,
+                                              sizeof(uint8_t));
+    if (parents == NULL || depths == NULL || incoming == NULL) {
+        ret = MS_MALLOC_FAIL;
+        goto end;
+    }
+    for (i = 0; i < acdb->state_count; i++) {
+        const ms_acdb_state_t *state = &acdb->states[i];
+        uint32_t j;
+
+        if (state->output_count != 0) {
+            if (depths[i] != 0 &&
+                state->output_count > (SIZE_MAX - key_bytes) / depths[i]) {
+                ret = MS_MALLOC_FAIL;
+                goto end;
+            }
+            key_bytes += (size_t)depths[i] * state->output_count;
+        }
+        for (j = 0; j < state->edge_count; j++) {
+            const ms_acdb_edge_t *edge =
+                &acdb->edges[state->edge_begin + j];
+
+            parents[edge->target] = i;
+            incoming[edge->target] = edge->ch;
+            depths[edge->target] = depths[i] + 1u;
+        }
+    }
+    rules = (ms_rule_t *)ms_database_calloc(acdb->output_count,
+                                             sizeof(ms_rule_t));
+    keys = (uint8_t *)ms_database_malloc(key_bytes);
+    if (rules == NULL || keys == NULL) {
+        ret = MS_MALLOC_FAIL;
+        goto end;
+    }
+    for (i = 0; i < acdb->state_count; i++) {
+        const ms_acdb_state_t *state = &acdb->states[i];
+        uint32_t j;
+
+        for (j = 0; j < state->output_count; j++) {
+            uint32_t cursor = i;
+            uint32_t depth = depths[i];
+            uint32_t k;
+
+            rules[rule_index].key = keys + key_offset;
+            rules[rule_index].key_len = depth;
+            rules[rule_index].alias = acdb->outputs[state->output_begin + j];
+            for (k = depth; k > 0; k--) {
+                rules[rule_index].key[k - 1u] = incoming[cursor];
+                cursor = parents[cursor];
+            }
+            key_offset += depth;
+            rule_index++;
+        }
+    }
+    *rules_out = rules;
+    *keys_out = keys;
+    *rule_count_out = rule_index;
+    rules = NULL;
+    keys = NULL;
+
+end:
+    ms_database_free(incoming);
+    ms_database_free(depths);
+    ms_database_free(parents);
+    ms_database_free(keys);
+    ms_database_free(rules);
+    return ret;
+}
+
+int ms_acdb_prepare_remove(const ms_acdb_t *acdb,
+                           const ms_rule_t *rules,
+                           uint32_t remove_count,
+                           ms_acdb_t **candidate)
+{
+    ms_rule_t *exported = NULL;
+    ms_rule_t *remaining = NULL;
+    uint8_t *keys = NULL;
+    uint8_t *removed = NULL;
+    ms_acdb_t *new_acdb = NULL;
+    uint32_t rule_count = 0;
+    uint32_t i;
+    uint32_t out = 0;
+    int ret;
+
+    if (acdb == NULL || rules == NULL || remove_count == 0 ||
+        candidate == NULL || *candidate != NULL) {
+        return MS_INVALID_PARA;
+    }
+    ret = ms_acdb_export_rules(acdb, &exported, &rule_count, &keys);
+    if (ret != MS_SUCCESS) {
+        return ret;
+    }
+    if (rule_count < remove_count) {
+        ret = MS_FIND_FAIL;
+        goto end;
+    }
+    removed = (uint8_t *)ms_database_calloc(rule_count, sizeof(uint8_t));
+    if (removed == NULL) {
+        ret = MS_MALLOC_FAIL;
+        goto end;
+    }
+    for (i = 0; i < remove_count; i++) {
+        uint32_t j;
+        bool found = false;
+
+        if (rules[i].key == NULL || rules[i].key_len == 0) {
+            ret = MS_INVALID_PARA;
+            goto end;
+        }
+        for (j = 0; j < rule_count; j++) {
+            if (removed[j] == 0 && exported[j].alias == rules[i].alias &&
+                exported[j].key_len == rules[i].key_len &&
+                memcmp(exported[j].key, rules[i].key, rules[i].key_len) == 0) {
+                removed[j] = 1;
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            ret = MS_FIND_FAIL;
+            goto end;
+        }
+    }
+
+    if (rule_count > remove_count) {
+        remaining = (ms_rule_t *)ms_database_calloc(
+            rule_count - remove_count, sizeof(ms_rule_t));
+        if (remaining == NULL) {
+            ret = MS_MALLOC_FAIL;
+            goto end;
+        }
+        for (i = 0; i < rule_count; i++) {
+            if (removed[i] == 0) {
+                remaining[out++] = exported[i];
+            }
+        }
+    }
+
+    ret = ms_acdb_create(&new_acdb);
+    if (ret == MS_SUCCESS) {
+        ret = ms_acdb_build(new_acdb, remaining, rule_count - remove_count);
+    }
+
+end:
+    ms_database_free(remaining);
+    ms_database_free(removed);
+    ms_database_free(keys);
+    ms_database_free(exported);
+    if (ret != MS_SUCCESS) {
+        ms_acdb_destroy(new_acdb);
+        return ret;
+    }
+    *candidate = new_acdb;
+    return MS_SUCCESS;
+}
+
+void ms_acdb_commit_rebuild(ms_acdb_t *acdb, ms_acdb_t *candidate)
+{
+    uint64_t generation;
+
+    if (acdb == NULL || candidate == NULL) {
+        return;
+    }
+    /* Keep the wrapper address stable so existing streams can detect staleness. */
+    generation = acdb->generation + 1u;
+    ms_acdb_clear_compiled(acdb);
+    *acdb = *candidate;
+    acdb->generation = generation;
+    (void)memset(candidate, 0, sizeof(*candidate));
+    ms_database_free(candidate);
+}
+
+void ms_acdb_bump_generation(ms_acdb_t *acdb)
+{
+    if (acdb != NULL) {
+        acdb->generation++;
+    }
 }
 
 static int ms_acdb_emit_state(const ms_acdb_t *acdb,

@@ -312,6 +312,12 @@ int ms_scan_expr_stream_flush(ms_stream_t *stream,
 __attribute__((visibility("default")))
 int ms_reset_stream(ms_stream_t *stream)
 {
+    uint8_t *logical_vector = NULL;
+    uint8_t *combination_vector = NULL;
+    uint8_t *exhaustion_vector = NULL;
+    uint32_t logical_count = 0;
+    uint32_t combination_count = 0;
+    uint32_t exhaustion_count = 0;
     int ret;
 
     if (stream == NULL ||
@@ -349,8 +355,43 @@ int ms_reset_stream(ms_stream_t *stream)
         if (ret != MS_SUCCESS) {
             return ret;
         }
-    } else if (stream->database == NULL) {
-        return MS_INVALID_PARA;
+    } else {
+        const ms_database_t *db = stream->database;
+        uint64_t generation;
+
+        if (db == NULL || db->type != MS_MATCHER_TYPE_AC ||
+            db->ms_matcher == NULL || db->ms_compile_ctx == NULL ||
+            !db->is_built) {
+            return MS_INVALID_PARA;
+        }
+        generation = db->backend == MS_DATABASE_BACKEND_COMPACT_AC
+                         ? ms_acdb_generation((const ms_acdb_t *)db->ms_matcher)
+                         : ((const ACAutomaton *)db->ms_matcher)->generation;
+        if (stream->generation != generation) {
+            ret = ms_compile_stream_state_init(db, &logical_vector, &logical_count,
+                                                 &combination_vector, &combination_count,
+                                                 &exhaustion_vector, &exhaustion_count);
+            if (ret != MS_SUCCESS) {
+                return ret;
+            }
+            ms_stream_dirty_state_destroy(stream);
+            ms_compile_stream_state_destroy(stream->logical_vector,
+                                              stream->combination_vector,
+                                              stream->exhaustion_vector);
+            stream->database_view = *db;
+            stream->automaton = db->backend == MS_DATABASE_BACKEND_COMPACT_AC
+                                    ? NULL
+                                    : (ACAutomaton *)db->ms_matcher;
+            stream->acdb = db->backend == MS_DATABASE_BACKEND_COMPACT_AC
+                               ? (const ms_acdb_t *)db->ms_matcher
+                               : NULL;
+            stream->logical_vector = logical_vector;
+            stream->logical_count = logical_count;
+            stream->combination_vector = combination_vector;
+            stream->combination_count = combination_count;
+            stream->exhaustion_vector = exhaustion_vector;
+            stream->exhaustion_count = exhaustion_count;
+        }
     }
 
     stream->node_index = 0;

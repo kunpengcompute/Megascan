@@ -222,6 +222,136 @@ int MS_CDECL ms_find_database_rule(const ms_database_t *db, ms_rule_t *rule)
     return ms_rule_find_database_direct(db, rule);
 }
 
+static bool ms_database_remove_rule_is_valid(const ms_rule_t *rule)
+{
+    return rule != NULL &&
+           ((rule->key != NULL && rule->key_len != 0) ||
+            (rule->key == NULL && rule->key_len == 0));
+}
+
+static int ms_remove_database_rules_atomic(ms_database_t *db,
+                                           const ms_rule_t *rules,
+                                           uint32_t rule_num)
+{
+    ms_compile_context_t *old_ctx =
+        (ms_compile_context_t *)db->ms_compile_ctx;
+    ms_compile_context_t *new_ctx = NULL;
+    ms_acdb_t *candidate = NULL;
+    ms_rule_t *plain_rules = NULL;
+    uint32_t plain_count = 0;
+    uint32_t i;
+    int ret;
+
+    /* Build both candidates before changing the live database. */
+    ret = ms_compile_context_clone(old_ctx, &new_ctx);
+    if (ret != MS_SUCCESS) {
+        return ret;
+    }
+    plain_rules = (ms_rule_t *)ms_calloc(rule_num, sizeof(ms_rule_t));
+    if (plain_rules == NULL) {
+        ms_compile_context_free(new_ctx);
+        return MS_MALLOC_FAIL;
+    }
+
+    for (i = 0; i < rule_num; i++) {
+        uint32_t j;
+
+        for (j = 0; j < i; j++) {
+            if (rules[j].alias == rules[i].alias) {
+                ret = MS_INVALID_PARA;
+                goto fail;
+            }
+        }
+        if (rules[i].key != NULL) {
+            uint32_t lkey;
+
+            ret = ms_compile_context_find_lkey(old_ctx, rules[i].alias, &lkey);
+            if (ret != MS_SUCCESS) {
+                goto fail;
+            }
+            plain_rules[plain_count].alias = lkey;
+            plain_rules[plain_count].key = rules[i].key;
+            plain_rules[plain_count].key_len = rules[i].key_len;
+            plain_count++;
+        } else if (!ms_compile_context_has_comb_id(old_ctx, rules[i].alias)) {
+            ret = MS_FIND_FAIL;
+            goto fail;
+        }
+    }
+
+    if (plain_count != 0) {
+        ret = ms_acdb_prepare_remove((const ms_acdb_t *)db->ms_matcher,
+                                     plain_rules, plain_count, &candidate);
+        if (ret != MS_SUCCESS) {
+            goto fail;
+        }
+    }
+
+    for (i = 0; i < rule_num; i++) {
+        if (rules[i].key == NULL) {
+            continue;
+        }
+        ret = ms_compile_context_remove_id(new_ctx, rules[i].alias);
+        if (ret != MS_SUCCESS) {
+            goto fail;
+        }
+    }
+    for (i = 0; i < rule_num; i++) {
+        if (rules[i].key != NULL) {
+            continue;
+        }
+        ret = ms_compile_context_remove_comb_id(new_ctx, rules[i].alias);
+        if (ret != MS_SUCCESS && ret != MS_FIND_FAIL) {
+            goto fail;
+        }
+    }
+
+    db->ms_compile_ctx = new_ctx;
+    if (candidate != NULL) {
+        ms_acdb_commit_rebuild((ms_acdb_t *)db->ms_matcher, candidate);
+    } else {
+        ms_acdb_bump_generation((ms_acdb_t *)db->ms_matcher);
+    }
+    ms_compile_context_free(old_ctx);
+    ms_free(plain_rules);
+    return MS_SUCCESS;
+
+fail:
+    ms_acdb_destroy(candidate);
+    ms_compile_context_free(new_ctx);
+    ms_free(plain_rules);
+    return ret;
+}
+
+__attribute__((visibility("default")))
+int MS_CDECL ms_remove_database_rule(ms_database_t *db,
+                                      const ms_rule_t *rule,
+                                      uint32_t rule_num)
+{
+    uint32_t i;
+    int ret;
+
+    if (db == NULL || rule == NULL || rule_num == 0) {
+        return MS_INVALID_PARA;
+    }
+    if (db->type == MS_MATCHER_TYPE_HASH) {
+        return MS_NOT_SUPPORTED;
+    }
+    if (db->type != MS_MATCHER_TYPE_AC ||
+        db->backend != MS_DATABASE_BACKEND_COMPACT_AC ||
+        db->ms_matcher == NULL || db->ms_compile_ctx == NULL ||
+        !db->is_built) {
+        return MS_INVALID_PARA;
+    }
+    for (i = 0; i < rule_num; i++) {
+        if (!ms_database_remove_rule_is_valid(&rule[i])) {
+            return MS_INVALID_PARA;
+        }
+    }
+    ret = ms_remove_database_rules_atomic(db, rule, rule_num);
+    return ret;
+}
+
 __attribute__((visibility("default")))
 int MS_CDECL ms_free_database(ms_database_t *db)
 {
