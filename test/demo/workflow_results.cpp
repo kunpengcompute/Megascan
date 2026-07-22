@@ -321,6 +321,7 @@ int demo_920hg_compare(const std::string &left_path, const std::string &right_pa
     std::map<std::string, std::string> right_env = read_env(right_env_path);
     const std::vector<std::string> fingerprints = {"MEGASCAN_COMMIT", "SOURCE_DIRTY",
         "ms_scratch_source_sha256", "ms_stream_source_sha256", "ms_acdb_source_sha256",
+        "ms_database_source_sha256",
         "bench_source_sha256", "driver_source_sha256", "summarize_source_sha256",
         "manifest_sha256"};
     for (const std::string &field : fingerprints) {

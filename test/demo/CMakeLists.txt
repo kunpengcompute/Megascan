@@ -13,6 +13,7 @@ add_executable(${target}
     expression_demo.c
     database_demo.c
     logical_demo.c
+    api_test_demo.c
     benchmark_case_demo.c
     benchmark_runner.c
     data_generator_runner.c

@@ -31,6 +31,8 @@ megascan_demo 920hg compare-full
 
 `920hg` 的数据生成、矩阵调度、环境检查、CPU/NUMA 控制、结果汇总和跨机器比较均已整合到 demo 内部，不调用本目录中的 Shell 或 Python 脚本。正式测试仍单独使用 `gcc -O2 -DNDEBUG` 编译本目录的 `bench_920hg.c`，确保扫描、预热、计时和吞吐量计算继续使用原实现。每个具体操作都支持 `-h`。
 
+`single`、`full` 和 `quick` 默认包含 `ac_delete`、`accombo_delete` 两个动态删除测试项。它们使用 manifest 中的真实规则和完整 corpus，先校验删除前结果，再检查失败批次不提交并执行成功删除，最后使用原 worker pool 校验旧 scratch 自动刷新、旧 stream stale/reset 和删除后的 Block/Stream 结果。`accombo_delete` 还验证删除原子规则时依赖组合会级联消失。结果以独立算法行写入 `raw_trials.csv` 和汇总文件；可用 `--skip-dynamic-delete` 跳过。
+
 每个操作使用以下目录：
 
 - `MEGASCAN_ROOT`：Megascan 项目根目录，即包含 `ms/`、`test/` 和顶层构建文件的目录；默认根据 demo 可执行文件定位。

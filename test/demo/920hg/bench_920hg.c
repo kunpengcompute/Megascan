@@ -49,7 +49,9 @@ typedef enum {
     ALG_AC = 2,
     ALG_ACCOMBO = 3,
     ALG_AC_LEGACY = 4,
-    ALG_AC_ON_COMBO = 5
+    ALG_AC_ON_COMBO = 5,
+    ALG_AC_DELETE = 6,
+    ALG_ACCOMBO_DELETE = 7
 } algorithm_t;
 
 typedef enum {
@@ -106,6 +108,7 @@ typedef struct {
     uint64_t queries;
     uint64_t bytes;
     uint64_t matches;
+    uint64_t expected_matches;
     uint64_t reported_ids;
     uint64_t expected_ids;
     uint64_t expected_candidates;
@@ -119,8 +122,18 @@ typedef struct {
     const ms_database_t *db;
     ms_scratch_t *scratch;
     ms_stream_t *stream;
+    const uint32_t *expected_ids_after_delete;
+    const uint32_t *expected_output_ids_after_delete;
     uint32_t output_ids[OUTPUT_CAPACITY];
 } scan_context_t;
+
+typedef struct {
+    ms_rule_t rule;
+    uint32_t affected_id;
+    uint32_t probe_query;
+    uint32_t *expected_ids;
+    uint32_t *expected_output_ids;
+} dynamic_delete_plan_t;
 
 typedef struct {
     scan_context_t context;
@@ -570,6 +583,40 @@ static int scan_result_ok(int ret)
     return ret == MS_SUCCESS || ret == MS_FIND_FAIL;
 }
 
+static int is_dynamic_delete_algorithm(algorithm_t algorithm)
+{
+    return algorithm == ALG_AC_DELETE || algorithm == ALG_ACCOMBO_DELETE;
+}
+
+static int output_contains_id(const uint32_t *ids, uint32_t count,
+                              uint32_t id)
+{
+    uint32_t i;
+
+    for (i = 0; i < count; i++) {
+        if (ids[i] == id) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static int find_expression_index(const expression_set_t *set, uint32_t id,
+                                 int combination, uint32_t *index)
+{
+    uint32_t i;
+
+    for (i = 0; i < set->count; i++) {
+        int is_combination =
+            (set->flags[i] & MS_FLAG_COMBINATION) != 0;
+        if (set->ids[i] == id && is_combination == combination) {
+            *index = i;
+            return 0;
+        }
+    }
+    return -1;
+}
+
 static int scan_one(scan_context_t *ctx, bench_mode_t mode,
                     const uint8_t *payload,
                     uint32_t payload_size, uint32_t *id_count_out)
@@ -642,9 +689,10 @@ static int scan_corpus(scan_context_t *ctx, bench_mode_t mode,
             fprintf(stderr, "scan failed query=%u mode=%d\n", i, mode);
             return -1;
         }
-        uint32_t expected_ids =
-            ctx->algorithm == ALG_AC_ON_COMBO ?
-                record->expected_candidates : record->expected_ids;
+        uint32_t expected_ids = ctx->expected_ids_after_delete != NULL ?
+            ctx->expected_ids_after_delete[i] :
+            (ctx->algorithm == ALG_AC_ON_COMBO ?
+                 record->expected_candidates : record->expected_ids);
 
         if (validate && id_count != expected_ids) {
             fprintf(stderr,
@@ -652,13 +700,224 @@ static int scan_corpus(scan_context_t *ctx, bench_mode_t mode,
                     i, mode, expected_ids, id_count);
             return -1;
         }
+        if (validate && expected_ids != 0 &&
+            ctx->expected_output_ids_after_delete != NULL &&
+            !output_contains_id(ctx->output_ids, id_count,
+                                ctx->expected_output_ids_after_delete[i])) {
+            fprintf(stderr,
+                    "result id mismatch query=%u mode=%d expected_id=%u\n",
+                    i, mode, ctx->expected_output_ids_after_delete[i]);
+            return -1;
+        }
         stats->queries++;
         stats->bytes += ctx->corpus->header.payload_size;
         stats->matches += id_count != 0;
+        stats->expected_matches += expected_ids != 0;
         stats->reported_ids += id_count;
         stats->expected_ids += expected_ids;
         stats->expected_candidates += record->expected_candidates;
     }
+    return 0;
+}
+
+static int build_dynamic_delete_plan(ms_database_t *db,
+                                     algorithm_t algorithm,
+                                     const expression_set_t *set,
+                                     const corpus_t *corpus,
+                                     dynamic_delete_plan_t *plan)
+{
+    ms_scratch_t *scratch = NULL;
+    uint32_t output_ids[OUTPUT_CAPACITY];
+    uint32_t target_index = UINT32_MAX;
+    uint32_t affected_count = 0;
+    uint32_t i;
+    int ret = -1;
+
+    plan->expected_ids = (uint32_t *)calloc(
+        corpus->header.query_count, sizeof(*plan->expected_ids));
+    plan->expected_output_ids = (uint32_t *)calloc(
+        corpus->header.query_count, sizeof(*plan->expected_output_ids));
+    if (plan->expected_ids == NULL || plan->expected_output_ids == NULL ||
+        ms_alloc_scratch(db, &scratch) != MS_SUCCESS) {
+        goto end;
+    }
+
+    for (i = 0; i < corpus->header.query_count; i++) {
+        const corpus_record_header_t *record = record_header(corpus, i);
+        uint32_t count = 0;
+        int scan_ret = ms_scan_database(
+            db, record_payload(corpus, i), corpus->header.payload_size,
+            scratch, output_ids, &count, OUTPUT_CAPACITY);
+
+        if (!scan_result_ok(scan_ret) || count != record->expected_ids) {
+            fprintf(stderr,
+                    "dynamic-delete baseline mismatch query=%u expected=%u actual=%u ret=%d\n",
+                    i, record->expected_ids, count, scan_ret);
+            goto end;
+        }
+        if (count != 0) {
+            plan->affected_id = output_ids[0];
+            plan->probe_query = i;
+            break;
+        }
+    }
+    if (i == corpus->header.query_count) {
+        fprintf(stderr, "dynamic-delete corpus has no matching query\n");
+        goto end;
+    }
+
+    if (algorithm == ALG_AC_DELETE) {
+        if (find_expression_index(set, plan->affected_id, 0,
+                                  &target_index) != 0) {
+            goto end;
+        }
+    } else {
+        uint32_t combo_index;
+        char *end = NULL;
+        unsigned long dependency_id;
+
+        if (find_expression_index(set, plan->affected_id, 1,
+                                  &combo_index) != 0) {
+            goto end;
+        }
+        dependency_id = strtoul(set->expressions[combo_index], &end, 10);
+        if (end == set->expressions[combo_index] ||
+            (*end != '&' && *end != '|') || dependency_id > UINT32_MAX ||
+            find_expression_index(set, (uint32_t)dependency_id, 0,
+                                  &target_index) != 0) {
+            fprintf(stderr, "unsupported generated combination: %s\n",
+                    set->expressions[combo_index]);
+            goto end;
+        }
+    }
+
+    plan->rule.alias = set->ids[target_index];
+    plan->rule.key = (uint8_t *)set->expressions[target_index];
+    plan->rule.key_len = (uint32_t)strlen(set->expressions[target_index]);
+
+    for (i = 0; i < corpus->header.query_count; i++) {
+        const corpus_record_header_t *record = record_header(corpus, i);
+        uint32_t count = 0;
+        int scan_ret = ms_scan_database(
+            db, record_payload(corpus, i), corpus->header.payload_size,
+            scratch, output_ids, &count, OUTPUT_CAPACITY);
+
+        if (!scan_result_ok(scan_ret) || count != record->expected_ids) {
+            goto end;
+        }
+        plan->expected_ids[i] = count;
+        if (count != 0) {
+            plan->expected_output_ids[i] = output_ids[0];
+        }
+        if (output_contains_id(output_ids, count, plan->affected_id)) {
+            uint32_t j;
+
+            plan->expected_ids[i]--;
+            plan->expected_output_ids[i] = 0;
+            for (j = 0; j < count; j++) {
+                if (output_ids[j] != plan->affected_id) {
+                    plan->expected_output_ids[i] = output_ids[j];
+                    break;
+                }
+            }
+            affected_count++;
+        }
+    }
+    if (affected_count == 0) {
+        fprintf(stderr, "dynamic-delete target id=%u has no affected queries\n",
+                plan->affected_id);
+        goto end;
+    }
+    ret = 0;
+
+end:
+    if (scratch != NULL) {
+        (void)ms_free_scratch(scratch);
+    }
+    if (ret != 0) {
+        free(plan->expected_ids);
+        free(plan->expected_output_ids);
+        (void)memset(plan, 0, sizeof(*plan));
+    }
+    return ret;
+}
+
+static int apply_dynamic_delete(ms_database_t *db,
+                                worker_pool_t *pool,
+                                const corpus_t *corpus,
+                                dynamic_delete_plan_t *plan,
+                                uint64_t *delete_ns)
+{
+    ms_rule_t failed_batch[2];
+    uint32_t i;
+    uint64_t start;
+    int ret;
+
+    failed_batch[0] = plan->rule;
+    failed_batch[1] = plan->rule;
+    failed_batch[1].alias = UINT32_MAX;
+    ret = ms_remove_database_rule(db, failed_batch, 2);
+    if (ret != MS_FIND_FAIL) {
+        fprintf(stderr,
+                "dynamic-delete atomic failure check ret=%d expected=%d\n",
+                ret, MS_FIND_FAIL);
+        return -1;
+    }
+
+    {
+        scan_context_t *ctx = &pool->args[0].context;
+        uint32_t count = 0;
+
+        ret = ms_scan_database(db,
+                               record_payload(corpus, plan->probe_query),
+                               corpus->header.payload_size, ctx->scratch,
+                               ctx->output_ids, &count, OUTPUT_CAPACITY);
+        if (!scan_result_ok(ret) ||
+            !output_contains_id(ctx->output_ids, count,
+                                plan->affected_id)) {
+            fprintf(stderr,
+                    "dynamic-delete failed batch changed live database ret=%d\n",
+                    ret);
+            return -1;
+        }
+    }
+
+    start = now_ns();
+    ret = ms_remove_database_rule(db, &plan->rule, 1);
+    *delete_ns = now_ns() - start;
+    if (ret != MS_SUCCESS) {
+        fprintf(stderr, "dynamic-delete remove failed id=%u ret=%d\n",
+                plan->rule.alias, ret);
+        return -1;
+    }
+
+    for (i = 0; i < pool->count; i++) {
+        scan_context_t *ctx = &pool->args[i].context;
+        uint32_t count = 0;
+
+        ctx->expected_ids_after_delete = plan->expected_ids;
+        ctx->expected_output_ids_after_delete = plan->expected_output_ids;
+        if (ctx->stream == NULL) {
+            continue;
+        }
+        ret = ms_scan_stream(ctx->stream,
+                             record_payload(corpus, plan->probe_query),
+                             corpus->header.payload_size, ctx->scratch,
+                             ctx->output_ids, &count, OUTPUT_CAPACITY);
+        if (ret != MS_STREAM_STALE) {
+            fprintf(stderr,
+                    "dynamic-delete stale check worker=%u ret=%d expected=%d\n",
+                    i, ret, MS_STREAM_STALE);
+            return -1;
+        }
+        if (ms_reset_stream(ctx->stream) != MS_SUCCESS) {
+            fprintf(stderr, "dynamic-delete reset failed worker=%u\n", i);
+            return -1;
+        }
+    }
+    fprintf(stderr,
+            "[phase] dynamic delete done removed_id=%u affected_id=%u delete_ns=%" PRIu64 "\n",
+            plan->rule.alias, plan->affected_id, *delete_ns);
     return 0;
 }
 
@@ -882,6 +1141,7 @@ static int run_worker_pool(worker_pool_t *pool, bench_mode_t mode,
         stats->queries += worker->queries;
         stats->bytes += worker->bytes;
         stats->matches += worker->matches;
+        stats->expected_matches += worker->expected_matches;
         stats->reported_ids += worker->reported_ids;
         stats->expected_ids += worker->expected_ids;
         stats->expected_candidates += worker->expected_candidates;
@@ -894,7 +1154,9 @@ static const char *algorithm_name(algorithm_t algorithm)
     return algorithm == ALG_HASH ? "hash" :
            algorithm == ALG_AC ? "ac" :
            algorithm == ALG_ACCOMBO ? "accombo" :
-           algorithm == ALG_AC_LEGACY ? "ac_legacy" : "ac_on_combo";
+           algorithm == ALG_AC_LEGACY ? "ac_legacy" :
+           algorithm == ALG_AC_ON_COMBO ? "ac_on_combo" :
+           algorithm == ALG_AC_DELETE ? "ac_delete" : "accombo_delete";
 }
 
 static const char *mode_name(bench_mode_t mode)
@@ -918,12 +1180,14 @@ static int append_result(const char *csv_path, const char *machine,
     double gib_s = ((double)stats->bytes / 1073741824.0) / seconds;
     double hit_rate = (double)corpus->header.hit_count /
                       corpus->header.query_count;
-    uint64_t expected_hits =
-        (uint64_t)(algorithm == ALG_AC_ON_COMBO ?
-                       corpus->header.query_count : corpus->header.hit_count) *
-        worker_count;
+    uint64_t expected_hits = stats->expected_matches;
     uint32_t atomic_count = algorithm == ALG_HASH ? rule_count : set->atomic_count;
-    uint32_t combo_count = algorithm == ALG_ACCOMBO ? set->combo_count : 0u;
+    uint32_t combo_count =
+        (algorithm == ALG_ACCOMBO || algorithm == ALG_ACCOMBO_DELETE) ?
+            set->combo_count : 0u;
+    const char *timing_scope = is_dynamic_delete_algorithm(algorithm) ?
+        "scan_after_preload_compile_worker_setup_delete_warmup" :
+        "scan_only_after_preload_compile_worker_setup_warmup";
 
     if (fp == NULL) {
         return -1;
@@ -932,13 +1196,14 @@ static int append_result(const char *csv_path, const char *machine,
             "%s,%s,%s,%u,%u,%u,%u,%" PRIu64 ",%u,%.8f,%" PRIu64 ",%" PRIu64
             ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64
             ",%" PRIu64 ",%.2f,%.8f,%" PRIu64 ",%" PRIu64
-            ",%u,scan_only_after_preload_compile_worker_setup_warmup,%u,\"%s\"\n",
+            ",%u,%s,%u,\"%s\"\n",
             machine, algorithm_name(algorithm), mode_name(mode), trial,
             rule_count, atomic_count, combo_count, stats->queries,
             corpus->header.payload_size, hit_rate, expected_hits,
             stats->matches, stats->expected_ids, stats->reported_ids,
             stats->expected_candidates, stats->bytes, elapsed_ns, query_ops,
-            gib_s, compile_ns, rss_growth_kb, warmups, worker_count, cpu_list);
+            gib_s, compile_ns, rss_growth_kb, warmups, timing_scope,
+            worker_count, cpu_list);
     return fclose(fp) == 0 ? 0 : -1;
 }
 
@@ -980,6 +1245,10 @@ static int parse_algorithm(const char *text, algorithm_t *algorithm)
         *algorithm = ALG_AC_LEGACY;
     } else if (strcmp(text, "ac_on_combo") == 0) {
         *algorithm = ALG_AC_ON_COMBO;
+    } else if (strcmp(text, "ac_delete") == 0) {
+        *algorithm = ALG_AC_DELETE;
+    } else if (strcmp(text, "accombo_delete") == 0) {
+        *algorithm = ALG_ACCOMBO_DELETE;
     } else {
         return -1;
     }
@@ -1005,7 +1274,8 @@ static int parse_mode(const char *text, bench_mode_t *mode)
 static void usage(const char *program)
 {
     fprintf(stderr,
-            "Usage: %s -a hash|ac|accombo|ac_legacy|ac_on_combo "
+            "Usage: %s -a hash|ac|accombo|ac_legacy|ac_on_combo|"
+            "ac_delete|accombo_delete "
             "-M lookup|block|stream-full|both "
             "-n rules -t rules_file -s corpus -p csv -T machine "
             "[-R trials] [-w warmups] [-c cpu-list]\n",
@@ -1037,6 +1307,7 @@ int main(int argc, char **argv)
     ms_database_t *db = NULL;
     scan_context_t shared_context = {0};
     worker_pool_t pool = {0};
+    dynamic_delete_plan_t delete_plan = {0};
     int *cpu_cores = NULL;
     uint32_t worker_count = 1;
     scan_stats_t ignored;
@@ -1045,6 +1316,7 @@ int main(int argc, char **argv)
     uint64_t compile_start;
     uint64_t compile_ns;
     uint64_t rss_growth;
+    uint64_t delete_ns = 0;
     uint32_t i;
     int argi;
     int result = EXIT_FAILURE;
@@ -1102,9 +1374,9 @@ int main(int argc, char **argv)
     }
     fprintf(stderr, "[phase] preload corpus start\n");
     if (load_corpus(corpus_path, &corpus) != 0 ||
-        (algorithm == ALG_AC_LEGACY ?
+        (algorithm == ALG_AC_LEGACY || algorithm == ALG_AC_DELETE ?
              corpus.header.kind != KIND_AC :
-         algorithm == ALG_AC_ON_COMBO ?
+         algorithm == ALG_AC_ON_COMBO || algorithm == ALG_ACCOMBO_DELETE ?
              corpus.header.kind != KIND_ACCOMBO :
              corpus.header.kind != (uint32_t)algorithm)) {
         goto end;
@@ -1200,6 +1472,27 @@ int main(int argc, char **argv)
                             &ignored_elapsed) != 0) {
             goto end;
         }
+        if (is_dynamic_delete_algorithm(algorithm)) {
+            /* Workers are idle at start_barrier while the shared DB changes. */
+            if (build_dynamic_delete_plan(db, algorithm, &expressions,
+                                          &corpus, &delete_plan) != 0 ||
+                apply_dynamic_delete(db, &pool, &corpus, &delete_plan,
+                                     &delete_ns) != 0) {
+                goto end;
+            }
+            shared_context.expected_ids_after_delete =
+                delete_plan.expected_ids;
+            if ((selected_mode == MODE_BLOCK || selected_mode == MODE_BOTH) &&
+                run_worker_pool(&pool, MODE_BLOCK, 1, &ignored,
+                                &ignored_elapsed) != 0) {
+                goto end;
+            }
+            if ((selected_mode == MODE_STREAM || selected_mode == MODE_BOTH) &&
+                run_worker_pool(&pool, MODE_STREAM, 1, &ignored,
+                                &ignored_elapsed) != 0) {
+                goto end;
+            }
+        }
         for (i = 0; i < warmups; i++) {
             if ((selected_mode == MODE_BLOCK || selected_mode == MODE_BOTH) &&
                 run_worker_pool(&pool, MODE_BLOCK, 0, &ignored,
@@ -1212,6 +1505,11 @@ int main(int argc, char **argv)
                 goto end;
             }
         }
+    }
+    if (is_dynamic_delete_algorithm(algorithm)) {
+        fprintf(stderr,
+                "[phase] dynamic-delete correctness done delete_ns=%" PRIu64 "\n",
+                delete_ns);
     }
     fprintf(stderr, "[phase] timed trials start trials=%u\n", trials);
     wait_for_attached_profiler();
@@ -1245,6 +1543,8 @@ int main(int argc, char **argv)
 
 end:
     destroy_worker_pool(&pool);
+    free(delete_plan.expected_ids);
+    free(delete_plan.expected_output_ids);
     if (db != NULL) {
         (void)ms_free_database(db);
     }

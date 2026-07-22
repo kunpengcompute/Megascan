@@ -9,6 +9,7 @@
 
 ## 文件说明
 - `api_demo.c`：命令行入口、中文帮助、场景和公开接口索引。
+- `api_test_demo.c`：单接口测试、模块流程图、动态删除断言和测试汇总。
 - `demo_common.c`：场景公共选项、数据结构和结果输出。
 - `database_demo.c`：database、scratch、块扫描和流扫描示例。
 - `handler_demo.c`：handler、HASH 和 legacy AC 示例。
@@ -48,6 +49,9 @@ $DEMO corpus -h
 $DEMO benchmark -h
 $DEMO generate-data -h
 $DEMO logical -h
+$DEMO apis
+$DEMO modules
+$DEMO selftest
 $DEMO 920hg -h
 $DEMO 920hg generate -h
 $DEMO 920hg single -h
@@ -60,14 +64,99 @@ $DEMO 920hg compare-single -h
 不带参数运行时进入交互菜单。每个具体命令和 920hg 子命令均支持独立中文帮助。
 
 ## 接口调用示例
-查看场景、公开接口，或运行指定接口对应的场景：
+查看场景、单接口测试和模块流程，或运行指定测试：
 ```sh
 $DEMO scenarios
 $DEMO apis
 $DEMO --api ms_scan_database
+$DEMO --api ms_set_scratch_allocator
+$DEMO modules
+$DEMO --module stream
+$DEMO --module-test delete
+$DEMO selftest
 $DEMO --scenario stream-audit --input-file request.dat --chunk-size 64
 $DEMO --all
 ```
+
+`--api` 不带额外参数时运行单个接口自动测试，不再把所有包含该接口的应用场景一起运行。输出含义：
+
+- `SETUP`：准备目标接口所需的 database、scratch、stream 或 handler。
+- `TEST`：本次指定的目标接口调用。
+- `VERIFY`：返回值、输出 ID、allocator 计数或状态变化断言。
+- `RESULT`：接口级 PASS/FAIL，失败时进程返回非 0。
+
+查看单个接口说明：
+
+```sh
+$DEMO --api -h
+$DEMO --api ms_remove_database_rule -h
+```
+
+`--api -h` 列出当前支持 CLI 参数调用的接口及参数格式；`--api <接口名> -h`
+进一步显示该接口每个位置参数的含义、限制和完整示例。
+
+如果需要按 CLI 参数调用接口，在接口名后继续传入参数：
+
+```sh
+$DEMO --api ms_compile_database_multi ac 0 0 abc 101 0 def 102 0 '101&102' 1001 1
+$DEMO --api ms_alloc_scratch ac 0 0 abc 101 0
+$DEMO --api ms_scan_database abcdef 4 ac 0 0 abc 101 0 def 102 0 '101&102' 1001 1
+$DEMO --api ms_remove_database_rule 1001 - 0 ac 0 0 abc 101 0 def 102 0 '101&102' 1001 1
+```
+
+规则参数采用三元组：`expression id flags`。`flags` 取值：`0=MS_FLAG_NONE`、`1=MS_FLAG_COMBINATION`、`2=MS_FLAG_QUIET`、`3=COMBINATION|QUIET`。需要构造 `db` 或 `scratch` 的接口会使用 CLI 中的规则参数在当前进程内构造前置对象，并打印实际目标接口调用。
+
+## 模块接口流程
+
+模块命令展示调用顺序和所属接口：
+
+```sh
+$DEMO modules
+$DEMO --module database
+$DEMO --module block
+$DEMO --module stream
+$DEMO --module delete
+$DEMO --module allocator
+```
+
+运行一个模块内的全部单接口测试：
+
+```sh
+$DEMO --module-test stream
+$DEMO --module-test allocator
+```
+
+运行全部公开接口测试并输出总数、通过数和失败数：
+
+```sh
+$DEMO selftest
+```
+
+## AC Database 动态删除端到端测试
+
+动态删除不是独立的玩具规则子命令，而是 `single`、`full` 和 `quick` 矩阵中默认启用的正式测试项：
+
+```sh
+$DEMO 920hg single --machine 920 --data-root /data/920hg_data_v4 --cpu-core 1
+$DEMO 920hg full --machine 920 --data-root /data/920hg_data_v4 --cpu-list 1-95
+$DEMO 920hg quick --machine 920 --data-root /data/920hg_data_v4
+```
+
+矩阵会新增 `ac_delete` 和 `accombo_delete` 两类结果。它们读取 manifest 中的真实规则文件和完整 corpus，在 worker 全部暂停后执行失败批次原子性检查和成功删除，然后验证旧 scratch 自动刷新、所有旧 stream 返回 `MS_STREAM_STALE`、reset 后按新规则完成 Block/Stream 全量扫描。`accombo_delete` 删除真实原子规则，并验证依赖它的组合规则随之消失。需要临时跳过时传入 `--skip-dynamic-delete`。
+
+## Allocator 定点测试
+
+每类 allocator 可以单独测试：
+
+```sh
+$DEMO --api ms_set_allocator
+$DEMO --api ms_set_database_allocator
+$DEMO --api ms_set_scratch_allocator
+$DEMO --api ms_set_stream_allocator
+$DEMO --api ms_set_misc_allocator
+```
+
+Database、scratch 和 stream 测试会实际创建并释放对应对象，然后检查自定义回调计数。当前没有使用 misc allocator 的公开对象创建接口，因此 misc 测试只验证 setter 和恢复默认值，并在输出中明确标注该边界。
 扫描文本、流式扫描文件、HASH 查询和逻辑求值：
 ```sh
 $DEMO scan --matcher ac --mode block \

@@ -78,6 +78,7 @@ struct Options {
     bool run_legacy = true;
     bool run_combo = true;
     bool run_ac_on_combo = true;
+    bool run_dynamic_delete = true;
     bool require_clean = true;
 };
 
@@ -687,6 +688,7 @@ static int write_environment_log(const Options &options, bool full)
         {"ms_scratch_source_sha256", options.root + "/ms/src/ms_scratch.c"},
         {"ms_stream_source_sha256", options.root + "/ms/src/ms_stream.c"},
         {"ms_acdb_source_sha256", options.root + "/ms/src/ms_acdb.c"},
+        {"ms_database_source_sha256", options.root + "/ms/src/ms_database.c"},
         {"bench_source_sha256", options.source_dir + "/bench_920hg.c"},
         {"driver_source_sha256", options.root + "/test/demo/workflow_runner.cpp"},
         {"summarize_source_sha256", options.root + "/test/demo/workflow_results.cpp"},
@@ -697,7 +699,8 @@ static int write_environment_log(const Options &options, bool full)
         env << file.first << '=' << hash.substr(0, space) << '\n';
     }
     env << "timing_excludes=corpus_load,database_compile,worker_create,scratch_alloc,stream_open,correctness,warmup\n"
-        << "stream_full=reset_plus_one_scan_per_query\n";
+        << "stream_full=reset_plus_one_scan_per_query\n"
+        << "dynamic_delete=predelete_validation,atomic_failure_check,delete,stale_reset,postdelete_validation\n";
     if (full) env << "throughput_scope=aggregate_bytes_over_wall_clock\n";
     return 0;
 }
@@ -754,10 +757,16 @@ static int benchmark_matrix(const Options &options, bool full, bool quick = fals
                 if (options.run_ac) algorithms.push_back("ac");
                 if (options.run_legacy) algorithms.push_back("ac_legacy");
             }
+            if (options.run_ac && options.run_dynamic_delete) {
+                algorithms.push_back("ac_delete");
+            }
         }
         if (field[0] == "accombo") {
             if (options.run_combo) algorithms.push_back("accombo");
             if (options.run_ac_on_combo) algorithms.push_back("ac_on_combo");
+            if (options.run_combo && options.run_dynamic_delete) {
+                algorithms.push_back("accombo_delete");
+            }
         }
         for (const std::string &algorithm : algorithms) {
             std::vector<std::string> command;
@@ -940,6 +949,7 @@ static void usage()
         "  --no-build             不重新构建 Megascan\n"
         "  --keep-build           不删除现有 build 目录\n"
         "  --skip-hash|--skip-ac|--skip-legacy|--skip-accombo|--skip-ac-on-combo\n"
+        "  --skip-dynamic-delete  跳过真实规则库动态删除测试项\n"
         "  -h, --help             显示帮助\n";
 }
 
@@ -954,15 +964,18 @@ static void action_usage(const std::string &action)
         std::cout << "用法：megascan_demo 920hg single --machine 920|hg [测试选项]\n"
                      "  --data-root <目录> --out-dir <目录> --cpu-core <编号>\n"
                      "  --trials <奇数> --warmups <次数> --no-build --keep-build --no-clean\n"
-                     "  --skip-hash --skip-ac --skip-legacy --skip-accombo --skip-ac-on-combo\n";
+                     "  --skip-hash --skip-ac --skip-legacy --skip-accombo --skip-ac-on-combo\n"
+                     "  --skip-dynamic-delete\n";
     } else if (action == "full") {
         std::cout << "用法：megascan_demo 920hg full --machine 920|hg [测试选项]\n"
                      "  --data-root <目录> --out-dir <目录> --cpu-list <列表>\n"
-                     "  --trials <奇数> --warmups <次数> --no-numa-interleave --allow-smt\n";
+                     "  --trials <奇数> --warmups <次数> --no-numa-interleave --allow-smt\n"
+                     "  --skip-dynamic-delete\n";
     } else if (action == "quick") {
         std::cout << "用法：megascan_demo 920hg quick --machine 920|hg [选项]\n"
                      "  --rule-count <数量> --hit-rate <0..1> 或 --hit-bps <0..10000>\n"
-                     "  --cpu-core <编号> --data-root <目录> --out-dir <目录>\n";
+                     "  --cpu-core <编号> --data-root <目录> --out-dir <目录>\n"
+                     "  --skip-dynamic-delete\n";
     } else if (action == "profile") {
         std::cout << "用法：megascan_demo 920hg profile --machine 920|hg [选项]\n"
                      "  --rule-count <数量> --hit-rate <0..1> --cpu-core <编号>\n"
@@ -1073,6 +1086,7 @@ static int parse_options(int argc, char **argv, Options &options)
         else if (arg == "--skip-legacy") options.run_legacy = false;
         else if (arg == "--skip-accombo") options.run_combo = false;
         else if (arg == "--skip-ac-on-combo") options.run_ac_on_combo = false;
+        else if (arg == "--skip-dynamic-delete") options.run_dynamic_delete = false;
         else { std::cerr << "未知选项：" << arg << '\n'; return 1; }
     }
     if (!data_explicit) options.data_root = options.work_root + "/data";

@@ -57,4 +57,14 @@ void demo_database_stream_apis(void);
 void demo_database_hash_apis(void);
 void demo_logical_apis(void);
 
+void demo_list_api_tests(void);
+void demo_print_api_cli_help(const char *prog);
+void demo_print_api_test_help(const char *prog, const char *api);
+int demo_run_api_test(const char *api);
+int demo_run_api_cli(const char *api, int argc, char **argv);
+int demo_run_all_api_tests(void);
+void demo_list_modules(void);
+int demo_show_module(const char *module);
+int demo_run_module_tests(const char *module);
+
 #endif

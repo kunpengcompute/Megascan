@@ -14,13 +14,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define DEMO_MAX_PUBLIC_APIS 256
-
-typedef struct {
-    const char *names[DEMO_MAX_PUBLIC_APIS];
-    uint32_t count;
-} public_api_list_t;
-
 static const demo_scenario_t *g_scenarios[] = {
     &g_demo_scenario_runtime_config,
     &g_demo_scenario_legacy_blacklist,
@@ -38,6 +31,10 @@ typedef enum {
     DEMO_ACTION_LIST,
     DEMO_ACTION_APIS,
     DEMO_ACTION_API,
+    DEMO_ACTION_MODULES,
+    DEMO_ACTION_MODULE,
+    DEMO_ACTION_MODULE_TEST,
+    DEMO_ACTION_SELFTEST,
     DEMO_ACTION_BENCHMARK_CASE,
     DEMO_ACTION_APP_SCAN,
     DEMO_ACTION_APP_LOOKUP,
@@ -58,45 +55,6 @@ static int equals_ignore_case(const char *lhs, const char *rhs)
     return *lhs == '\0' && *rhs == '\0';
 }
 
-static int api_list_contains(const public_api_list_t *apis, const char *api)
-{
-    uint32_t i;
-
-    for (i = 0; i < apis->count; i++) {
-        if (strcmp(apis->names[i], api) == 0) {
-            return 1;
-        }
-    }
-    return 0;
-}
-
-static int api_list_add(public_api_list_t *apis, const char *api)
-{
-    if (api_list_contains(apis, api)) {
-        return 0;
-    }
-    if (apis->count >= DEMO_MAX_PUBLIC_APIS) {
-        return -1;
-    }
-    apis->names[apis->count++] = api;
-    return 0;
-}
-
-static int scenario_has_api(const demo_scenario_t *scenario, const char *api)
-{
-    uint32_t i;
-
-    if (scenario->apis == NULL) {
-        return 0;
-    }
-    for (i = 0; scenario->apis[i] != NULL; i++) {
-        if (equals_ignore_case(scenario->apis[i], api)) {
-            return 1;
-        }
-    }
-    return 0;
-}
-
 static void print_usage(const char *prog)
 {
     printf("Megascan API 调用示例\n\n");
@@ -110,12 +68,16 @@ static void print_usage(const char *prog)
     printf("  920hg                      运行完整 920hg 生成、测试和结果分析流程\n");
     printf("  logical                    运行逻辑策略计算\n");
     printf("  allocator                  运行内存分配器配置\n");
-    printf("  apis                       查看公开接口覆盖\n");
+    printf("  apis                       查看可单独执行的接口测试\n");
+    printf("  modules                    查看接口模块和流程图\n");
+    printf("  selftest                   运行全部单接口测试并汇总\n");
     printf("  scenarios                  查看内置应用场景\n");
     printf("  -h, --help                 显示帮助信息\n");
     printf("  --list                     列出可运行场景\n");
-    printf("  --apis                     列出已覆盖接口及对应场景\n");
-    printf("  --api <接口名>             运行调用指定接口的场景\n");
+    printf("  --apis                     列出可单独执行的接口测试\n");
+    printf("  --api <接口名> [参数...]   按 CLI 参数调用指定接口；无参数时运行自动测试\n");
+    printf("  --module <模块名>          显示模块接口流程图\n");
+    printf("  --module-test <模块名>     运行模块内全部接口测试\n");
     printf("  --scenario <场景名>        运行指定场景\n");
     printf("  --benchmark-case           运行一条 920hg 数据查询\n");
     printf("  -a, --all                  运行全部场景\n");
@@ -141,7 +103,11 @@ static void print_usage(const char *prog)
     printf("  %s --scenario content-gateway --pattern token= --input 'token=abc'\n", prog);
     printf("  %s --scenario stream-audit --input-file request.dat --chunk-size 64\n", prog);
     printf("  %s --scenario ioc-lookup --key malware-sha256-demo\n", prog);
-    printf("  %s --api ms_scan_database\n", prog);
+    printf("  %s --api ms_scan_database abcdef 4 ac 0 0 abc 101 0 def 102 0 '101&102' 1001 1\n", prog);
+    printf("  %s --api ms_set_scratch_allocator\n", prog);
+    printf("  %s --module stream\n", prog);
+    printf("  %s --module-test delete\n", prog);
+    printf("  %s selftest\n", prog);
     printf("  %s --benchmark-case --algorithm ac --mode block --rules-file rules.tsv ", prog);
     printf("--corpus-file corpus.bin --rule-count 500000 --query-index 0\n");
     printf("  %s --all\n", prog);
@@ -223,41 +189,9 @@ static void list_scenarios(void)
     }
 }
 
-static void print_scenarios_for_api(const char *api)
-{
-    uint32_t i;
-    int printed = 0;
-
-    for (i = 0; i < DEMO_ARRAY_SIZE(g_scenarios); i++) {
-        if (scenario_has_api(g_scenarios[i], api)) {
-            printf("%s%s", printed ? ", " : "", g_scenarios[i]->key);
-            printed = 1;
-        }
-    }
-    if (!printed) {
-        printf("-");
-    }
-}
-
 static void list_apis(void)
 {
-    public_api_list_t apis = {{0}, 0};
-    uint32_t i;
-    uint32_t j;
-
-    for (i = 0; i < DEMO_ARRAY_SIZE(g_scenarios); i++) {
-        for (j = 0; g_scenarios[i]->apis[j] != NULL; j++) {
-            (void)api_list_add(&apis, g_scenarios[i]->apis[j]);
-        }
-    }
-    printf("可运行场景已覆盖的公开接口：\n");
-    for (i = 0; i < apis.count; i++) {
-        printf("  %-36s ", apis.names[i]);
-        print_scenarios_for_api(apis.names[i]);
-        printf("\n");
-    }
-    printf("\n使用 --api <接口名> 运行调用指定接口的场景。\n");
-    printf("使用 --all 运行全部场景。\n");
+    demo_list_api_tests();
 }
 
 static const demo_scenario_t *find_scenario(const char *key)
@@ -300,21 +234,7 @@ static void print_scenario_help(const char *prog, const char *key)
 
 static void print_api_help(const char *prog, const char *api)
 {
-    uint32_t i;
-    int found = 0;
-
-    printf("接口：%s\n", api);
-    printf("用法：%s --api %s [输入选项]\n", prog, api);
-    printf("对应场景：\n");
-    for (i = 0; i < DEMO_ARRAY_SIZE(g_scenarios); i++) {
-        if (scenario_has_api(g_scenarios[i], api)) {
-            printf("  %s：%s\n", g_scenarios[i]->key, g_scenarios[i]->title);
-            found = 1;
-        }
-    }
-    if (!found) {
-        printf("  当前没有场景调用该接口。\n");
-    }
+    demo_print_api_test_help(prog, api);
 }
 
 static void print_command_help(const char *prog, const char *command)
@@ -371,7 +291,7 @@ static void print_command_help(const char *prog, const char *command)
         printf("用法：%s benchmark -a <算法> -M <模式> -n <规则数> -t <规则文件> ", prog);
         printf("-s <corpus文件> -p <CSV输出> -T <机器名> ");
         printf("[-R <次数>] [-w <预热>] [-c <CPU列表>]\n\n");
-        printf("算法：hash、ac、accombo、ac_legacy、ac_on_combo。\n");
+        printf("算法：hash、ac、accombo、ac_legacy、ac_on_combo、ac_delete、accombo_delete。\n");
         printf("模式：lookup、block、stream-full、both。\n");
         printf("CPU列表：例如 1、1,3,5 或 1-95；每个 worker 扫描完整 corpus。\n");
         printf("输出：正确性校验、query_ops、GiB/s、编译耗时、RSS 和原始 CSV。\n\n");
@@ -398,16 +318,30 @@ static void print_command_help(const char *prog, const char *command)
     } else if (strcmp(command, "allocator") == 0) {
         printf("用法：%s allocator\n运行自定义 allocator 的设置、使用和恢复流程。\n", prog);
     } else if (strcmp(command, "apis") == 0) {
-        printf("用法：%s apis\n查看公开接口及调用它们的应用场景。\n", prog);
+        printf("用法：%s apis\n查看可以单独运行并带断言的公开接口测试。\n", prog);
+    } else if (strcmp(command, "modules") == 0) {
+        printf("用法：%s modules\n列出接口模块。\n", prog);
+        printf("查看流程：%s --module <模块名>\n", prog);
+        printf("运行测试：%s --module-test <模块名>\n", prog);
+    } else if (strcmp(command, "selftest") == 0) {
+        printf("用法：%s selftest\n运行全部单接口测试并用退出码返回汇总结果。\n", prog);
     } else if (strcmp(command, "scenarios") == 0) {
         printf("用法：%s scenarios\n列出全部内置应用场景。\n", prog);
     } else if (strcmp(command, "--list") == 0) {
         printf("用法：%s --list\n列出所有可运行场景及其用途。\n", prog);
     } else if (strcmp(command, "--apis") == 0) {
-        printf("用法：%s --apis\n列出 demo 实际调用的公开接口及对应场景。\n", prog);
+        printf("用法：%s --apis\n列出可以单独运行并带断言的公开接口测试。\n", prog);
     } else if (strcmp(command, "--api") == 0) {
-        printf("用法：%s --api <接口名> [输入选项]\n", prog);
-        printf("运行所有调用指定接口的场景。可先使用 --apis 查看接口名。\n");
+        printf("用法一：%s --api <接口名>\n", prog);
+        printf("        无参数时运行该接口自动测试。\n");
+        printf("用法二：%s --api <接口名> [参数...]\n", prog);
+        printf("        有参数时按 CLI 参数调用接口，例如：\n");
+        printf("        %s --api ms_compile_database_multi ac 0 0 abc 101 0\n", prog);
+        printf("        %s --api ms_scan_database abcdef 4 ac 0 0 abc 101 0 def 102 0 '101&102' 1001 1\n", prog);
+    } else if (strcmp(command, "--module") == 0) {
+        printf("用法：%s --module <模块名>\n显示模块的接口调用流程和接口清单。\n", prog);
+    } else if (strcmp(command, "--module-test") == 0) {
+        printf("用法：%s --module-test <模块名>\n显示流程并运行模块内全部单接口测试。\n", prog);
     } else if (strcmp(command, "--scenario") == 0 || strcmp(command, "--case") == 0 ||
                strcmp(command, "-c") == 0) {
         printf("用法：%s --scenario <场景名> [输入选项]\n", prog);
@@ -492,28 +426,7 @@ static void run_all_scenarios(void)
 
 static int run_api_demo(const char *api)
 {
-    uint32_t i;
-    int found = 0;
-
-    printf("调用接口“%s”的场景：\n", api);
-    for (i = 0; i < DEMO_ARRAY_SIZE(g_scenarios); i++) {
-        if (scenario_has_api(g_scenarios[i], api)) {
-            printf("  - %s\n", g_scenarios[i]->key);
-            found = 1;
-        }
-    }
-    if (!found) {
-        printf("  当前没有场景调用该接口\n\n");
-        list_apis();
-        return 1;
-    }
-
-    for (i = 0; i < DEMO_ARRAY_SIZE(g_scenarios); i++) {
-        if (scenario_has_api(g_scenarios[i], api)) {
-            run_scenario(g_scenarios[i]);
-        }
-    }
-    return 0;
+    return demo_run_api_test(api);
 }
 
 static int parse_menu_choice(const char *line)
@@ -556,6 +469,8 @@ static void interactive_menu(void)
     char input[1024] = {0};
     char pattern[256] = {0};
     char key[256] = {0};
+    char api[128] = {0};
+    char module[64] = {0};
     demo_options_t options = *demo_get_options();
 
     for (;;) {
@@ -568,7 +483,10 @@ static void interactive_menu(void)
             printf("  %u. %s (%s)\n", i + 1, g_scenarios[i]->title, g_scenarios[i]->key);
         }
         printf("  h. 查看帮助\n");
-        printf("  a. 查看公开接口及覆盖场景\n");
+        printf("  a. 查看可单独测试的公开接口\n");
+        printf("  u. 运行一个单接口测试\n");
+        printf("  m. 查看一个模块流程图\n");
+        printf("  s. 运行全部单接口测试\n");
         printf("  t. 设置扫描文本\n");
         printf("  p. 设置第一条 AC 规则\n");
         printf("  k. 设置 HASH 查询 key\n");
@@ -591,6 +509,21 @@ static void interactive_menu(void)
         }
         if (line[0] == 'a' || line[0] == 'A') {
             list_apis();
+            continue;
+        }
+        if (line[0] == 'u' || line[0] == 'U') {
+            read_menu_value("输入公开接口名> ", api, sizeof(api));
+            (void)demo_run_api_test(api);
+            continue;
+        }
+        if (line[0] == 'm' || line[0] == 'M') {
+            demo_list_modules();
+            read_menu_value("输入模块名> ", module, sizeof(module));
+            (void)demo_show_module(module);
+            continue;
+        }
+        if (line[0] == 's' || line[0] == 'S') {
+            (void)demo_run_all_api_tests();
             continue;
         }
         if (line[0] == 't' || line[0] == 'T') {
@@ -676,6 +609,21 @@ int main(int argc, char **argv)
     if (strcmp(argv[1], "920hg") == 0 || strcmp(argv[1], "--920hg") == 0) {
         return demo_run_920hg_workflow(argc - 1, argv + 1);
     }
+    if (strcmp(argv[1], "--api") == 0) {
+        if (argc < 3) {
+            demo_print_api_cli_help(prog);
+            return 1;
+        }
+        if (argc == 3 && is_help_argument(argv[2])) {
+            demo_print_api_cli_help(prog);
+            return 0;
+        }
+        if (argc == 4 && is_help_argument(argv[3])) {
+            print_api_help(prog, argv[2]);
+            return 0;
+        }
+        return demo_run_api_cli(argv[2], argc - 3, argv + 3);
+    }
     if (argc == 3 && is_help_argument(argv[2])) {
         print_command_help(prog, argv[1]);
         return 0;
@@ -688,6 +636,10 @@ int main(int argc, char **argv)
         }
         if (strcmp(argv[1], "--api") == 0) {
             print_api_help(prog, argv[2]);
+            return 0;
+        }
+        if (strcmp(argv[1], "--module") == 0 || strcmp(argv[1], "--module-test") == 0) {
+            (void)demo_show_module(argv[2]);
             return 0;
         }
     }
@@ -707,6 +659,10 @@ int main(int argc, char **argv)
             next_action = DEMO_ACTION_LIST;
         } else if (strcmp(argv[i], "--apis") == 0) {
             next_action = DEMO_ACTION_APIS;
+        } else if (strcmp(argv[i], "modules") == 0) {
+            next_action = DEMO_ACTION_MODULES;
+        } else if (strcmp(argv[i], "selftest") == 0) {
+            next_action = DEMO_ACTION_SELFTEST;
         } else if (strcmp(argv[i], "--all") == 0 || strcmp(argv[i], "-a") == 0) {
             next_action = DEMO_ACTION_ALL;
         } else if (strcmp(argv[i], "--benchmark-case") == 0) {
@@ -729,15 +685,23 @@ int main(int argc, char **argv)
             next_action = DEMO_ACTION_LIST;
         } else if (strcmp(argv[i], "--interactive") == 0 || strcmp(argv[i], "-i") == 0) {
             next_action = DEMO_ACTION_INTERACTIVE;
-        } else if (strcmp(argv[i], "--api") == 0 || strcmp(argv[i], "--scenario") == 0 ||
+        } else if (strcmp(argv[i], "--api") == 0 || strcmp(argv[i], "--module") == 0 ||
+                   strcmp(argv[i], "--module-test") == 0 || strcmp(argv[i], "--scenario") == 0 ||
                    strcmp(argv[i], "--case") == 0 || strcmp(argv[i], "-c") == 0) {
             if (++i >= argc) {
                 printf("操作缺少参数。\n\n");
                 print_usage(prog);
                 return 1;
             }
-            next_action = strcmp(argv[i - 1], "--api") == 0 ?
-                          DEMO_ACTION_API : DEMO_ACTION_SCENARIO;
+            if (strcmp(argv[i - 1], "--api") == 0) {
+                next_action = DEMO_ACTION_API;
+            } else if (strcmp(argv[i - 1], "--module") == 0) {
+                next_action = DEMO_ACTION_MODULE;
+            } else if (strcmp(argv[i - 1], "--module-test") == 0) {
+                next_action = DEMO_ACTION_MODULE_TEST;
+            } else {
+                next_action = DEMO_ACTION_SCENARIO;
+            }
             action_value = argv[i];
         } else if (strcmp(argv[i], "--all-queries") == 0) {
             benchmark_case.all_queries = 1;
@@ -827,6 +791,14 @@ int main(int argc, char **argv)
         list_apis();
     } else if (action == DEMO_ACTION_API) {
         ret = run_api_demo(action_value);
+    } else if (action == DEMO_ACTION_MODULES) {
+        demo_list_modules();
+    } else if (action == DEMO_ACTION_MODULE) {
+        ret = demo_show_module(action_value);
+    } else if (action == DEMO_ACTION_MODULE_TEST) {
+        ret = demo_run_module_tests(action_value);
+    } else if (action == DEMO_ACTION_SELFTEST) {
+        ret = demo_run_all_api_tests();
     } else if (action == DEMO_ACTION_ALL) {
         run_all_scenarios();
     } else if (action == DEMO_ACTION_BENCHMARK_CASE) {
