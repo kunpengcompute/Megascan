@@ -1,21 +1,27 @@
 # Megascan Demo
-`megascan_demo` 是基于 Megascan 库构建的命令行示例应用，包含两类能力：
-1. 调用 Megascan 公开接口，演示规则编译、块扫描、流扫描、HASH 查询和逻辑组合。
-2. 执行完整 920/HG 测试，包括数据生成、单核、整机、quick、profile、汇总和跨机器比较。
-功能演示与正式性能测试使用不同入口：
-- `scan`、`lookup`、`corpus`、`logical` 用于接口验证和问题复现。
+`megascan_demo` 是一个参数化命令行工具：
+
+1. 通过 `--api <接口> <参数...>` 手动调用公开接口。
+2. 通过 `session` 在同一进程中手动创建、使用和释放 database、scratch、stream。
+3. 执行完整 920/HG 测试，包括数据生成、单核、整机、quick、profile、汇总和跨机器比较。
+
+接口调用与正式性能测试使用不同入口：
+
+- `--api` 用于单接口手动测试。
+- `session` 用于纯手动对象生命周期测试，demo 只保存命名句柄。
+- `scan`、`lookup`、`corpus` 用于真实规则文件和数据的问题复现。
 - `920hg single`、`920hg full` 用于正式性能基线。
 - `benchmark` 用于手动复现单个 case，不作为跨机器基线入口。
 
+原有自动构造固定数据的场景、无参数单接口测试、`selftest` 和固定选项菜单均已
+移除。新增的 `session` 不是预置测试菜单：每一条 API、每一个参数以及何时释放
+对象都由测试人员显式输入。
+
 ## 文件说明
-- `api_demo.c`：命令行入口、中文帮助、场景和公开接口索引。
-- `api_test_demo.c`：单接口测试、模块流程图、动态删除断言和测试汇总。
-- `demo_common.c`：场景公共选项、数据结构和结果输出。
-- `database_demo.c`：database、scratch、块扫描和流扫描示例。
-- `handler_demo.c`：handler、HASH 和 legacy AC 示例。
-- `expression_demo.c`：表达式与规则接口示例。
-- `logical_demo.c`：逻辑状态设置与组合求值示例。
-- `allocator_demo.c`：自定义 allocator 设置与恢复示例。
+- `api_demo.c`：参数化 API、规则文件扫描和 920hg 命令路由。
+- `api_test_demo.c`：接口元数据、模块说明和 database 基础接口参数解析。
+- `api_cli_demo.c`：其余公开接口的参数解析与调用。
+- `demo_common.c`：API 与 corpus 命令共用的少量输出辅助函数。
 - `benchmark_case_demo.c`：读取规则和 corpus，执行正确性扫描。
 - `benchmark_runner.c`：将 `bench_920hg.c` 接入 `benchmark`。
 - `data_generator_runner.c`：将 `gen_920hg_data.c` 接入 `generate-data`。
@@ -48,10 +54,9 @@ $DEMO lookup -h
 $DEMO corpus -h
 $DEMO benchmark -h
 $DEMO generate-data -h
-$DEMO logical -h
+$DEMO session -h
 $DEMO apis
 $DEMO modules
-$DEMO selftest
 $DEMO 920hg -h
 $DEMO 920hg generate -h
 $DEMO 920hg single -h
@@ -61,50 +66,270 @@ $DEMO 920hg profile -h
 $DEMO 920hg summarize -h
 $DEMO 920hg compare-single -h
 ```
-不带参数运行时进入交互菜单。每个具体命令和 920hg 子命令均支持独立中文帮助。
+不带参数时只显示帮助，不会自动运行任何测试。
+
+## 纯手动对象流程
+
+直接进入常驻 session：
+
+```sh
+$DEMO session
+```
+
+然后逐条输入：
+
+```text
+ms_compile_database_multi db1 ac 0 0 abc def '101&102' 2 2 1 101 102 1001 3
+handles
+ms_alloc_scratch db1 scratch1
+ms_scan_database db1 abcdef 6 scratch1 4
+ms_open_stream db1 stream1
+ms_scan_stream stream1 abc 3 scratch1 4
+ms_scan_stream stream1 def 3 scratch1 4
+ms_flush_stream stream1 scratch1 4
+ms_close_stream stream1 scratch1 4
+ms_free_scratch scratch1
+ms_free_database db1
+handles
+exit
+```
+
+`db1`、`scratch1`、`stream1` 是当前进程内的命名句柄。前置条件采用以下统一
+规则：
+
+1. 命令提供已有句柄时，优先复用已有对象，并打印 `source=EXISTING`。
+2. 没有句柄、但命令提供了足够的 fixture 参数时，demo 自动创建前置对象，
+   打印 `source=AUTO reason=NO_STORED_HANDLE_FORM`，调用结束后自动清理。
+3. 既没有已有句柄，也没有创建对象所需的参数时，返回具体的 `NOT_FOUND`，
+   不会用无意义的默认规则构造 database。
+
+例如下面这条使用已经存在的对象：
+
+```text
+ms_scan_database db1 abcdef 6 scratch1 4
+```
+
+输出包含：
+
+```text
+PRECONDITION api=ms_scan_database source=EXISTING database=db1 scratch=scratch1 status=READY
+```
+
+下面这条没有传句柄，但给出了完整的 database fixture，因此自动创建 database
+和 scratch：
+
+```text
+ms_scan_database abcdef 6 4 ac 0 0 abc def '101&102' 2 2 1 101 102 1001 3
+```
+
+输出包含：
+
+```text
+PRECONDITION api=ms_scan_database source=AUTO reason=NO_STORED_HANDLE_FORM status=PREPARING
+PRECONDITION api=ms_scan_database source=AUTO objects=database,scratch status=READY reason=STANDALONE_CALL
+```
+
+对象归属不一致、重复创建或 database 仍有子对象时，都会在 `stage=STATE`
+明确失败。
+
+带 ext 的 database 同样由测试人员命名并暂存：
+
+```text
+ms_compile_database_multi_ext db1 ac 0 0 abc def '101&102' 2 2 1 101 102 1001 0 0 0 0 0 0 3 6 20 3
+```
+
+注意：session 每行是一条完整命令，目前不把 shell 的反斜杠续行解释为同一条
+命令。交互输入时请将单条 API 写在一行；较长流程建议使用 command file。
+
+也可以把同样的命令写入文件执行：
+
+```sh
+$DEMO session api-flow.txt
+echo $?
+```
+
+脚本模式只要有一条命令失败，最终退出码就是非 0。若退出时仍有未释放句柄，
+demo 会打印 `SESSION_CLEANUP`，安全回收能够回收的对象，并以
+`SESSION_FAILED reason=UNRELEASED_HANDLES` 判定流程失败。因此正常流程必须由
+测试人员亲自 close/free，不能依赖退出清理。
+
+`MS_FIND_FAIL` 会显示为 `NO_MATCH`，不是含义模糊的成功；真正的库错误显示
+`ERROR stage=API`，CLI 数量或类型错误显示 `ERROR stage=CLI`，对象状态错误显示
+`ERROR stage=STATE`。
 
 ## 接口调用示例
-查看场景、单接口测试和模块流程，或运行指定测试：
+查看接口、参数格式和模块关系：
+
 ```sh
-$DEMO scenarios
 $DEMO apis
-$DEMO --api ms_scan_database
-$DEMO --api ms_set_scratch_allocator
+$DEMO --api ms_scan_database -h
+$DEMO --api ms_set_scratch_allocator -h
 $DEMO modules
 $DEMO --module stream
-$DEMO --module-test delete
-$DEMO selftest
-$DEMO --scenario stream-audit --input-file request.dat --chunk-size 64
-$DEMO --all
 ```
 
-`--api` 不带额外参数时运行单个接口自动测试，不再把所有包含该接口的应用场景一起运行。输出含义：
+`--api` 后必须提供接口参数；缺少参数时返回非 0，不会自动创建固定规则进行
+测试。输出采用紧凑格式，例如：
 
-- `SETUP`：准备目标接口所需的 database、scratch、stream 或 handler。
-- `TEST`：本次指定的目标接口调用。
-- `VERIFY`：返回值、输出 ID、allocator 计数或状态变化断言。
-- `RESULT`：接口级 PASS/FAIL，失败时进程返回非 0。
-
-查看单个接口说明：
-
-```sh
-$DEMO --api -h
-$DEMO --api ms_remove_database_rule -h
+```text
+ms_scan_database ret=0(MS_SUCCESS)
+count=1 ids=1001
 ```
 
-`--api -h` 列出当前支持 CLI 参数调用的接口及参数格式；`--api <接口名> -h`
-进一步显示该接口每个位置参数的含义、限制和完整示例。
+必要的前置对象由 CLI 根据 fixture 参数创建，并用一条紧凑的 `PRECONDITION`
+记录说明来源、对象和结果；调用结束后用 `CLEANUP` 或具体释放结果说明清理状态。
+
+这里需要区分输入对象和输出对象：
+
+- `ms_compile_database_multi(ms_database_t **db, ...)` 中的 `db` 是输出参数。
+  调用前由 CLI 创建一个值为 NULL 的 `ms_database_t *db`，并把 `&db` 传给接口；
+  它不需要一个已经存在的 database。
+- `ms_scan_database(const ms_database_t *db, ...)` 中的 `db` 是输入对象。
+  单次 shell 命令不能复用另一个进程里的 C 指针，因此 CLI 使用命令末尾的
+  database fixture 参数创建它，并在输出中明确显示
+  `source=AUTO objects=database,scratch status=READY`。
+- 规则、flags、ID、长度、容量等业务参数全部由测试人员手动提供。进程内对象
+  地址不能手工填写；接受任意十六进制地址反而会让测试产生悬空指针和崩溃，
+  不属于公平的接口参数测试。
+
+编译类接口的成功结果现在包含三部分：
+
+```text
+ms_compile_database_multi ret=0(MS_SUCCESS)
+output.db=CREATED
+cleanup.ms_free_database ret=0(MS_SUCCESS)
+```
+
+三项分别证明目标接口返回成功、确实产生了 database、demo 最终释放成功。
+如果只看到 `ret=0` 而 `output.db=NULL`，demo 会返回非 0，测试不算通过。
+
+扫描类接口还会显示 fixture 状态和实际匹配结果：
+
+```text
+PRECONDITION api=ms_scan_database source=AUTO objects=database,scratch status=READY reason=STANDALONE_CALL
+ms_scan_database ret=0(MS_SUCCESS)
+count=1 ids=1001
+```
+
+如果 fixture 构建失败，会输出 `ms_scan_database called=NO`，不会把前置步骤的
+失败伪装成目标接口返回值。
 
 如果需要按 CLI 参数调用接口，在接口名后继续传入参数：
 
 ```sh
-$DEMO --api ms_compile_database_multi ac 0 0 abc 101 0 def 102 0 '101&102' 1001 1
-$DEMO --api ms_alloc_scratch ac 0 0 abc 101 0
-$DEMO --api ms_scan_database abcdef 4 ac 0 0 abc 101 0 def 102 0 '101&102' 1001 1
-$DEMO --api ms_remove_database_rule 1001 - 0 ac 0 0 abc 101 0 def 102 0 '101&102' 1001 1
+$DEMO --api ms_create_database ac 0 0
+$DEMO --api ms_compile_database_multi \
+  ac 0 0 \
+  abc def '101&102' \
+  2 2 1 \
+  101 102 1001 \
+  3
+$DEMO --api ms_compile_database_multi_ext ac 0 0 \
+  abc def '101&102' \
+  2 2 1 \
+  101 102 1001 \
+  0 0 0  0 0 0  3 6 20 \
+  3
+$DEMO --api ms_alloc_scratch ac 0 0 abc 0 101 1
+$DEMO --api ms_scan_database abcdef 6 4 \
+  ac 0 0 abc def '101&102' 2 2 1 101 102 1001 3
+$DEMO --api ms_scan_stream abc 3 4 ac 0 0 abc 0 101 1
+$DEMO --api ms_flush_stream 4 ac 0 0 abc '!101' 2 1 101 2001 2
+$DEMO --api ms_remove_database_rule \
+  101 3 abc 1001 0 - -- 2 abcdef 4 \
+  ac 0 0 abc def '101&102' 0 0 1 101 102 1001 3
+$DEMO --api ms_find_rule 0 7 blocked hash 16 4 7001 7 blocked
+$DEMO --api ms_scan_expr abcdef 6 4 \
+  abc def '101&102' 2 2 1 101 102 1001 3
+$DEMO --api ms_compile_eval_combinations 101,102 2 4 \
+  abc def '101&102' 2 2 1 101 102 1001 3
+$DEMO --api ms_logical_eval '101&!102' 101=1,102=0 256
+$DEMO --api ms_set_database_allocator custom custom custom
 ```
 
-规则参数采用三元组：`expression id flags`。`flags` 取值：`0=MS_FLAG_NONE`、`1=MS_FLAG_COMBINATION`、`2=MS_FLAG_QUIET`、`3=COMBINATION|QUIET`。需要构造 `db` 或 `scratch` 的接口会使用 CLI 中的规则参数在当前进程内构造前置对象，并打印实际目标接口调用。
+当前注册的 43 个公开接口均只提供参数化调用。映射规则是：
+
+- 对象指针、输出数组和输出计数由 CLI 托管，不接受真实地址。
+- 其余调用方参数按照头文件中的先后顺序排列。
+- `expressions`、`flags`、`ids` 是三个独立数组，不再交叉为规则三元组。
+- `ext` 按 `flags min_offset max_offset` 连续表示每个 `ms_expr_ext_t`。
+- `len`、`elements`、`rule_num`、`alias_count` 必须显式传入，不再自动推导。
+- 规则结构按 `alias key_len key` 表示；NULL key 使用 `-`。
+- alias 集合：逗号分隔，例如 `101,102`。
+- logical 状态：逗号分隔，例如 `101=1,102=0`。
+- allocator 的 alloc/calloc/free 分别传 `custom` 或 `default`。
+
+CLI 能安全表达的参数与 C 参数一一对应；真实地址类参数例外：
+
+- database、scratch、stream、handler 等对象指针由 fixture 创建。
+- `ids`、`id_count`、`matched` 等输出指针由 CLI 分配。
+- CLI 不接受任意数值伪造为地址，因此 NULL、悬空指针和错误对象归属测试仍应由
+  C 单元测试完成，不能通过 shell 公平、安全地表达。
+- 数组序列化项数必须严格等于 `elements`。例如序列化 3 条规则却传
+  `elements=2` 会在调用库之前返回 `COUNT_MISMATCH`，退出码非 0。
+
+例如：
+
+```c
+ms_compile_database_multi_ext(&db, type, buckets, secondary,
+                              expressions, flags, ids, ext, elements);
+```
+
+对应：
+
+```text
+<type> <buckets> <secondary>
+<expressions[0..elements)>
+<flags[0..elements)>
+<ids[0..elements)>
+<ext[0..elements)，每项 flags/min/max>
+<elements>
+```
+
+`db` 是输出指针，由 CLI 内部提供并在调用结束后释放。
+
+`flags` 是位掩码：`1=MS_FLAG_COMBINATION`、`2=MS_FLAG_QUIET`、
+`4=MS_FLAG_SINGLEMATCH`，可以按位组合，例如
+`5=COMBINATION|SINGLEMATCH`。`SINGLEMATCH` 只允许用于组合规则。
+`ext_flags` 同样是位掩码：`0=无约束`、`1=MIN_OFFSET`、
+`2=MAX_OFFSET`、`3=MIN|MAX`。
+
+生命周期类接口同样要求参数。CLI 会根据参数创建目标接口所需的最小前置对象，
+调用目标接口后执行必要清理。例如 `ms_free_database` 先创建 database；
+`ms_close_stream` 先编译 database、分配 scratch 并打开 stream。
+
+`ms_scan_stream` 的一次 CLI 调用只执行一次目标函数，并显式接受 `data` 和
+`len`。它不再通过 `|` 偷偷执行多次扫描。跨 chunk 场景属于多接口/多调用流程，
+不能冒充一次单接口调用。
+
+按模块查看全部格式：
+
+```sh
+$DEMO --api -h
+$DEMO --api ms_create_database -h
+$DEMO --api ms_scan_stream -h
+$DEMO --api ms_compile_multi_ext -h
+$DEMO --api ms_scan_expr_stream -h
+$DEMO --api ms_logical_eval_inplace -h
+$DEMO --api ms_set_stream_allocator -h
+```
+
+## 与 gnsj 功能设计对齐
+
+`log/Megascan/gnsj` 下五份功能设计是本 demo 的功能契约。接口测试按以下
+关系组织。这里的“验证”表示测试人员可通过对应参数构造该行为，不再表示 demo
+内部存在一套写死的自动回归：
+
+| 功能设计 | 主要接口 | demo 必须验证的行为 |
+| --- | --- | --- |
+| 3-1 对外接口开源适配 | `ms_compile_database_multi[_ext]`、`ms_alloc_scratch`、`ms_scan_database`、stream 生命周期 | 手动指定 database、scratch、block/stream 参数和 MIN/MAX offset |
+| 3-2 AC 规则逻辑组合 | 编译、Block/Stream 扫描、logical API | `QUIET` 不直接上报、组合 ID 上报、跨 chunk 组合、纯否定 flush、offset；flags 按位支持 `SINGLEMATCH` |
+| 3-3 AC 流模式 | `ms_open/scan/flush/close/reset_stream` | 每个 `--api` 只调用一次目标接口；data、len 和 capacity 与签名对应 |
+| 3-4 自定义内存 | 五个 `ms_set_*allocator` 接口 | custom 模式不只调用 setter，还创建并释放对应 database/scratch/stream，检查回调计数；misc 明确标注暂无公开消费者 |
+| 3-5 动态删除 | `ms_remove_rule`、`ms_remove_database_rule` | handler HASH 兼容删除；database 支持批量规则参数，并验证原子删除路径、旧 scratch 刷新、旧 stream stale、reset 后恢复 |
+
+参数化入口遵循功能边界：HASH database 不支持 stream 和
+`ms_remove_database_rule`，HASH 动态删除使用 handler 的 `ms_remove_rule`。
 
 ## 模块接口流程
 
@@ -119,18 +344,7 @@ $DEMO --module delete
 $DEMO --module allocator
 ```
 
-运行一个模块内的全部单接口测试：
-
-```sh
-$DEMO --module-test stream
-$DEMO --module-test allocator
-```
-
-运行全部公开接口测试并输出总数、通过数和失败数：
-
-```sh
-$DEMO selftest
-```
+模块命令只展示接口关系，不自动执行接口。
 
 ## AC Database 动态删除端到端测试
 
@@ -149,23 +363,23 @@ $DEMO 920hg quick --machine 920 --data-root /data/920hg_data_v4
 每类 allocator 可以单独测试：
 
 ```sh
-$DEMO --api ms_set_allocator
-$DEMO --api ms_set_database_allocator
-$DEMO --api ms_set_scratch_allocator
-$DEMO --api ms_set_stream_allocator
-$DEMO --api ms_set_misc_allocator
+$DEMO --api ms_set_allocator custom custom custom
+$DEMO --api ms_set_database_allocator custom custom custom
+$DEMO --api ms_set_scratch_allocator custom custom custom
+$DEMO --api ms_set_stream_allocator custom custom custom
+$DEMO --api ms_set_misc_allocator custom custom custom
 ```
 
 Database、scratch 和 stream 测试会实际创建并释放对应对象，然后检查自定义回调计数。当前没有使用 misc allocator 的公开对象创建接口，因此 misc 测试只验证 setter 和恢复默认值，并在输出中明确标注该边界。
+allocator 接口按函数签名依次传入 alloc、calloc 和 free 三个选择。
 扫描文本、流式扫描文件、HASH 查询和逻辑求值：
 ```sh
-$DEMO scan --matcher ac --mode block \
-  --pattern 'token=' --input 'user=alice&token=abc'
 $DEMO scan --matcher accombo --mode stream-full \
   --rules-file rules.tsv --rule-count 50000 \
   --input-file request.dat --chunk-size 64
-$DEMO lookup --key malware-sha256-demo
-$DEMO logical --expression '101&!102' --set '101=1,102=0'
+$DEMO lookup --rules-file hash_rules.bin --rule-count 1000 \
+  --input-file tuple.bin
+$DEMO --api ms_logical_eval '101&!102' 101=1,102=0 256
 ```
 matcher 支持 `ac`、`accombo`、`ac_legacy`、`ac_on_combo`，扫描模式支持 `block` 和 `stream-full`。HASH 规则是固定 16 字节 tuple；AC/ACCombo 使用 `ID<TAB>flags<TAB>expression` TSV。上述命令用于接口验证，不统计正式吞吐量。
 

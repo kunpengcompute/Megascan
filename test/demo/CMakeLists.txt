@@ -8,11 +8,8 @@ link_directories(
 add_executable(${target}
     api_demo.c
     demo_common.c
-    allocator_demo.c
-    handler_demo.c
-    expression_demo.c
-    database_demo.c
-    logical_demo.c
+    api_cli_demo.c
+    api_session_demo.c
     api_test_demo.c
     benchmark_case_demo.c
     benchmark_runner.c

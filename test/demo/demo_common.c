@@ -4,23 +4,6 @@
 #include "demo_common.h"
 
 #include <stdio.h>
-#include <string.h>
-
-static demo_options_t g_demo_options;
-
-const demo_options_t *demo_get_options(void)
-{
-    return &g_demo_options;
-}
-
-void demo_set_options(const demo_options_t *options)
-{
-    if (options == NULL) {
-        (void)memset(&g_demo_options, 0, sizeof(g_demo_options));
-        return;
-    }
-    g_demo_options = *options;
-}
 
 static const char *demo_ret_name(int ret)
 {
@@ -73,14 +56,4 @@ void demo_print_ids(const char *name, const uint32_t *ids, uint32_t count)
         printf("%s%u", i == 0 ? "" : ",", ids[i]);
     }
     printf("\n");
-}
-
-ms_rule_t demo_make_rule(uint32_t alias, const char *key)
-{
-    ms_rule_t rule;
-
-    rule.alias = alias;
-    rule.key_len = (uint32_t)strlen(key);
-    rule.key = (uint8_t *)key;
-    return rule;
 }

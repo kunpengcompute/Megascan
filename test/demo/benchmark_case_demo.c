@@ -13,6 +13,7 @@
 #include "ms.h"
 #include "ms_compile.h"
 #include "ms_handler.h"
+#include "ms_rule.h"
 #include "ms_runtime.h"
 
 #define DEMO_CORPUS_MAGIC 0x4d534243u
