@@ -8,10 +8,11 @@ link_directories(
 add_executable(${target}
     api_demo.c
     demo_common.c
+    flow_demo.c
     api_cli_demo.c
+    api_catalog_demo.c
     api_session_demo.c
-    api_test_demo.c
-    benchmark_case_demo.c
+    api_session_extended_demo.c
     benchmark_runner.c
     data_generator_runner.c
     workflow_runner.cpp

@@ -106,6 +106,17 @@ static double median(std::vector<double> values)
     return values.size() % 2 ? values[middle] : (values[middle - 1] + values[middle]) / 2.0;
 }
 
+static double percentile(std::vector<double> values, double quantile)
+{
+    std::sort(values.begin(), values.end());
+    if (values.empty()) return 0.0;
+    double position = quantile * (values.size() - 1u);
+    size_t lower = static_cast<size_t>(position);
+    size_t upper = std::min(lower + 1u, values.size() - 1u);
+    double fraction = position - lower;
+    return values[lower] + (values[upper] - values[lower]) * fraction;
+}
+
 static std::map<std::string, std::string> read_env(const std::string &path)
 {
     std::ifstream input(path);
@@ -165,6 +176,53 @@ static std::vector<Row> pair_algorithms(const std::vector<Row> &summary,
     (void)fields;
     return output;
 }
+
+static int summarize_dynamic_delete(const std::string &out_dir, bool &failed)
+{
+    std::vector<Row> raw = read_csv(out_dir + "/raw_delete_trials.csv");
+    const std::vector<std::string> group_fields = {
+        "machine", "algorithm", "rule_count", "atomic_rule_count",
+        "combination_rule_count", "workers", "cpu_list"};
+    const std::vector<std::string> fields = {
+        "machine", "algorithm", "rule_count", "atomic_rule_count",
+        "combination_rule_count", "workers", "cpu_list", "trials",
+        "delete_ns_min", "delete_ns_p50", "delete_ns_p95", "delete_ns_max",
+        "rules_per_second_p50", "correctness"};
+    std::map<std::string, std::vector<Row>> groups;
+    std::vector<Row> summary;
+
+    for (const Row &row : raw) {
+        groups[key_of(row, group_fields)].push_back(row);
+    }
+    for (const auto &item : groups) {
+        const Row &first = item.second.front();
+        Row row;
+        std::vector<double> latency;
+        std::vector<double> rate;
+        bool correct = true;
+
+        for (const std::string &field : group_fields) {
+            row[field] = first.at(field);
+        }
+        for (const Row &trial : item.second) {
+            latency.push_back(number(trial, "delete_ns"));
+            rate.push_back(number(trial, "rules_per_second"));
+            correct &= trial.at("correctness") == "PASS";
+        }
+        row["trials"] = std::to_string(item.second.size());
+        row["delete_ns_min"] =
+            fixed(*std::min_element(latency.begin(), latency.end()), 0);
+        row["delete_ns_p50"] = fixed(median(latency), 0);
+        row["delete_ns_p95"] = fixed(percentile(latency, 0.95), 0);
+        row["delete_ns_max"] =
+            fixed(*std::max_element(latency.begin(), latency.end()), 0);
+        row["rules_per_second_p50"] = fixed(median(rate), 8);
+        row["correctness"] = correct ? "PASS" : "FAIL";
+        failed |= !correct;
+        summary.push_back(row);
+    }
+    return write_csv(out_dir + "/dynamic_delete_summary.csv", fields, summary);
+}
 } // namespace
 
 int demo_920hg_summarize(const std::string &out_dir, double max_difference)
@@ -219,6 +277,9 @@ int demo_920hg_summarize(const std::string &out_dir, double max_difference)
         summary.push_back(row);
     }
     write_csv(out_dir + "/summary.csv", summary_fields, summary);
+    if (summarize_dynamic_delete(out_dir, failed) != 0) {
+        return 1;
+    }
 
     const std::vector<std::string> mode_key = {"machine", "algorithm", "rule_count",
         "atomic_rule_count", "combination_rule_count", "query_count", "payload_size",

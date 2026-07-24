@@ -2,14 +2,15 @@
 `megascan_demo` 是一个参数化命令行工具：
 
 1. 通过 `--api <接口> <参数...>` 手动调用公开接口。
-2. 通过 `session` 在同一进程中手动创建、使用和释放 database、scratch、stream。
+2. 通过 `session` 在同一进程中手动创建、使用和释放 database、scratch、
+   database/handler stream、handler、logical tree/vector，并保持 allocator 状态。
 3. 执行完整 920/HG 测试，包括数据生成、单核、整机、quick、profile、汇总和跨机器比较。
 
 接口调用与正式性能测试使用不同入口：
 
 - `--api` 用于单接口手动测试。
 - `session` 用于纯手动对象生命周期测试，demo 只保存命名句柄。
-- `scan`、`lookup`、`corpus` 用于真实规则文件和数据的问题复现。
+- `flow` 输出可复制、可编辑的 session 流程模板，不会偷偷执行测试。
 - `920hg single`、`920hg full` 用于正式性能基线。
 - `benchmark` 用于手动复现单个 case，不作为跨机器基线入口。
 
@@ -18,11 +19,13 @@
 对象都由测试人员显式输入。
 
 ## 文件说明
-- `api_demo.c`：参数化 API、规则文件扫描和 920hg 命令路由。
-- `api_test_demo.c`：接口元数据、模块说明和 database 基础接口参数解析。
-- `api_cli_demo.c`：其余公开接口的参数解析与调用。
-- `demo_common.c`：API 与 corpus 命令共用的少量输出辅助函数。
-- `benchmark_case_demo.c`：读取规则和 corpus，执行正确性扫描。
+- `api_demo.c`：参数化 API、session 和 920hg 命令路由。
+- `api_catalog_demo.c`：公开接口元数据、模块说明和统一分发入口。
+- `api_cli_demo.c`：全部 standalone 公开接口的参数解析与调用。
+- `api_session_demo.c`：database、scratch 和 database stream 命名状态。
+- `api_session_extended_demo.c`：handler、handler stream、logical 和 allocator 状态。
+- `flow_demo.c`：交付给测试人员的可复制流程模板。
+- `demo_common.c`：各调用模式共用的数值、matcher 和返回码解析。
 - `benchmark_runner.c`：将 `bench_920hg.c` 接入 `benchmark`。
 - `data_generator_runner.c`：将 `gen_920hg_data.c` 接入 `generate-data`。
 - `workflow_runner.cpp`：920hg 数据、构建、测试矩阵和 profile 流程。
@@ -49,14 +52,13 @@ DEMO=./build/bin/megascan_demo
 ## 帮助
 ```sh
 $DEMO -h
-$DEMO scan -h
-$DEMO lookup -h
-$DEMO corpus -h
 $DEMO benchmark -h
 $DEMO generate-data -h
 $DEMO session -h
 $DEMO apis
 $DEMO modules
+$DEMO flows
+$DEMO flow handler
 $DEMO 920hg -h
 $DEMO 920hg generate -h
 $DEMO 920hg single -h
@@ -156,6 +158,103 @@ demo 会打印 `SESSION_CLEANUP`，安全回收能够回收的对象，并以
 `MS_FIND_FAIL` 会显示为 `NO_MATCH`，不是含义模糊的成功；真正的库错误显示
 `ERROR stage=API`，CLI 数量或类型错误显示 `ERROR stage=CLI`，对象状态错误显示
 `ERROR stage=STATE`。
+
+## 可复制的测试流程
+
+查看当前流程：
+
+```sh
+$DEMO flows
+```
+
+当前提供：
+
+```text
+block
+stream
+handler
+hash-handler
+logical
+allocator
+delete
+owner-error
+```
+
+查看一个流程不会调用任何接口，只会输出 session 脚本：
+
+```sh
+$DEMO flow handler
+```
+
+建议测试人员先保存、检查和修改参数，再执行：
+
+```sh
+$DEMO flow handler > handler.flow
+cat handler.flow
+$DEMO session handler.flow
+echo $?
+```
+
+正常流程也可以直接管道执行：
+
+```sh
+$DEMO flow block | $DEMO session
+$DEMO flow stream | $DEMO session
+$DEMO flow handler | $DEMO session
+$DEMO flow hash-handler | $DEMO session
+$DEMO flow logical | $DEMO session
+$DEMO flow allocator | $DEMO session
+```
+
+`delete` 和 `owner-error` 包含预期失败步骤，session 最终退出码应为非 0，必须结合
+脚本开头的 `# Expected` 和具体错误输出判断是否通过。
+
+Handler 流程中的名称同样由测试人员指定：
+
+```text
+ms_handler_init handler1 ac 0 0
+ms_compile_multi handler1 abc def '101&102' 2 2 1 101 102 1001 3
+ms_scan_expr handler1 abcdef 6 8
+ms_open_handler_stream handler1 hstream1
+ms_scan_expr_stream hstream1 abc 3 8
+ms_scan_expr_stream hstream1 def 3 8
+ms_close_handler_stream hstream1
+ms_handler_destroy handler1
+```
+
+Logical 流程使用 fixture 命令创建 vector，以及创建可供
+`ms_logical_eval_inplace` 直接计算的操作树；其余均为公开 API。
+`ms_logical_parse` 创建的树包含引用节点，用于 `ms_logical_eval`；
+`logical_tree_create_op` 则直接构造一个操作节点，用于单独、公平地调用
+`ms_logical_eval_inplace`：
+
+```text
+ms_logical_parse tree1 '101&!102'
+logical_vector_create vector1 256
+ms_logical_set vector1 101 1
+ms_logical_set vector1 102 0
+ms_logical_eval tree1 vector1
+logical_tree_create_op tree2 200 or 101 102
+ms_logical_eval_inplace tree2 vector1
+logical_vector_free vector1
+ms_logical_tree_destroy tree1
+ms_logical_tree_destroy tree2
+```
+
+Allocator 在 session 内保持到测试人员恢复默认值：
+
+```text
+allocator_stats reset
+ms_set_database_allocator custom custom custom
+ms_compile_database_multi db1 ac 0 0 abc 0 101 1
+ms_free_database db1
+allocator_stats
+ms_set_database_allocator default default default
+allocator_stats
+```
+
+如果退出前没有恢复 allocator，session 会恢复默认值，但同时打印
+`SESSION_CLEANUP type=allocator`，并将流程判定为失败。
 
 ## 接口调用示例
 查看接口、参数格式和模块关系：
@@ -322,11 +421,11 @@ $DEMO --api ms_set_stream_allocator -h
 
 | 功能设计 | 主要接口 | demo 必须验证的行为 |
 | --- | --- | --- |
-| 3-1 对外接口开源适配 | `ms_compile_database_multi[_ext]`、`ms_alloc_scratch`、`ms_scan_database`、stream 生命周期 | 手动指定 database、scratch、block/stream 参数和 MIN/MAX offset |
-| 3-2 AC 规则逻辑组合 | 编译、Block/Stream 扫描、logical API | `QUIET` 不直接上报、组合 ID 上报、跨 chunk 组合、纯否定 flush、offset；flags 按位支持 `SINGLEMATCH` |
-| 3-3 AC 流模式 | `ms_open/scan/flush/close/reset_stream` | 每个 `--api` 只调用一次目标接口；data、len 和 capacity 与签名对应 |
-| 3-4 自定义内存 | 五个 `ms_set_*allocator` 接口 | custom 模式不只调用 setter，还创建并释放对应 database/scratch/stream，检查回调计数；misc 明确标注暂无公开消费者 |
-| 3-5 动态删除 | `ms_remove_rule`、`ms_remove_database_rule` | handler HASH 兼容删除；database 支持批量规则参数，并验证原子删除路径、旧 scratch 刷新、旧 stream stale、reset 后恢复 |
+| 对外接口适配 | `ms_compile_database_multi[_ext]`、`ms_alloc_scratch`、`ms_scan_database`、stream 生命周期 | 手动指定 database、scratch、block/stream 参数和 MIN/MAX offset |
+| AC 规则逻辑组合 | 编译、Block/Stream 扫描、logical API | `QUIET` 不直接上报、组合 ID 上报、跨 chunk 组合、纯否定 flush、offset；flags 按位支持 `SINGLEMATCH` |
+| AC 流模式 | `ms_open/scan/flush/close/reset_stream` | 每个 `--api` 只调用一次目标接口；data、len 和 capacity 与签名对应 |
+| 自定义内存 | 五个 `ms_set_*allocator` 接口 | custom 模式不只调用 setter，还创建并释放对应 database/scratch/stream，检查回调计数；misc 明确标注暂无公开消费者 |
+| 动态删除 | `ms_remove_rule`、`ms_remove_database_rule` | handler HASH 兼容删除；database 支持批量规则参数，并验证原子删除路径、旧 scratch 刷新、旧 stream stale、reset 后恢复 |
 
 参数化入口遵循功能边界：HASH database 不支持 stream 和
 `ms_remove_database_rule`，HASH 动态删除使用 handler 的 `ms_remove_rule`。
@@ -356,7 +455,21 @@ $DEMO 920hg full --machine 920 --data-root /data/920hg_data_v4 --cpu-list 1-95
 $DEMO 920hg quick --machine 920 --data-root /data/920hg_data_v4
 ```
 
-矩阵会新增 `ac_delete` 和 `accombo_delete` 两类结果。它们读取 manifest 中的真实规则文件和完整 corpus，在 worker 全部暂停后执行失败批次原子性检查和成功删除，然后验证旧 scratch 自动刷新、所有旧 stream 返回 `MS_STREAM_STALE`、reset 后按新规则完成 Block/Stream 全量扫描。`accombo_delete` 删除真实原子规则，并验证依赖它的组合规则随之消失。需要临时跳过时传入 `--skip-dynamic-delete`。
+矩阵会新增 `ac_delete` 和 `accombo_delete` 两类动态删除用例。它们读取
+manifest 中的真实规则文件和完整 corpus，在 worker 全部暂停后执行失败批次
+原子性检查和成功删除，然后验证旧 scratch 自动刷新、所有旧 stream 返回
+`MS_STREAM_STALE`、reset 后按新规则完成 Block/Stream 全量扫描。
+`accombo_delete` 删除真实原子规则，并验证依赖它的组合规则随之消失。
+
+动态删除不再写成普通扫描吞吐量行。每个 `--trials` 轮次都会重新编译一份
+未删除的 database，只计时一次成功的 `ms_remove_database_rule()`；该时间包含
+接口内部导出剩余规则、重建 AC database 和提交新版本的完整耗时。原始结果写入
+`raw_delete_trials.csv`，汇总写入 `dynamic_delete_summary.csv`，包括
+`delete_ns_min/p50/p95/max` 和单规则 `rules_per_second_p50`。普通
+`raw_trials.csv`、`summary.csv` 及 Block/Stream 吞吐量口径保持不变。
+整机模式下仍只由主线程调用一次删除 API；多个 worker 只用于验证各自持有的
+旧 scratch/stream 在 database 版本变化后表现一致，删除速率不是多核聚合值。
+需要临时跳过时传入 `--skip-dynamic-delete`。
 
 ## Allocator 定点测试
 
@@ -372,49 +485,16 @@ $DEMO --api ms_set_misc_allocator custom custom custom
 
 Database、scratch 和 stream 测试会实际创建并释放对应对象，然后检查自定义回调计数。当前没有使用 misc allocator 的公开对象创建接口，因此 misc 测试只验证 setter 和恢复默认值，并在输出中明确标注该边界。
 allocator 接口按函数签名依次传入 alloc、calloc 和 free 三个选择。
-扫描文本、流式扫描文件、HASH 查询和逻辑求值：
+逻辑求值：
 ```sh
-$DEMO scan --matcher accombo --mode stream-full \
-  --rules-file rules.tsv --rule-count 50000 \
-  --input-file request.dat --chunk-size 64
-$DEMO lookup --rules-file hash_rules.bin --rule-count 1000 \
-  --input-file tuple.bin
 $DEMO --api ms_logical_eval '101&!102' 101=1,102=0 256
 ```
-matcher 支持 `ac`、`accombo`、`ac_legacy`、`ac_on_combo`，扫描模式支持 `block` 和 `stream-full`。HASH 规则是固定 16 字节 tuple；AC/ACCombo 使用 `ID<TAB>flags<TAB>expression` TSV。上述命令用于接口验证，不统计正式吞吐量。
 
-## 使用 920hg 数据验证接口
+## 手动 Benchmark
 设置已有数据目录：
 ```sh
 DATA=/home/data/Megascan/920hg_data_v4
 ```
-复现一条普通 AC block 查询：
-```sh
-$DEMO corpus --algorithm ac --mode block \
-  --rules-file "$DATA/shared/ac_50000_rules.tsv" \
-  --rule-count 50000 \
-  --corpus-file "$DATA/shared/ac_q200000_p560_h5000.bin" \
-  --query-index 0
-```
-复现 ACCombo stream 查询：
-```sh
-$DEMO corpus --algorithm accombo --mode stream-full \
-  --rules-file "$DATA/shared/accombo_50000_rules.tsv" \
-  --rule-count 50000 \
-  --corpus-file "$DATA/shared/accombo_q200000_p560_h5000.bin" \
-  --query-index 0
-```
-扫描完整 corpus：
-```sh
-$DEMO corpus --algorithm accombo --mode stream-full \
-  --rules-file "$DATA/shared/accombo_50000_rules.tsv" \
-  --rule-count 50000 \
-  --corpus-file "$DATA/shared/accombo_q200000_p560_h5000.bin" \
-  --all-queries
-```
-`corpus` 会校验 corpus 保存的期望命中信息，但不执行完整测试矩阵，也不输出正式吞吐量。
-
-## 手动 Benchmark
 ```sh
 $DEMO benchmark -a ac -M both -n 50000 \
   -t "$DATA/shared/ac_50000_rules.tsv" \
@@ -567,7 +647,9 @@ $DEMO 920hg summarize --out-dir /data/results/single/920
 ```
 主要输出：
 - `raw_trials.csv`：每个 trial 的原始结果。
+- `raw_delete_trials.csv`：每轮使用新 database 测得的动态删除原始延迟。
 - `summary.csv`：按机器、算法、模式、规则数和命中率汇总。
+- `dynamic_delete_summary.csv`：动态删除延迟的 min、p50、p95、max 和单规则速率。
 - `env.log`：commit、源码状态、CPU 配置和指纹。
 - `manifest.csv`：本次数据矩阵副本。
 - `run.log`：benchmark 输出。
@@ -587,6 +669,8 @@ $DEMO 920hg summarize --out-dir /data/results/single/920
 - stream-full 对每条 query 执行 stream reset 和一次完整 scan。
 - 整机吞吐量按全部 worker 总字节数和共享 wall-clock 计算。
 - `compile_ns`、`rss_compile_growth_kb` 单独记录。
+- 动态删除不计入扫描吞吐量；每轮重新构建初始 database，仅计时
+  `ms_remove_database_rule()`，结果进入独立删除 CSV。
 原始结果记录 expected/actual matches、expected/reported IDs 和 candidates。汇总会执行正确性校验，block/stream gate 默认允许 10% 差异。
 标记为 `FAIL` 时，各 CSV 仍会完整写出，不会因为性能 gate 失败而丢失结果。
 
@@ -622,7 +706,7 @@ $DEMO 920hg compare-single \
 3. 使用相同算法、trial、warmup 和规则矩阵。
 4. 单核选择可比物理核；整机使用相同物理核数量。
 5. governor、SMT、NUMA 配置符合相同标准。
-6. 不混用 `benchmark`、`corpus` 与 `920hg single/full` 的性能数据。
+6. 不混用 `benchmark` 与 `920hg single/full` 的性能数据。
 7. 保存 `raw_trials.csv`、`summary.csv`、`env.log`、`manifest.csv` 和对比文件。
 
 ## 外部依赖

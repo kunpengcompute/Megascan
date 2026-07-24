@@ -36,6 +36,11 @@ const char *RAW_HEADER =
     "expected_candidates,total_bytes,elapsed_ns,query_ops,throughput_gib_s,"
     "compile_ns,rss_compile_growth_kb,warmups,timing_scope,workers,cpu_list";
 
+const char *RAW_DELETE_HEADER =
+    "machine,algorithm,trial,rule_count,atomic_rule_count,"
+    "combination_rule_count,removed_id,affected_id,remove_count,"
+    "delete_ns,rules_per_second,workers,cpu_list,correctness";
+
 struct Options {
     std::string action;
     std::string root;
@@ -700,7 +705,8 @@ static int write_environment_log(const Options &options, bool full)
     }
     env << "timing_excludes=corpus_load,database_compile,worker_create,scratch_alloc,stream_open,correctness,warmup\n"
         << "stream_full=reset_plus_one_scan_per_query\n"
-        << "dynamic_delete=predelete_validation,atomic_failure_check,delete,stale_reset,postdelete_validation\n";
+        << "dynamic_delete=one_fresh_database_per_trial,predelete_validation,"
+           "atomic_failure_check,timed_delete,stale_reset,postdelete_validation\n";
     if (full) env << "throughput_scope=aggregate_bytes_over_wall_clock\n";
     return 0;
 }
@@ -716,8 +722,10 @@ static int benchmark_matrix(const Options &options, bool full, bool quick = fals
     if ((quick ? validate_source_tree(options) : validate_environment(options, full)) != 0) return 1;
     if (mkdir_p(options.out_dir + "/bin") != 0) return 1;
     std::string raw = options.out_dir + "/raw_trials.csv";
-    if (exists(raw)) {
-        std::cerr << "结果已存在，拒绝覆盖：" << raw << '\n';
+    std::string delete_raw = options.out_dir + "/raw_delete_trials.csv";
+    if (exists(raw) || exists(delete_raw)) {
+        std::cerr << "结果已存在，拒绝覆盖："
+                  << (exists(raw) ? raw : delete_raw) << '\n';
         return 1;
     }
     std::string binary = options.out_dir + "/bin/bench_920hg";
@@ -731,6 +739,9 @@ static int benchmark_matrix(const Options &options, bool full, bool quick = fals
     std::ofstream csv(raw);
     csv << RAW_HEADER << '\n';
     csv.close();
+    std::ofstream delete_csv(delete_raw);
+    delete_csv << RAW_DELETE_HEADER << '\n';
+    delete_csv.close();
 
     std::string old_ld = getenv("LD_LIBRARY_PATH") == nullptr ? "" : getenv("LD_LIBRARY_PATH");
     std::string ld = options.root + "/output/lib" + (old_ld.empty() ? "" : ":" + old_ld);
@@ -769,21 +780,37 @@ static int benchmark_matrix(const Options &options, bool full, bool quick = fals
             }
         }
         for (const std::string &algorithm : algorithms) {
-            std::vector<std::string> command;
-            if (full && options.numa_interleave) {
-                command.insert(command.end(), {"numactl", "--interleave=all"});
+            bool dynamic_delete =
+                algorithm == "ac_delete" || algorithm == "accombo_delete";
+            unsigned process_trials = dynamic_delete ? options.trials : 1u;
+            for (unsigned trial = 1; trial <= process_trials; trial++) {
+                std::vector<std::string> command;
+                if (full && options.numa_interleave) {
+                    command.insert(command.end(), {"numactl", "--interleave=all"});
+                }
+                command.insert(command.end(), {binary, "-a", algorithm, "-M",
+                    algorithm == "hash" ? "lookup" : "both", "-n", field[1],
+                    "-t", options.data_root + "/" + field[9],
+                    "-s", options.data_root + "/" + field[10], "-p", raw,
+                    "-T", options.machine, "-R",
+                    dynamic_delete ? "1" : std::to_string(options.trials),
+                    "-w", std::to_string(options.warmups)});
+                if (dynamic_delete) {
+                    command.insert(command.end(), {"-d", delete_raw, "-I",
+                        std::to_string(trial)});
+                }
+                if (full) command.insert(command.end(), {"-c", options.cpu_list});
+                std::cout << "运行：算法=" << algorithm << " 规则=" << field[1]
+                          << " 命中率=" << field[6];
+                if (dynamic_delete) {
+                    std::cout << " 删除延迟轮次=" << trial;
+                }
+                std::cout << '\n';
+                if (run_command(command, options.out_dir + "/run.log",
+                                full ? -1 : static_cast<int>(options.cpu_core)) != 0) {
+                    return 1;
+                }
             }
-            command.insert(command.end(), {binary, "-a", algorithm, "-M",
-                algorithm == "hash" ? "lookup" : "both", "-n", field[1],
-                "-t", options.data_root + "/" + field[9],
-                "-s", options.data_root + "/" + field[10], "-p", raw,
-                "-T", options.machine, "-R", std::to_string(options.trials),
-                "-w", std::to_string(options.warmups)});
-            if (full) command.insert(command.end(), {"-c", options.cpu_list});
-            std::cout << "运行：算法=" << algorithm << " 规则=" << field[1]
-                      << " 命中率=" << field[6] << '\n';
-            if (run_command(command, options.out_dir + "/run.log",
-                            full ? -1 : static_cast<int>(options.cpu_core)) != 0) return 1;
         }
     }
     std::cout << "原始测试完成：" << raw << '\n';
@@ -982,7 +1009,7 @@ static void action_usage(const std::string &action)
                      "  --perf-frequency <频率> --flamegraph-dir <目录>\n";
     } else if (action == "summarize") {
         std::cout << "用法：megascan_demo 920hg summarize --out-dir <结果目录>\n"
-                     "读取 raw_trials.csv 并生成原有全部汇总和模式对比 CSV。\n";
+                     "读取 raw_trials.csv 和 raw_delete_trials.csv，生成扫描与动态删除汇总。\n";
     } else if (action == "compare-single" || action == "compare-full") {
         std::cout << "用法：megascan_demo 920hg " << action << " [比较选项]\n"
                      "  --920-result <summary.csv> --hg-result <summary.csv>\n"

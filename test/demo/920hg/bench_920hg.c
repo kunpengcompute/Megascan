@@ -1185,8 +1185,7 @@ static int append_result(const char *csv_path, const char *machine,
     uint32_t combo_count =
         (algorithm == ALG_ACCOMBO || algorithm == ALG_ACCOMBO_DELETE) ?
             set->combo_count : 0u;
-    const char *timing_scope = is_dynamic_delete_algorithm(algorithm) ?
-        "scan_after_preload_compile_worker_setup_delete_warmup" :
+    const char *timing_scope =
         "scan_only_after_preload_compile_worker_setup_warmup";
 
     if (fp == NULL) {
@@ -1231,6 +1230,33 @@ static int timed_mode(worker_pool_t *pool, const scan_context_t *shared,
                          rule_count, set, shared->corpus, &stats, elapsed,
                          compile_ns, rss_growth_kb, warmups, pool->count,
                          cpu_list);
+}
+
+static int append_delete_result(const char *csv_path, const char *machine,
+                                algorithm_t algorithm, uint32_t trial,
+                                uint32_t rule_count,
+                                const expression_set_t *set,
+                                const dynamic_delete_plan_t *plan,
+                                uint64_t delete_ns, uint32_t worker_count,
+                                const char *cpu_list)
+{
+    FILE *fp = fopen(csv_path, "a");
+    double rules_per_second =
+        delete_ns == 0 ? 0.0 : 1e9 / (double)delete_ns;
+    uint32_t combo_count =
+        algorithm == ALG_ACCOMBO_DELETE ? set->combo_count : 0u;
+
+    if (fp == NULL) {
+        return -1;
+    }
+    fprintf(fp,
+            "%s,%s,%u,%u,%u,%u,%u,%u,1,%" PRIu64
+            ",%.8f,%u,\"%s\",PASS\n",
+            machine, algorithm_name(algorithm), trial, rule_count,
+            set->atomic_count, combo_count, plan->rule.alias,
+            plan->affected_id, delete_ns, rules_per_second,
+            worker_count, cpu_list);
+    return fclose(fp) == 0 ? 0 : -1;
 }
 
 static int parse_algorithm(const char *text, algorithm_t *algorithm)
@@ -1278,7 +1304,8 @@ static void usage(const char *program)
             "ac_delete|accombo_delete "
             "-M lookup|block|stream-full|both "
             "-n rules -t rules_file -s corpus -p csv -T machine "
-            "[-R trials] [-w warmups] [-c cpu-list]\n",
+            "[-R trials] [-w warmups] [-c cpu-list] "
+            "[-d delete_csv -I delete_trial]\n",
             program);
 }
 
@@ -1289,6 +1316,7 @@ int main(int argc, char **argv)
     const char *rules_path = NULL;
     const char *corpus_path = NULL;
     const char *csv_path = NULL;
+    const char *delete_csv_path = NULL;
     const char *machine = NULL;
     const char *cpu_list = NULL;
     const char *cpu_list_label = "inherited";
@@ -1297,6 +1325,7 @@ int main(int argc, char **argv)
     uint32_t rule_count = 0;
     uint32_t trials = 5;
     uint32_t warmups = 1;
+    uint32_t delete_trial = 0;
     tuple_t *hash_rules = NULL;
     expression_set_t expressions = {0};
     corpus_t corpus = {0};
@@ -1342,6 +1371,10 @@ int main(int argc, char **argv)
             corpus_path = value;
         } else if (strcmp(option, "-p") == 0) {
             csv_path = value;
+        } else if (strcmp(option, "-d") == 0) {
+            delete_csv_path = value;
+        } else if (strcmp(option, "-I") == 0) {
+            delete_trial = (uint32_t)strtoul(value, NULL, 10);
         } else if (strcmp(option, "-T") == 0) {
             machine = value;
         } else if (strcmp(option, "-R") == 0) {
@@ -1360,6 +1393,8 @@ int main(int argc, char **argv)
         rule_count == 0 || trials == 0u ||
         parse_algorithm(algorithm_text, &algorithm) != 0 ||
         parse_mode(mode_text, &selected_mode) != 0 ||
+        (is_dynamic_delete_algorithm(algorithm) &&
+         (delete_csv_path == NULL || delete_trial == 0u)) ||
         (algorithm == ALG_HASH && selected_mode != MODE_LOOKUP) ||
         (algorithm != ALG_HASH && selected_mode == MODE_LOOKUP)) {
         usage(argv[0]);
@@ -1492,6 +1527,18 @@ int main(int argc, char **argv)
                                 &ignored_elapsed) != 0) {
                 goto end;
             }
+            if (append_delete_result(
+                    delete_csv_path, machine, algorithm, delete_trial,
+                    rule_count, &expressions, &delete_plan, delete_ns,
+                    worker_count, cpu_list_label) != 0) {
+                goto end;
+            }
+            fprintf(stderr,
+                    "[phase] dynamic-delete latency recorded trial=%u delete_ns=%"
+                    PRIu64 "\n",
+                    delete_trial, delete_ns);
+            result = EXIT_SUCCESS;
+            goto end;
         }
         for (i = 0; i < warmups; i++) {
             if ((selected_mode == MODE_BLOCK || selected_mode == MODE_BOTH) &&
@@ -1505,11 +1552,6 @@ int main(int argc, char **argv)
                 goto end;
             }
         }
-    }
-    if (is_dynamic_delete_algorithm(algorithm)) {
-        fprintf(stderr,
-                "[phase] dynamic-delete correctness done delete_ns=%" PRIu64 "\n",
-                delete_ns);
     }
     fprintf(stderr, "[phase] timed trials start trials=%u\n", trials);
     wait_for_attached_profiler();

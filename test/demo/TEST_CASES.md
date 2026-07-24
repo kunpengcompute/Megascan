@@ -51,6 +51,17 @@ echo $?
 
 ## 2. 公共参数说明
 
+测试人员可以先查看或导出可执行流程模板：
+
+```sh
+$DEMO flows
+$DEMO flow block
+$DEMO flow handler > handler.flow
+$DEMO session handler.flow
+```
+
+`flow` 只输出命令和预期检查点；是否执行、使用什么参数仍由测试人员决定。
+
 表达式数组必须按 C 接口顺序传递：
 
 ```text
@@ -91,7 +102,7 @@ ext flags：
 | `2` | `MAX_OFFSET` |
 | `3` | `MIN_OFFSET | MAX_OFFSET` |
 
-## 3. 功能 3-1：Database、Scratch 与 Block
+## 3. Database、Scratch 与 Block
 
 ### TC-31-001：编译 AC database
 
@@ -283,7 +294,7 @@ EOF
 ERROR stage=STATE api=ms_free_database reason=LIVE_SCRATCH_OR_STREAM
 ```
 
-## 4. 功能 3-2：AC 逻辑组合
+## 4. AC 逻辑组合
 
 ### TC-32-001：QUIET 普通规则参与 AND 组合
 
@@ -397,6 +408,39 @@ EOF
 - 普通规则仍可命中；
 - 命中明细中不应出现 `id=1001`，因为其结束位置超出 `[0, 5]`。
 
+### TC-32-007：持久 handler 的 Block 与跨 chunk Stream
+
+```sh
+$DEMO flow handler > handler.flow
+$DEMO session handler.flow
+```
+
+预期：
+
+- `ms_handler_init`、`ms_compile_multi` 和 `ms_scan_expr` 成功；
+- Block 命中 `id=1001`；
+- 第一个 stream chunk 返回 `NO_MATCH`；
+- 第二个 chunk 命中 `id=1001`；
+- handler stream 和 handler 均由测试人员显式释放；
+- `SESSION_RESULT commands_failed=0`。
+
+### TC-32-008：持久 logical tree/vector
+
+```sh
+$DEMO flow logical > logical.flow
+$DEMO session logical.flow
+```
+
+预期：
+
+- tree 和 vector 创建成功；
+- `ms_logical_get` 返回 `value=1`；
+- `ms_logical_eval` 返回 `matched=1`；
+- `logical_tree_create_op` 创建直接操作树成功；
+- `ms_logical_eval_inplace` 返回 `matched=1`；
+- tree/vector 均显式释放；
+- `SESSION_RESULT commands_failed=0`。
+
 ### TC-32-E001：重复规则 ID
 
 类型：预期失败，API 编译检查。
@@ -483,7 +527,7 @@ $DEMO --api ms_compile_database_multi_ext \
 
 预期：`MS_INVALID_PARA`。
 
-## 5. 功能 3-3：AC Stream
+## 5. AC Stream
 
 ### TC-33-001：固定字符串跨 chunk
 
@@ -644,7 +688,7 @@ EOF
 
 API 层错误 scratch 由 `test_database_stream_rejects_wrong_scratch` 覆盖。
 
-## 6. 功能 3-4：自定义内存
+## 6. 自定义内存
 
 ### TC-34-001：设置全部 allocator
 
@@ -705,6 +749,20 @@ $DEMO --api ms_set_database_allocator custom default custom
 
 预期：setter 返回成功；命令结束后 demo 将 allocator 全部恢复为默认状态。
 
+### TC-34-007：session 中手动设置、使用并恢复 allocator
+
+```sh
+$DEMO flow allocator > allocator.flow
+$DEMO session allocator.flow
+```
+
+预期：
+
+- database 创建和释放均成功；
+- `allocator_stats` 中 malloc/calloc/free 计数增加；
+- 最后一次 `allocator_stats` 显示 `active_mask=0`；
+- `SESSION_RESULT commands_failed=0`。
+
 ### TC-34-E001：分配失败和中间资源清理
 
 当前 demo 的 allocator 参数只支持 `custom/default`，不能指定第 N 次申请失败。
@@ -723,7 +781,7 @@ python3 build.py testdemo_ut debug
 - `test_allocator_database_scan_reuses_scratch_workspace`
 - `test_allocator_database_stream_scan_reuses_scratch`
 
-## 7. 功能 3-5：动态删除
+## 7. 动态删除
 
 ### TC-35-001：删除普通规则并移除依赖组合
 
@@ -788,6 +846,20 @@ $DEMO --api ms_remove_rule \
 ```
 
 预期：`ms_remove_rule ret=0(MS_SUCCESS)`。
+
+### TC-35-004：持久 HASH handler 增删查
+
+```sh
+$DEMO flow hash-handler > hash-handler.flow
+$DEMO session hash-handler.flow
+```
+
+预期：
+
+- handler、hash callback、add/find/remove 均成功；
+- `ms_find_rule` 返回 `alias=7001`；
+- handler 显式销毁；
+- `SESSION_RESULT commands_failed=0`。
 
 ### TC-35-E001：删除后旧 stream stale，reset 后恢复
 
@@ -926,49 +998,7 @@ test/src/ut/test_ac_remove.c
 test/src/ut/test_api_equivalence.c
 ```
 
-## 9. 真实规则文件测试
-
-AC/ACCombo 规则文件格式：
-
-```text
-101<TAB>2<TAB>abc
-102<TAB>2<TAB>def
-1001<TAB>1<TAB>101&102
-```
-
-Block：
-
-```sh
-$DEMO scan \
-  --matcher accombo \
-  --mode block \
-  --rules-file rules.tsv \
-  --rule-count 3 \
-  --input abcdef
-```
-
-Stream：
-
-```sh
-$DEMO scan \
-  --matcher accombo \
-  --mode stream-full \
-  --rules-file rules.tsv \
-  --rule-count 3 \
-  --input-file request.dat \
-  --chunk-size 3
-```
-
-HASH：
-
-```sh
-$DEMO lookup \
-  --rules-file hash_rules.bin \
-  --rule-count 1000 \
-  --input-file tuple.bin
-```
-
-## 10. 920hg 回归与性能测试
+## 9. 920hg 回归与性能测试
 
 920hg 不用于替代错误参数测试，只用于真实数据正确性、单核和整机性能基线。
 
@@ -1008,7 +1038,7 @@ $DEMO 920hg full \
   --cpu-list 1-95
 ```
 
-## 11. 推荐执行顺序
+## 10. 推荐执行顺序
 
 ```text
 1. 构建 megascan_demo
@@ -1018,14 +1048,16 @@ $DEMO 920hg full \
 5. 执行 TC-34 allocator 路由用例
 6. 执行 TC-35 删除、原子性和 stale/reset 用例
 7. 运行 testdemo_ut 补齐指针、归属和故障注入
-8. 使用真实规则文件执行 scan/lookup/corpus
-9. 最后运行 920hg quick、single 和 full
+8. 最后运行 920hg quick、single 和 full
 ```
 
-## 12. 当前测试能力边界
+## 11. 当前测试能力边界
 
-1. session 当前只持久保存 database、scratch 和 database stream。
-2. handler、logical 和 allocator 在 session 中仍回退为单次参数化调用。
+1. session 持久保存 database、scratch、database stream、handler、
+   handler stream、logical tree/vector 和 allocator 状态。
+2. logical vector 使用 `logical_vector_create/free` fixture 命令管理；
+   `logical_tree_create_op` 为 `ms_logical_eval_inplace` 构造不含引用节点的
+   直接操作树；真实 `ms_logical_*` 调用仍与公开签名一一对应。
 3. allocator demo 尚不支持 `fail-after:N` 故障注入。
 4. session 的 `OWNER_MISMATCH` 在 demo 层拦截，不会把错误对象传入 API。
 5. NULL、悬空指针和输出指针初值错误必须由 C 单元测试覆盖。
