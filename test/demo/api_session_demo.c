@@ -623,6 +623,14 @@ static int command_remove_rules(session_state_t *state, int argc, char **argv)
     }
     printf("PRECONDITION api=ms_remove_database_rule source=EXISTING "
            "database=%s status=READY\n", argv[1]);
+    for (i = 0; i < rule_num; i++) {
+        printf("TARGET api=ms_remove_database_rule object=database name=%s "
+               "index=%u alias=%u key_len=%u key=%.*s locator=%s\n",
+               argv[1], i, rules[i].alias, rules[i].key_len,
+               (int)rules[i].key_len,
+               rules[i].key == NULL ? "" : (const char *)rules[i].key,
+               rules[i].key == NULL ? "alias" : "alias+key");
+    }
     ret = ms_remove_database_rule(state->dbs[db_slot].value,
                                   rules, rule_num);
     free(rules);

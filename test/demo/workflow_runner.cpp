@@ -38,8 +38,12 @@ const char *RAW_HEADER =
 
 const char *RAW_DELETE_HEADER =
     "machine,algorithm,trial,rule_count,atomic_rule_count,"
-    "combination_rule_count,removed_id,affected_id,remove_count,"
-    "delete_ns,rules_per_second,workers,cpu_list,correctness";
+    "combination_rule_count,target_kind,locator,removed_alias,"
+    "removed_key_len,removed_key,affected_id,remove_count,"
+    "delete_ns,rules_per_second,workers,cpu_list,"
+    "failed_batch_rejected,failed_batch_unchanged,delete_success,"
+    "repeat_delete_rejected,scratch_refresh,stream_stale,stream_reset,"
+    "post_delete_block,post_delete_stream,semantic_effect,correctness";
 
 struct Options {
     std::string action;
@@ -777,11 +781,14 @@ static int benchmark_matrix(const Options &options, bool full, bool quick = fals
             if (options.run_ac_on_combo) algorithms.push_back("ac_on_combo");
             if (options.run_combo && options.run_dynamic_delete) {
                 algorithms.push_back("accombo_delete");
+                algorithms.push_back("accombo_combination_delete");
             }
         }
         for (const std::string &algorithm : algorithms) {
             bool dynamic_delete =
-                algorithm == "ac_delete" || algorithm == "accombo_delete";
+                algorithm == "ac_delete" ||
+                algorithm == "accombo_delete" ||
+                algorithm == "accombo_combination_delete";
             unsigned process_trials = dynamic_delete ? options.trials : 1u;
             for (unsigned trial = 1; trial <= process_trials; trial++) {
                 std::vector<std::string> command;

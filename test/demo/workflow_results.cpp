@@ -182,12 +182,25 @@ static int summarize_dynamic_delete(const std::string &out_dir, bool &failed)
     std::vector<Row> raw = read_csv(out_dir + "/raw_delete_trials.csv");
     const std::vector<std::string> group_fields = {
         "machine", "algorithm", "rule_count", "atomic_rule_count",
-        "combination_rule_count", "workers", "cpu_list"};
+        "combination_rule_count", "target_kind", "locator",
+        "removed_alias", "removed_key_len", "removed_key", "affected_id",
+        "workers", "cpu_list"};
+    const std::vector<std::string> check_fields = {
+        "failed_batch_rejected", "failed_batch_unchanged", "delete_success",
+        "repeat_delete_rejected", "scratch_refresh", "stream_stale",
+        "stream_reset", "post_delete_block", "post_delete_stream",
+        "semantic_effect"};
     const std::vector<std::string> fields = {
         "machine", "algorithm", "rule_count", "atomic_rule_count",
-        "combination_rule_count", "workers", "cpu_list", "trials",
+        "combination_rule_count", "target_kind", "locator",
+        "removed_alias", "removed_key_len", "removed_key", "affected_id",
+        "workers", "cpu_list", "trials",
         "delete_ns_min", "delete_ns_p50", "delete_ns_p95", "delete_ns_max",
-        "rules_per_second_p50", "correctness"};
+        "rules_per_second_p50",
+        "failed_batch_rejected", "failed_batch_unchanged", "delete_success",
+        "repeat_delete_rejected", "scratch_refresh", "stream_stale",
+        "stream_reset", "post_delete_block", "post_delete_stream",
+        "semantic_effect", "correctness"};
     std::map<std::string, std::vector<Row>> groups;
     std::vector<Row> summary;
 
@@ -204,10 +217,26 @@ static int summarize_dynamic_delete(const std::string &out_dir, bool &failed)
         for (const std::string &field : group_fields) {
             row[field] = first.at(field);
         }
+        for (const std::string &field : check_fields) {
+            row[field] = "NOT_RUN";
+        }
         for (const Row &trial : item.second) {
             latency.push_back(number(trial, "delete_ns"));
             rate.push_back(number(trial, "rules_per_second"));
             correct &= trial.at("correctness") == "PASS";
+            for (const std::string &field : check_fields) {
+                auto value = trial.find(field);
+                if (value == trial.end()) {
+                    if (row[field] != "FAIL") row[field] = "NOT_RECORDED";
+                } else if (value->second == "FAIL") {
+                    row[field] = "FAIL";
+                    correct = false;
+                } else if (value->second == "PASS" &&
+                           row[field] != "FAIL" &&
+                           row[field] != "NOT_RECORDED") {
+                    row[field] = "PASS";
+                }
+            }
         }
         row["trials"] = std::to_string(item.second.size());
         row["delete_ns_min"] =

@@ -803,6 +803,7 @@ EOF
 预期：
 
 ```text
+TARGET api=ms_remove_database_rule object=database name=db1 index=0 alias=101 key_len=3 key=abc locator=alias+key
 删除前：ids=1001
 删除后：NO_MATCH
 ```
@@ -829,37 +830,124 @@ EOF
 预期：
 
 ```text
+TARGET api=ms_remove_database_rule object=database name=db1 index=0 alias=1001 key_len=0 key= locator=alias
 删除前包含：101,102,1001
 删除后只包含：101,102
 ```
 
-### TC-35-003：HASH handler 删除
+### TC-35-003：HASH handler 按 key 删除
 
 类型：正常兼容接口用例。
 
 ```sh
-$DEMO --api ms_remove_rule \
-  101 3 key \
-  1 \
-  hash 16 4 \
-  101 3 key
-```
-
-预期：`ms_remove_rule ret=0(MS_SUCCESS)`。
-
-### TC-35-004：持久 HASH handler 增删查
-
-```sh
 $DEMO flow hash-handler > hash-handler.flow
+cat hash-handler.flow
 $DEMO session hash-handler.flow
 ```
 
-预期：
+该流程添加 `alias=7001, key=blocked`，删除时故意传入不同的
+`alias=9999`，但使用同一个 key。预期：
 
-- handler、hash callback、add/find/remove 均成功；
-- `ms_find_rule` 返回 `alias=7001`；
-- handler 显式销毁；
-- `SESSION_RESULT commands_failed=0`。
+```text
+第一次 ms_find_rule：OK，alias=7001
+TARGET api=ms_remove_rule object=handler name=hash1 matcher=HASH index=0 alias=9999 key_len=7 key=blocked locator=key
+ms_remove_rule：MS_SUCCESS
+第二次 ms_find_rule：NO_MATCH
+SESSION_RESULT commands_failed=0
+```
+
+这证明 HASH 规则由 `key + key_len` 定位，alias 不参与删除定位。
+
+### TC-35-004：AC handler 按 alias + key 删除普通规则
+
+类型：正常兼容接口用例。
+
+```sh
+$DEMO flow delete-handler-ac-rule > delete-handler-ac-rule.flow
+cat delete-handler-ac-rule.flow
+$DEMO session delete-handler-ac-rule.flow
+```
+
+流程明确删除：
+
+```text
+TARGET api=ms_remove_rule object=handler name=ach1 matcher=AC index=0 alias=101 key_len=3 key=abc locator=alias+key
+```
+
+预期删除前组合规则 `1001` 能命中；删除普通规则 `101` 后，依赖它的组合规则
+也被清理，随后扫描为 `NO_MATCH`。
+
+### TC-35-005：AC handler 按 alias 删除组合规则
+
+类型：正常兼容接口用例。
+
+```sh
+$DEMO flow delete-handler-ac-combination > delete-handler-ac-combination.flow
+cat delete-handler-ac-combination.flow
+$DEMO session delete-handler-ac-combination.flow
+```
+
+删除参数必须是：
+
+```text
+TARGET api=ms_remove_rule object=handler name=ach1 matcher=AC index=0 alias=1001 key_len=0 key= locator=alias
+```
+
+预期删除前返回 `101,102,1001`，删除后只返回普通规则 `101,102`。
+
+### TC-35-006：database 与 handler 删除入口不可混用
+
+检查前面各流程中的第一个具名参数：
+
+- `ms_remove_rule <handler> ...` 的对象必须是 `ms_handler_t` 句柄。
+- `ms_remove_database_rule <database> ...` 的对象必须是 `ms_database_t` 句柄。
+- HASH database 不支持 `ms_remove_database_rule`。
+- 920HG 动态删除矩阵测试的是 database 正式路径，不代表 handler 兼容路径；
+  handler 的三类语义由上述独立 flow 验证。
+
+### TC-35-007：920HG 端到端删除矩阵
+
+```sh
+$DEMO 920hg quick --machine 920 --data-root /data/920hg_data_v4
+```
+
+预期 `raw_delete_trials.csv` 同时包含：
+
+| algorithm | target_kind | locator | 含义 |
+| --- | --- | --- | --- |
+| `ac_delete` | `AC_NORMAL` | `alias+key` | 普通 AC database 删除普通规则 |
+| `accombo_delete` | `AC_NORMAL_DEPENDENCY` | `alias+key` | ACCombo 删除普通依赖规则并清理组合 |
+| `accombo_combination_delete` | `AC_COMBINATION` | `alias` | ACCombo 直接删除组合规则 |
+
+每行还必须给出 `removed_alias`、`removed_key_len`、`removed_key` 和
+`affected_id`。组合规则直接删除行中 `removed_key_len=0`、
+`removed_key` 为空；其他两类必须记录实际 key。
+`dynamic_delete_summary.csv` 也必须保留这四个字段，不能在汇总时只剩算法名。
+
+每种 algorithm 的结果不能只显示一个总 `PASS`，还必须分别显示：
+
+```text
+failed_batch_rejected=PASS
+failed_batch_unchanged=PASS
+delete_success=PASS
+repeat_delete_rejected=PASS
+scratch_refresh=PASS
+stream_stale=PASS
+stream_reset=PASS
+post_delete_block=PASS
+post_delete_stream=PASS
+semantic_effect=PASS
+correctness=PASS
+```
+
+`run.log` 中对应输出格式为：
+
+```text
+DELETE_CHECK name=<检查项> expected=<预期> actual=<实际> status=PASS
+```
+
+这样失败时可以直接确定是删除调用、原子性、scratch、stream 还是删除后语义
+出了问题，而不是只得到一个无法定位的总失败。
 
 ### TC-35-E001：删除后旧 stream stale，reset 后恢复
 

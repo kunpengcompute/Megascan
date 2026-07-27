@@ -51,7 +51,8 @@ typedef enum {
     ALG_AC_LEGACY = 4,
     ALG_AC_ON_COMBO = 5,
     ALG_AC_DELETE = 6,
-    ALG_ACCOMBO_DELETE = 7
+    ALG_ACCOMBO_DELETE = 7,
+    ALG_ACCOMBO_COMBINATION_DELETE = 8
 } algorithm_t;
 
 typedef enum {
@@ -129,11 +130,32 @@ typedef struct {
 
 typedef struct {
     ms_rule_t rule;
+    const char *target_kind;
+    const char *locator;
     uint32_t affected_id;
     uint32_t probe_query;
     uint32_t *expected_ids;
     uint32_t *expected_output_ids;
 } dynamic_delete_plan_t;
+
+typedef enum {
+    CHECK_NOT_RUN = 0,
+    CHECK_PASS = 1,
+    CHECK_FAIL = 2
+} check_status_t;
+
+typedef struct {
+    check_status_t failed_batch_rejected;
+    check_status_t failed_batch_unchanged;
+    check_status_t delete_success;
+    check_status_t repeat_delete_rejected;
+    check_status_t scratch_refresh;
+    check_status_t stream_stale;
+    check_status_t stream_reset;
+    check_status_t post_delete_block;
+    check_status_t post_delete_stream;
+    check_status_t semantic_effect;
+} dynamic_delete_checks_t;
 
 typedef struct {
     scan_context_t context;
@@ -169,6 +191,28 @@ static uint64_t now_ns(void)
     struct timespec ts;
     (void)clock_gettime(CLOCK_MONOTONIC_RAW, &ts);
     return (uint64_t)ts.tv_sec * UINT64_C(1000000000) + (uint64_t)ts.tv_nsec;
+}
+
+static const char *check_status_name(check_status_t status)
+{
+    return status == CHECK_PASS ? "PASS" :
+           status == CHECK_FAIL ? "FAIL" : "NOT_RUN";
+}
+
+static void print_ret_check(const char *name, int expected, int actual,
+                            check_status_t status)
+{
+    fprintf(stderr,
+            "DELETE_CHECK name=%s expected_ret=%d actual_ret=%d status=%s\n",
+            name, expected, actual, check_status_name(status));
+}
+
+static void print_state_check(const char *name, const char *expected,
+                              const char *actual, check_status_t status)
+{
+    fprintf(stderr,
+            "DELETE_CHECK name=%s expected=%s actual=%s status=%s\n",
+            name, expected, actual, check_status_name(status));
 }
 
 static uint64_t read_rss_kb(void)
@@ -585,7 +629,9 @@ static int scan_result_ok(int ret)
 
 static int is_dynamic_delete_algorithm(algorithm_t algorithm)
 {
-    return algorithm == ALG_AC_DELETE || algorithm == ALG_ACCOMBO_DELETE;
+    return algorithm == ALG_AC_DELETE ||
+           algorithm == ALG_ACCOMBO_DELETE ||
+           algorithm == ALG_ACCOMBO_COMBINATION_DELETE;
 }
 
 static int output_contains_id(const uint32_t *ids, uint32_t count,
@@ -771,29 +817,47 @@ static int build_dynamic_delete_plan(ms_database_t *db,
                                   &target_index) != 0) {
             goto end;
         }
+        plan->target_kind = "AC_NORMAL";
+        plan->locator = "alias+key";
     } else {
         uint32_t combo_index;
-        char *end = NULL;
-        unsigned long dependency_id;
 
         if (find_expression_index(set, plan->affected_id, 1,
                                   &combo_index) != 0) {
             goto end;
         }
-        dependency_id = strtoul(set->expressions[combo_index], &end, 10);
-        if (end == set->expressions[combo_index] ||
-            (*end != '&' && *end != '|') || dependency_id > UINT32_MAX ||
-            find_expression_index(set, (uint32_t)dependency_id, 0,
-                                  &target_index) != 0) {
-            fprintf(stderr, "unsupported generated combination: %s\n",
-                    set->expressions[combo_index]);
-            goto end;
+        if (algorithm == ALG_ACCOMBO_COMBINATION_DELETE) {
+            target_index = combo_index;
+            plan->target_kind = "AC_COMBINATION";
+            plan->locator = "alias";
+        } else {
+            char *end = NULL;
+            unsigned long dependency_id =
+                strtoul(set->expressions[combo_index], &end, 10);
+
+            if (end == set->expressions[combo_index] ||
+                (*end != '&' && *end != '|') ||
+                dependency_id > UINT32_MAX ||
+                find_expression_index(set, (uint32_t)dependency_id, 0,
+                                      &target_index) != 0) {
+                fprintf(stderr, "unsupported generated combination: %s\n",
+                        set->expressions[combo_index]);
+                goto end;
+            }
+            plan->target_kind = "AC_NORMAL_DEPENDENCY";
+            plan->locator = "alias+key";
         }
     }
 
     plan->rule.alias = set->ids[target_index];
-    plan->rule.key = (uint8_t *)set->expressions[target_index];
-    plan->rule.key_len = (uint32_t)strlen(set->expressions[target_index]);
+    if (algorithm == ALG_ACCOMBO_COMBINATION_DELETE) {
+        plan->rule.key = NULL;
+        plan->rule.key_len = 0;
+    } else {
+        plan->rule.key = (uint8_t *)set->expressions[target_index];
+        plan->rule.key_len =
+            (uint32_t)strlen(set->expressions[target_index]);
+    }
 
     for (i = 0; i < corpus->header.query_count; i++) {
         const corpus_record_header_t *record = record_header(corpus, i);
@@ -846,6 +910,7 @@ static int apply_dynamic_delete(ms_database_t *db,
                                 worker_pool_t *pool,
                                 const corpus_t *corpus,
                                 dynamic_delete_plan_t *plan,
+                                dynamic_delete_checks_t *checks,
                                 uint64_t *delete_ns)
 {
     ms_rule_t failed_batch[2];
@@ -857,6 +922,10 @@ static int apply_dynamic_delete(ms_database_t *db,
     failed_batch[1] = plan->rule;
     failed_batch[1].alias = UINT32_MAX;
     ret = ms_remove_database_rule(db, failed_batch, 2);
+    checks->failed_batch_rejected =
+        ret == MS_FIND_FAIL ? CHECK_PASS : CHECK_FAIL;
+    print_ret_check("failed_batch_rejected", MS_FIND_FAIL, ret,
+                    checks->failed_batch_rejected);
     if (ret != MS_FIND_FAIL) {
         fprintf(stderr,
                 "dynamic-delete atomic failure check ret=%d expected=%d\n",
@@ -872,9 +941,16 @@ static int apply_dynamic_delete(ms_database_t *db,
                                record_payload(corpus, plan->probe_query),
                                corpus->header.payload_size, ctx->scratch,
                                ctx->output_ids, &count, OUTPUT_CAPACITY);
-        if (!scan_result_ok(ret) ||
-            !output_contains_id(ctx->output_ids, count,
-                                plan->affected_id)) {
+        checks->failed_batch_unchanged =
+            scan_result_ok(ret) &&
+            output_contains_id(ctx->output_ids, count, plan->affected_id) ?
+            CHECK_PASS : CHECK_FAIL;
+        print_state_check("failed_batch_unchanged",
+                          "target_still_matches",
+                          checks->failed_batch_unchanged == CHECK_PASS ?
+                              "target_still_matches" : "target_missing",
+                          checks->failed_batch_unchanged);
+        if (checks->failed_batch_unchanged != CHECK_PASS) {
             fprintf(stderr,
                     "dynamic-delete failed batch changed live database ret=%d\n",
                     ret);
@@ -883,14 +959,37 @@ static int apply_dynamic_delete(ms_database_t *db,
     }
 
     start = now_ns();
+    fprintf(stderr,
+            "[phase] dynamic delete target object=database kind=%s "
+            "locator=%s alias=%u key_len=%u key=%.*s\n",
+            plan->target_kind, plan->locator, plan->rule.alias,
+            plan->rule.key_len, (int)plan->rule.key_len,
+            plan->rule.key == NULL ? "" : (const char *)plan->rule.key);
     ret = ms_remove_database_rule(db, &plan->rule, 1);
     *delete_ns = now_ns() - start;
+    checks->delete_success = ret == MS_SUCCESS ? CHECK_PASS : CHECK_FAIL;
+    print_ret_check("delete_success", MS_SUCCESS, ret,
+                    checks->delete_success);
     if (ret != MS_SUCCESS) {
         fprintf(stderr, "dynamic-delete remove failed id=%u ret=%d\n",
                 plan->rule.alias, ret);
         return -1;
     }
 
+    ret = ms_remove_database_rule(db, &plan->rule, 1);
+    checks->repeat_delete_rejected =
+        ret == MS_FIND_FAIL ? CHECK_PASS : CHECK_FAIL;
+    print_ret_check("repeat_delete_rejected", MS_FIND_FAIL, ret,
+                    checks->repeat_delete_rejected);
+    if (ret != MS_FIND_FAIL) {
+        fprintf(stderr,
+                "dynamic-delete repeated remove ret=%d expected=%d\n",
+                ret, MS_FIND_FAIL);
+        return -1;
+    }
+
+    checks->stream_stale = CHECK_NOT_RUN;
+    checks->stream_reset = CHECK_NOT_RUN;
     for (i = 0; i < pool->count; i++) {
         scan_context_t *ctx = &pool->args[i].context;
         uint32_t count = 0;
@@ -905,19 +1004,41 @@ static int apply_dynamic_delete(ms_database_t *db,
                              corpus->header.payload_size, ctx->scratch,
                              ctx->output_ids, &count, OUTPUT_CAPACITY);
         if (ret != MS_STREAM_STALE) {
+            checks->stream_stale = CHECK_FAIL;
+            print_ret_check("stream_stale", MS_STREAM_STALE, ret,
+                            checks->stream_stale);
             fprintf(stderr,
                     "dynamic-delete stale check worker=%u ret=%d expected=%d\n",
                     i, ret, MS_STREAM_STALE);
             return -1;
         }
-        if (ms_reset_stream(ctx->stream) != MS_SUCCESS) {
+        checks->stream_stale = CHECK_PASS;
+        ret = ms_reset_stream(ctx->stream);
+        if (ret != MS_SUCCESS) {
+            checks->stream_reset = CHECK_FAIL;
+            print_ret_check("stream_reset", MS_SUCCESS, ret,
+                            checks->stream_reset);
             fprintf(stderr, "dynamic-delete reset failed worker=%u\n", i);
             return -1;
         }
+        checks->stream_reset = CHECK_PASS;
+    }
+    if (checks->stream_stale != CHECK_NOT_RUN) {
+        print_ret_check("stream_stale", MS_STREAM_STALE,
+                        MS_STREAM_STALE, checks->stream_stale);
+        print_ret_check("stream_reset", MS_SUCCESS, MS_SUCCESS,
+                        checks->stream_reset);
+    } else {
+        print_state_check("stream_stale", "stream_present",
+                          "stream_not_selected", CHECK_NOT_RUN);
+        print_state_check("stream_reset", "stream_present",
+                          "stream_not_selected", CHECK_NOT_RUN);
     }
     fprintf(stderr,
-            "[phase] dynamic delete done removed_id=%u affected_id=%u delete_ns=%" PRIu64 "\n",
-            plan->rule.alias, plan->affected_id, *delete_ns);
+            "[phase] dynamic delete done object=database kind=%s locator=%s "
+            "removed_alias=%u affected_id=%u delete_ns=%" PRIu64 "\n",
+            plan->target_kind, plan->locator, plan->rule.alias,
+            plan->affected_id, *delete_ns);
     return 0;
 }
 
@@ -1156,7 +1277,9 @@ static const char *algorithm_name(algorithm_t algorithm)
            algorithm == ALG_ACCOMBO ? "accombo" :
            algorithm == ALG_AC_LEGACY ? "ac_legacy" :
            algorithm == ALG_AC_ON_COMBO ? "ac_on_combo" :
-           algorithm == ALG_AC_DELETE ? "ac_delete" : "accombo_delete";
+           algorithm == ALG_AC_DELETE ? "ac_delete" :
+           algorithm == ALG_ACCOMBO_DELETE ? "accombo_delete" :
+           "accombo_combination_delete";
 }
 
 static const char *mode_name(bench_mode_t mode)
@@ -1237,6 +1360,7 @@ static int append_delete_result(const char *csv_path, const char *machine,
                                 uint32_t rule_count,
                                 const expression_set_t *set,
                                 const dynamic_delete_plan_t *plan,
+                                const dynamic_delete_checks_t *checks,
                                 uint64_t delete_ns, uint32_t worker_count,
                                 const char *cpu_list)
 {
@@ -1244,18 +1368,32 @@ static int append_delete_result(const char *csv_path, const char *machine,
     double rules_per_second =
         delete_ns == 0 ? 0.0 : 1e9 / (double)delete_ns;
     uint32_t combo_count =
-        algorithm == ALG_ACCOMBO_DELETE ? set->combo_count : 0u;
+        (algorithm == ALG_ACCOMBO_DELETE ||
+         algorithm == ALG_ACCOMBO_COMBINATION_DELETE) ?
+        set->combo_count : 0u;
 
     if (fp == NULL) {
         return -1;
     }
     fprintf(fp,
-            "%s,%s,%u,%u,%u,%u,%u,%u,1,%" PRIu64
-            ",%.8f,%u,\"%s\",PASS\n",
+            "%s,%s,%u,%u,%u,%u,%s,%s,%u,%u,\"%.*s\",%u,1,%" PRIu64
+            ",%.8f,%u,\"%s\",%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,PASS\n",
             machine, algorithm_name(algorithm), trial, rule_count,
-            set->atomic_count, combo_count, plan->rule.alias,
-            plan->affected_id, delete_ns, rules_per_second,
-            worker_count, cpu_list);
+            set->atomic_count, combo_count, plan->target_kind, plan->locator,
+            plan->rule.alias, plan->rule.key_len, (int)plan->rule.key_len,
+            plan->rule.key == NULL ? "" : (const char *)plan->rule.key,
+            plan->affected_id, delete_ns, rules_per_second, worker_count,
+            cpu_list,
+            check_status_name(checks->failed_batch_rejected),
+            check_status_name(checks->failed_batch_unchanged),
+            check_status_name(checks->delete_success),
+            check_status_name(checks->repeat_delete_rejected),
+            check_status_name(checks->scratch_refresh),
+            check_status_name(checks->stream_stale),
+            check_status_name(checks->stream_reset),
+            check_status_name(checks->post_delete_block),
+            check_status_name(checks->post_delete_stream),
+            check_status_name(checks->semantic_effect));
     return fclose(fp) == 0 ? 0 : -1;
 }
 
@@ -1275,6 +1413,8 @@ static int parse_algorithm(const char *text, algorithm_t *algorithm)
         *algorithm = ALG_AC_DELETE;
     } else if (strcmp(text, "accombo_delete") == 0) {
         *algorithm = ALG_ACCOMBO_DELETE;
+    } else if (strcmp(text, "accombo_combination_delete") == 0) {
+        *algorithm = ALG_ACCOMBO_COMBINATION_DELETE;
     } else {
         return -1;
     }
@@ -1301,7 +1441,7 @@ static void usage(const char *program)
 {
     fprintf(stderr,
             "Usage: %s -a hash|ac|accombo|ac_legacy|ac_on_combo|"
-            "ac_delete|accombo_delete "
+            "ac_delete|accombo_delete|accombo_combination_delete "
             "-M lookup|block|stream-full|both "
             "-n rules -t rules_file -s corpus -p csv -T machine "
             "[-R trials] [-w warmups] [-c cpu-list] "
@@ -1337,6 +1477,7 @@ int main(int argc, char **argv)
     scan_context_t shared_context = {0};
     worker_pool_t pool = {0};
     dynamic_delete_plan_t delete_plan = {0};
+    dynamic_delete_checks_t delete_checks = {0};
     int *cpu_cores = NULL;
     uint32_t worker_count = 1;
     scan_stats_t ignored;
@@ -1411,7 +1552,9 @@ int main(int argc, char **argv)
     if (load_corpus(corpus_path, &corpus) != 0 ||
         (algorithm == ALG_AC_LEGACY || algorithm == ALG_AC_DELETE ?
              corpus.header.kind != KIND_AC :
-         algorithm == ALG_AC_ON_COMBO || algorithm == ALG_ACCOMBO_DELETE ?
+         algorithm == ALG_AC_ON_COMBO ||
+                 algorithm == ALG_ACCOMBO_DELETE ||
+                 algorithm == ALG_ACCOMBO_COMBINATION_DELETE ?
              corpus.header.kind != KIND_ACCOMBO :
              corpus.header.kind != (uint32_t)algorithm)) {
         goto end;
@@ -1512,6 +1655,7 @@ int main(int argc, char **argv)
             if (build_dynamic_delete_plan(db, algorithm, &expressions,
                                           &corpus, &delete_plan) != 0 ||
                 apply_dynamic_delete(db, &pool, &corpus, &delete_plan,
+                                     &delete_checks,
                                      &delete_ns) != 0) {
                 goto end;
             }
@@ -1520,16 +1664,57 @@ int main(int argc, char **argv)
             if ((selected_mode == MODE_BLOCK || selected_mode == MODE_BOTH) &&
                 run_worker_pool(&pool, MODE_BLOCK, 1, &ignored,
                                 &ignored_elapsed) != 0) {
+                delete_checks.scratch_refresh = CHECK_FAIL;
+                delete_checks.post_delete_block = CHECK_FAIL;
+                print_state_check("scratch_refresh", "scan_uses_new_generation",
+                                  "post_delete_block_failed", CHECK_FAIL);
+                print_state_check("post_delete_block", "full_corpus_matches_expected",
+                                  "mismatch", CHECK_FAIL);
                 goto end;
+            }
+            if (selected_mode == MODE_BLOCK || selected_mode == MODE_BOTH) {
+                delete_checks.scratch_refresh = CHECK_PASS;
+                delete_checks.post_delete_block = CHECK_PASS;
+                print_state_check("scratch_refresh",
+                                  "scan_uses_new_generation",
+                                  "scan_uses_new_generation", CHECK_PASS);
+                print_state_check("post_delete_block",
+                                  "full_corpus_matches_expected",
+                                  "full_corpus_matches_expected", CHECK_PASS);
+            } else {
+                print_state_check("scratch_refresh", "block_selected",
+                                  "block_not_selected", CHECK_NOT_RUN);
+                print_state_check("post_delete_block", "block_selected",
+                                  "block_not_selected", CHECK_NOT_RUN);
             }
             if ((selected_mode == MODE_STREAM || selected_mode == MODE_BOTH) &&
                 run_worker_pool(&pool, MODE_STREAM, 1, &ignored,
                                 &ignored_elapsed) != 0) {
+                delete_checks.post_delete_stream = CHECK_FAIL;
+                print_state_check("post_delete_stream",
+                                  "full_corpus_matches_expected",
+                                  "mismatch", CHECK_FAIL);
                 goto end;
             }
+            if (selected_mode == MODE_STREAM || selected_mode == MODE_BOTH) {
+                delete_checks.post_delete_stream = CHECK_PASS;
+                print_state_check("post_delete_stream",
+                                  "full_corpus_matches_expected",
+                                  "full_corpus_matches_expected", CHECK_PASS);
+            } else {
+                print_state_check("post_delete_stream", "stream_selected",
+                                  "stream_not_selected", CHECK_NOT_RUN);
+            }
+            delete_checks.semantic_effect = CHECK_PASS;
+            print_state_check(
+                "semantic_effect",
+                delete_plan.target_kind,
+                delete_plan.target_kind,
+                delete_checks.semantic_effect);
             if (append_delete_result(
                     delete_csv_path, machine, algorithm, delete_trial,
-                    rule_count, &expressions, &delete_plan, delete_ns,
+                    rule_count, &expressions, &delete_plan, &delete_checks,
+                    delete_ns,
                     worker_count, cpu_list_label) != 0) {
                 goto end;
             }

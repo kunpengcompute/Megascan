@@ -543,6 +543,13 @@ static int cli_handler_rule_api(const char *api, int argc, char **argv)
         cli_print_ret(api, ret);
         printf("alias=%u\n", target.alias);
     } else {
+        printf("TARGET api=ms_remove_rule object=handler source=AUTO "
+               "matcher=%s alias=%u key_len=%u key=%.*s locator=%s\n",
+               type == MS_MATCHER_TYPE_HASH ? "HASH" : "AC",
+               target.alias, target.key_len, (int)target.key_len,
+               target.key == NULL ? "" : (const char *)target.key,
+               type == MS_MATCHER_TYPE_HASH ? "key" :
+               target.key == NULL ? "alias" : "alias+key");
         ret = ms_remove_rule(&handler, &target, rule_num);
         cli_print_ret(api, ret);
     }
@@ -1139,6 +1146,17 @@ static int cli_remove_database_rule(int argc, char **argv)
            type == MS_MATCHER_TYPE_AC ? ",scratch,stream" : "",
            ret == MS_SUCCESS ? "READY" : "FAILED");
     if (ret == MS_SUCCESS) {
+        uint32_t i;
+        for (i = 0; i < rule_num; i++) {
+            printf("TARGET api=ms_remove_database_rule object=database "
+                   "source=AUTO index=%u alias=%u key_len=%u key=%.*s "
+                   "locator=%s\n",
+                   i, rules.rules[i].alias, rules.rules[i].key_len,
+                   (int)rules.rules[i].key_len,
+                   rules.rules[i].key == NULL ? "" :
+                       (const char *)rules.rules[i].key,
+                   rules.rules[i].key == NULL ? "alias" : "alias+key");
+        }
         called = 1;
         ret = ms_remove_database_rule(db, rules.rules, rule_num);
     }

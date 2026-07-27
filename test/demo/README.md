@@ -174,9 +174,13 @@ block
 stream
 handler
 hash-handler
+delete-handler-ac-rule
+delete-handler-ac-combination
 logical
 allocator
 delete
+delete-database-ac-rule
+delete-database-ac-combination
 owner-error
 ```
 
@@ -202,6 +206,10 @@ $DEMO flow block | $DEMO session
 $DEMO flow stream | $DEMO session
 $DEMO flow handler | $DEMO session
 $DEMO flow hash-handler | $DEMO session
+$DEMO flow delete-handler-ac-rule | $DEMO session
+$DEMO flow delete-handler-ac-combination | $DEMO session
+$DEMO flow delete-database-ac-rule | $DEMO session
+$DEMO flow delete-database-ac-combination | $DEMO session
 $DEMO flow logical | $DEMO session
 $DEMO flow allocator | $DEMO session
 ```
@@ -425,7 +433,7 @@ $DEMO --api ms_set_stream_allocator -h
 | AC 规则逻辑组合 | 编译、Block/Stream 扫描、logical API | `QUIET` 不直接上报、组合 ID 上报、跨 chunk 组合、纯否定 flush、offset；flags 按位支持 `SINGLEMATCH` |
 | AC 流模式 | `ms_open/scan/flush/close/reset_stream` | 每个 `--api` 只调用一次目标接口；data、len 和 capacity 与签名对应 |
 | 自定义内存 | 五个 `ms_set_*allocator` 接口 | custom 模式不只调用 setter，还创建并释放对应 database/scratch/stream，检查回调计数；misc 明确标注暂无公开消费者 |
-| 动态删除 | `ms_remove_rule`、`ms_remove_database_rule` | handler HASH 兼容删除；database 支持批量规则参数，并验证原子删除路径、旧 scratch 刷新、旧 stream stale、reset 后恢复 |
+| 动态删除 | `ms_remove_rule`、`ms_remove_database_rule` | 分别验证 HASH handler 按 key、AC handler 普通规则按 alias+key、AC handler 组合规则按 alias、AC database 普通/组合规则删除，以及 database 原子失败、scratch 刷新、stream stale/reset |
 
 参数化入口遵循功能边界：HASH database 不支持 stream 和
 `ms_remove_database_rule`，HASH 动态删除使用 handler 的 `ms_remove_rule`。
@@ -447,6 +455,19 @@ $DEMO --module allocator
 
 ## AC Database 动态删除端到端测试
 
+动态删除的定位语义必须先区分对象和规则类型，不能笼统写成“删除一个 ID”：
+
+| 用例 | 对象 | 实际接口 | 删除对象 | 定位字段 |
+| --- | --- | --- | --- | --- |
+| `hash-handler` | `ms_handler_t` HASH | `ms_remove_rule` | HASH 普通规则 | `key + key_len`；alias 不参与定位 |
+| `delete-handler-ac-rule` | `ms_handler_t` AC | `ms_remove_rule` | AC 普通规则 | `alias + key + key_len` |
+| `delete-handler-ac-combination` | `ms_handler_t` AC | `ms_remove_rule` | AC 组合规则 | `alias`；`key=NULL`、`key_len=0` |
+| `delete-database-ac-rule` / `delete` | `ms_database_t` AC | `ms_remove_database_rule` | AC 普通规则 | `alias + key + key_len` |
+| `delete-database-ac-combination` | `ms_database_t` ACCombo | `ms_remove_database_rule` | AC 组合规则 | `alias`；`key=NULL`、`key_len=0` |
+
+上述 flow 是测试人员可编辑的手动功能流程；920HG 端到端矩阵只测试当前正式
+database 路径，不把 handler 兼容接口混入 database 删除延迟统计。
+
 动态删除不是独立的玩具规则子命令，而是 `single`、`full` 和 `quick` 矩阵中默认启用的正式测试项：
 
 ```sh
@@ -455,11 +476,18 @@ $DEMO 920hg full --machine 920 --data-root /data/920hg_data_v4 --cpu-list 1-95
 $DEMO 920hg quick --machine 920 --data-root /data/920hg_data_v4
 ```
 
-矩阵会新增 `ac_delete` 和 `accombo_delete` 两类动态删除用例。它们读取
+矩阵会新增三类动态删除用例：
+
+- `ac_delete`：从普通 AC database 按 `alias+key` 删除普通规则。
+- `accombo_delete`：从 ACCombo database 按 `alias+key` 删除普通依赖规则，
+  验证依赖它的组合规则随之消失。
+- `accombo_combination_delete`：从 ACCombo database 以 `key=NULL`、
+  `key_len=0` 按 alias 直接删除组合规则，普通规则继续存在。
+
+它们读取
 manifest 中的真实规则文件和完整 corpus，在 worker 全部暂停后执行失败批次
 原子性检查和成功删除，然后验证旧 scratch 自动刷新、所有旧 stream 返回
 `MS_STREAM_STALE`、reset 后按新规则完成 Block/Stream 全量扫描。
-`accombo_delete` 删除真实原子规则，并验证依赖它的组合规则随之消失。
 
 动态删除不再写成普通扫描吞吐量行。每个 `--trials` 轮次都会重新编译一份
 未删除的 database，只计时一次成功的 `ms_remove_database_rule()`；该时间包含
@@ -467,6 +495,26 @@ manifest 中的真实规则文件和完整 corpus，在 worker 全部暂停后�
 `raw_delete_trials.csv`，汇总写入 `dynamic_delete_summary.csv`，包括
 `delete_ns_min/p50/p95/max` 和单规则 `rules_per_second_p50`。普通
 `raw_trials.csv`、`summary.csv` 及 Block/Stream 吞吐量口径保持不变。
+原始删除 CSV 还记录 `target_kind`、`locator`、`removed_alias`、
+`removed_key_len`、`removed_key` 和 `affected_id`，因此可以直接确认每轮究竟
+删除的是普通规则还是组合规则、按什么字段定位，而不是只看到一个模糊的 ID。
+这些目标字段同样保留在 `dynamic_delete_summary.csv` 中；汇总结果不会丢失
+每组 trial 实际删除的 alias 和 key。
+每轮还会把以下行为拆成独立结果列，而不是合并成一个 `correctness=PASS`：
+
+- `failed_batch_rejected`：包含不存在规则的批次是否返回失败。
+- `failed_batch_unchanged`：失败批次后 live database 是否保持不变。
+- `delete_success`：目标规则是否删除成功。
+- `repeat_delete_rejected`：再次删除同一规则是否返回不存在。
+- `scratch_refresh`：旧 scratch 是否自动切换到新 generation。
+- `stream_stale`：旧 stream 是否返回 `MS_STREAM_STALE`。
+- `stream_reset`：旧 stream 是否能够 reset。
+- `post_delete_block`、`post_delete_stream`：删除后的完整 corpus 是否符合预期。
+- `semantic_effect`：普通规则、依赖规则级联或组合规则直接删除的语义是否正确。
+
+运行日志使用 `DELETE_CHECK name=... expected=... actual=... status=PASS|FAIL`
+逐项输出；`raw_delete_trials.csv` 保存每轮分项结果，
+`dynamic_delete_summary.csv` 保存跨 trial 汇总后的分项结果。
 整机模式下仍只由主线程调用一次删除 API；多个 worker 只用于验证各自持有的
 旧 scratch/stream 在 database 版本变化后表现一致，删除速率不是多核聚合值。
 需要临时跳过时传入 `--skip-dynamic-delete`。
@@ -647,9 +695,9 @@ $DEMO 920hg summarize --out-dir /data/results/single/920
 ```
 主要输出：
 - `raw_trials.csv`：每个 trial 的原始结果。
-- `raw_delete_trials.csv`：每轮使用新 database 测得的动态删除原始延迟。
+- `raw_delete_trials.csv`：每轮使用新 database 测得的动态删除原始延迟，并记录删除对象类型、定位方式、alias 和 key。
 - `summary.csv`：按机器、算法、模式、规则数和命中率汇总。
-- `dynamic_delete_summary.csv`：动态删除延迟的 min、p50、p95、max 和单规则速率。
+- `dynamic_delete_summary.csv`：动态删除延迟的 min、p50、p95、max、单规则速率和各个正确性分项。
 - `env.log`：commit、源码状态、CPU 配置和指纹。
 - `manifest.csv`：本次数据矩阵副本。
 - `run.log`：benchmark 输出。

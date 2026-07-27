@@ -60,14 +60,44 @@ static const demo_flow_t g_flows[] = {
     },
     {
         "hash-handler",
-        "Mutable HASH handler add/find/remove lifecycle",
-        "# Expected: first find succeeds; remove succeeds\n"
+        "HASH handler deletion: key locates the rule; alias is not the lookup key",
+        "# Delete target: handler=hash1 kind=HASH locator=key key=blocked\n"
+        "# Expected: first find is OK; find after remove is NO_MATCH\n"
         "ms_handler_init hash1 hash 16 4\n"
         "ms_set_hash_func hash1 custom\n"
         "ms_add_rule hash1 7001 7 blocked 1\n"
         "ms_find_rule hash1 7001 7 blocked\n"
-        "ms_remove_rule hash1 7001 7 blocked 1\n"
+        "ms_remove_rule hash1 9999 7 blocked 1\n"
+        "ms_find_rule hash1 7001 7 blocked\n"
         "ms_handler_destroy hash1\n"
+        "exit\n"
+    },
+    {
+        "delete-handler-ac-rule",
+        "AC handler normal-rule deletion by alias + key",
+        "# Delete target: handler=ach1 kind=AC_NORMAL locator=alias+key "
+        "alias=101 key=abc\n"
+        "# Expected: before ids include 1001; after delete result is NO_MATCH\n"
+        "ms_handler_init ach1 ac 0 0\n"
+        "ms_compile_multi ach1 abc def '101&102' 2 2 1 101 102 1001 3\n"
+        "ms_scan_expr ach1 abcdef 6 8\n"
+        "ms_remove_rule ach1 101 3 abc 1\n"
+        "ms_scan_expr ach1 abcdef 6 8\n"
+        "ms_handler_destroy ach1\n"
+        "exit\n"
+    },
+    {
+        "delete-handler-ac-combination",
+        "AC handler combination-rule deletion by alias only",
+        "# Delete target: handler=ach1 kind=AC_COMBINATION locator=alias "
+        "alias=1001 key=NULL\n"
+        "# Expected: before ids=101,102,1001; after ids=101,102\n"
+        "ms_handler_init ach1 ac 0 0\n"
+        "ms_compile_multi ach1 abc def '101&102' 0 0 1 101 102 1001 3\n"
+        "ms_scan_expr ach1 abcdef 6 8\n"
+        "ms_remove_rule ach1 1001 0 - 1\n"
+        "ms_scan_expr ach1 abcdef 6 8\n"
+        "ms_handler_destroy ach1\n"
         "exit\n"
     },
     {
@@ -103,8 +133,10 @@ static const demo_flow_t g_flows[] = {
     },
     {
         "delete",
-        "Database rule deletion and stale stream recovery",
-        "# Expected failure: old stream returns MS_STREAM_STALE\n"
+        "AC database normal-rule deletion and stale stream recovery",
+        "# Delete target: database=db1 kind=AC_NORMAL locator=alias+key "
+        "alias=101 key=abc\n"
+        "# Expected API state: old stream returns MS_STREAM_STALE\n"
         "ms_compile_database_multi db1 ac 0 0 abc def '101&102' "
         "2 2 1 101 102 1001 3\n"
         "ms_alloc_scratch db1 scratch1\n"
@@ -115,6 +147,38 @@ static const demo_flow_t g_flows[] = {
         "ms_reset_stream stream1\n"
         "ms_scan_stream stream1 def 3 scratch1 8\n"
         "ms_close_stream stream1 scratch1 8\n"
+        "ms_free_scratch scratch1\n"
+        "ms_free_database db1\n"
+        "exit\n"
+    },
+    {
+        "delete-database-ac-rule",
+        "AC database normal-rule deletion by alias + key",
+        "# Delete target: database=db1 kind=AC_NORMAL locator=alias+key "
+        "alias=101 key=abc\n"
+        "# Expected: before ids include 1001; after delete result is NO_MATCH\n"
+        "ms_compile_database_multi db1 ac 0 0 abc def '101&102' "
+        "2 2 1 101 102 1001 3\n"
+        "ms_alloc_scratch db1 scratch1\n"
+        "ms_scan_database db1 abcdef 6 scratch1 8\n"
+        "ms_remove_database_rule db1 101 3 abc 1\n"
+        "ms_scan_database db1 abcdef 6 scratch1 8\n"
+        "ms_free_scratch scratch1\n"
+        "ms_free_database db1\n"
+        "exit\n"
+    },
+    {
+        "delete-database-ac-combination",
+        "ACCombo database combination-rule deletion by alias only",
+        "# Delete target: database=db1 kind=AC_COMBINATION locator=alias "
+        "alias=1001 key=NULL\n"
+        "# Expected: before ids=101,102,1001; after ids=101,102\n"
+        "ms_compile_database_multi db1 ac 0 0 abc def '101&102' "
+        "0 0 1 101 102 1001 3\n"
+        "ms_alloc_scratch db1 scratch1\n"
+        "ms_scan_database db1 abcdef 6 scratch1 8\n"
+        "ms_remove_database_rule db1 1001 0 - 1\n"
+        "ms_scan_database db1 abcdef 6 scratch1 8\n"
         "ms_free_scratch scratch1\n"
         "ms_free_database db1\n"
         "exit\n"

@@ -378,6 +378,22 @@ static int command_handler_rules(const char *api, int argc, char **argv)
         free(rules);
         return 1;
     }
+    if (demo_same(api, "ms_remove_rule")) {
+        uint32_t i;
+        int is_hash =
+            g_ext.handlers[slot].value.type == MS_MATCHER_TYPE_HASH;
+        for (i = 0; i < rule_num; i++) {
+            printf("TARGET api=ms_remove_rule object=handler name=%s "
+                   "matcher=%s index=%u alias=%u key_len=%u key=%.*s "
+                   "locator=%s\n",
+                   argv[1], is_hash ? "HASH" : "AC", i,
+                   rules[i].alias, rules[i].key_len,
+                   (int)rules[i].key_len,
+                   rules[i].key == NULL ? "" : (const char *)rules[i].key,
+                   is_hash ? "key" :
+                   rules[i].key == NULL ? "alias" : "alias+key");
+        }
+    }
     ret = demo_same(api, "ms_add_rule") ?
           ms_add_rule(&g_ext.handlers[slot].value, rules, rule_num) :
           ms_remove_rule(&g_ext.handlers[slot].value, rules, rule_num);

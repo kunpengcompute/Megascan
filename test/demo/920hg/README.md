@@ -31,9 +31,19 @@ megascan_demo 920hg compare-full
 
 `920hg` 的数据生成、矩阵调度、环境检查、CPU/NUMA 控制、结果汇总和跨机器比较均已整合到 demo 内部，不调用本目录中的 Shell 或 Python 脚本。正式测试仍单独使用 `gcc -O2 -DNDEBUG` 编译本目录的 `bench_920hg.c`，确保扫描、预热、计时和吞吐量计算继续使用原实现。每个具体操作都支持 `-h`。
 
-`single`、`full` 和 `quick` 默认包含 `ac_delete`、`accombo_delete` 两个动态删除测试项。它们使用 manifest 中的真实规则和完整 corpus，先校验删除前结果，再检查失败批次不提交并执行成功删除，最后使用原 worker pool 校验旧 scratch 自动刷新、旧 stream stale/reset 和删除后的 Block/Stream 结果。`accombo_delete` 还验证删除原子规则时依赖组合会级联消失。
+`single`、`full` 和 `quick` 默认包含三个 database 动态删除测试项：
 
-动态删除不作为删除后的扫描吞吐量行写入 `raw_trials.csv`。每个 trial 都从重新编译的未删除 database 开始，只计时成功的 `ms_remove_database_rule()`，其中包含接口内部的 AC 重建与提交耗时。原始延迟写入 `raw_delete_trials.csv`，汇总后的 min、p50、p95、max 和单规则速率写入 `dynamic_delete_summary.csv`。整机模式的删除仍是主线程单次调用，多 worker 只负责验证各自旧 scratch/stream 的版本切换行为，删除速率不是整机聚合值。可用 `--skip-dynamic-delete` 跳过。
+- `ac_delete`：普通 AC 规则，按 `alias+key` 删除。
+- `accombo_delete`：ACCombo 中的普通依赖规则，按 `alias+key` 删除，并验证依赖组合级联消失。
+- `accombo_combination_delete`：ACCombo 组合规则，设置空 key 后仅按 alias 删除。
+
+它们使用 manifest 中的真实规则和完整 corpus，先校验删除前结果，再检查失败批次不提交并执行成功删除，最后使用原 worker pool 校验旧 scratch 自动刷新、旧 stream stale/reset 和删除后的 Block/Stream 结果。这里测试的是 `ms_database_t` 正式路径；HASH/AC handler 兼容删除由上级 demo 的独立 session flow 测试，不混入 database 删除延迟。
+
+动态删除不作为删除后的扫描吞吐量行写入 `raw_trials.csv`。每个 trial 都从重新编译的未删除 database 开始，只计时成功的 `ms_remove_database_rule()`，其中包含接口内部的 AC 重建与提交耗时。原始延迟写入 `raw_delete_trials.csv`，其中明确记录 `target_kind`、`locator`、`removed_alias`、`removed_key_len`、`removed_key` 和 `affected_id`。
+
+正确性不再压缩成单个总 PASS。失败批次拒绝、失败后 database 不变、成功删除、重复删除拒绝、scratch 刷新、stream stale/reset、删除后 Block/Stream 和最终删除语义分别记录为独立列，并在运行日志中以 `DELETE_CHECK` 输出预期值、实际值和 PASS/FAIL。汇总后的分项状态以及 min、p50、p95、max、单规则速率写入 `dynamic_delete_summary.csv`。
+
+整机模式的删除仍是主线程单次调用，多 worker 只负责验证各自旧 scratch/stream 的版本切换行为，删除速率不是整机聚合值。可用 `--skip-dynamic-delete` 跳过。
 
 每个操作使用以下目录：
 
