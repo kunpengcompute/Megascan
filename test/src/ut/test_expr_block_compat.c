@@ -419,6 +419,37 @@ static void test_expr_block_remove_plain_removes_dependent_combination(void)
     EXPECT_EQ(ms_handler_destroy(&handler), MS_SUCCESS);
 }
 
+static void test_expr_block_remove_rebuilds_final_ckeys(void)
+{
+    ms_handler_t handler = {0};
+    const char *expr[] = {"abc", "def", "!101", "!102"};
+    uint32_t ids[] = {101, 102, 1001, 1002};
+    uint32_t flags[] = {
+        MS_FLAG_QUIET, MS_FLAG_QUIET,
+        MS_FLAG_COMBINATION, MS_FLAG_COMBINATION
+    };
+    ms_rule_t remove_comb = {0};
+    uint32_t out_ids[2] = {0};
+    uint32_t out_count = 0;
+
+    remove_comb.alias = 1001;
+
+    EXPECT_EQ(ms_handler_init(&handler, MS_MATCHER_TYPE_AC, 0, 0), MS_SUCCESS);
+    EXPECT_EQ(ms_compile_multi(&handler, expr, flags, ids, 4), MS_SUCCESS);
+    EXPECT_EQ(ms_scan_expr(&handler, (const uint8_t *)"xxxx", 4,
+                             out_ids, &out_count, 2), MS_SUCCESS);
+    EXPECT_EQ(out_count, 2U);
+    EXPECT_EQ(out_ids[0], 1001U);
+    EXPECT_EQ(out_ids[1], 1002U);
+
+    EXPECT_EQ(ms_remove_rule(&handler, &remove_comb, 1), MS_SUCCESS);
+    EXPECT_EQ(ms_scan_expr(&handler, (const uint8_t *)"xxxx", 4,
+                             out_ids, &out_count, 2), MS_SUCCESS);
+    EXPECT_EQ(out_count, 1U);
+    EXPECT_EQ(out_ids[0], 1002U);
+    EXPECT_EQ(ms_handler_destroy(&handler), MS_SUCCESS);
+}
+
 KTEST_ADD_TEST_CASE(SuiteExprBlockCompat, test_expr_block_eval_combination_and_true);
 KTEST_ADD_TEST_CASE(SuiteExprBlockCompat, test_expr_block_eval_combination_and_false);
 KTEST_ADD_TEST_CASE(SuiteExprBlockCompat, test_expr_block_eval_combination_not_true);
@@ -439,3 +470,4 @@ KTEST_ADD_TEST_CASE(SuiteExprBlockCompat, test_expr_block_scan_final_flush_pure_
 KTEST_ADD_TEST_CASE(SuiteExprBlockCompat, test_expr_block_scan_offset_bounds);
 KTEST_ADD_TEST_CASE(SuiteExprBlockCompat, test_expr_block_remove_combination_by_id);
 KTEST_ADD_TEST_CASE(SuiteExprBlockCompat, test_expr_block_remove_plain_removes_dependent_combination);
+KTEST_ADD_TEST_CASE(SuiteExprBlockCompat, test_expr_block_remove_rebuilds_final_ckeys);

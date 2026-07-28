@@ -11,6 +11,7 @@
 #include "ms_rule_internal.h"
 #include "ms_hash.h"
 #include "ms_ac.h"
+#include "ms_acdb.h"
 #include "expr/ms_expr_internal.h"
 
 static int ms_database_is_valid(const ms_database_t *db, bool is_add)
@@ -114,6 +115,18 @@ int ms_rule_add_database_direct(ms_database_t *db, ms_rule_t *rule, uint32_t rul
         return MS_INVALID_PARA;
     }
 
+    if (db->type == MS_MATCHER_TYPE_AC &&
+        db->backend == MS_DATABASE_BACKEND_COMPACT_AC) {
+        if (db->is_built) {
+            return MS_BUILT_ALREADY;
+        }
+        ret = ms_acdb_build((ms_acdb_t *)db->ms_matcher, rule, rule_num);
+        if (ret == MS_SUCCESS) {
+            db->is_built = true;
+        }
+        return ret;
+    }
+
     for (i = 0; i < rule_num; i++) {
         switch (db->type) {
             case MS_MATCHER_TYPE_HASH:
@@ -180,6 +193,10 @@ int ms_rule_find_database_direct(const ms_database_t *db, ms_rule_t *rule)
         case MS_MATCHER_TYPE_AC:
             if (!db->is_built) {
                 return MS_INVALID_PARA;
+            }
+            if (db->backend == MS_DATABASE_BACKEND_COMPACT_AC) {
+                return ms_acdb_match((const ms_acdb_t *)db->ms_matcher,
+                                     rule->key, rule->key_len);
             }
             return ac_automaton_match(db->ms_matcher, rule->key, rule->key_len);
         default:
@@ -308,6 +325,10 @@ int ms_add_rule(ms_handler_t *handler, ms_rule_t *rule, uint32_t rule_num)
 
     if (handler == NULL) {
         return MS_INVALID_PARA;
+    }
+
+    if (handler->type == MS_MATCHER_TYPE_HASH) {
+        return ms_rule_add_direct(handler, rule, rule_num);
     }
 
     ret = ms_rule_to_exprs(rule, rule_num, &exprs, &ids);

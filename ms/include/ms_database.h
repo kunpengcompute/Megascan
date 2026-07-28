@@ -21,7 +21,7 @@ typedef struct ms_scratch ms_scratch_t;
  * @param secondary_buckets: Secondary bucket count for HASH, 0 is allowed for AC.
  * @return: 0 for success, an error code(negative number) for failure.
  */
-int MS_CDECL ms_create_database(ms_database_t **db, ms_matcher_type type,
+int ms_create_database(ms_database_t **db, ms_matcher_type type,
                                     uint32_t buckets, uint32_t secondary_buckets);
 
 /**
@@ -40,7 +40,7 @@ int MS_CDECL ms_create_database(ms_database_t **db, ms_matcher_type type,
  * @param elements: Number of expressions.
  * @return: 0 for success, an error code(negative number) for failure.
  */
-int MS_CDECL ms_compile_database_multi(ms_database_t **db,
+int ms_compile_database_multi(ms_database_t **db,
                                            ms_matcher_type type,
                                            uint32_t buckets,
                                            uint32_t secondary_buckets,
@@ -66,7 +66,7 @@ int MS_CDECL ms_compile_database_multi(ms_database_t **db,
  * @param elements: Number of expressions.
  * @return: 0 for success, an error code(negative number) for failure.
  */
-int MS_CDECL ms_compile_database_multi_ext(ms_database_t **db,
+int ms_compile_database_multi_ext(ms_database_t **db,
                                                ms_matcher_type type,
                                                uint32_t buckets,
                                                uint32_t secondary_buckets,
@@ -83,7 +83,7 @@ int MS_CDECL ms_compile_database_multi_ext(ms_database_t **db,
  *            ms_compile_database_multi*().
  * @return: 0 for success, an error code(negative number) for failure.
  */
-int MS_CDECL ms_free_database(ms_database_t *db);
+int ms_free_database(ms_database_t *db);
 
 /**
  * @brief Allocate scratch workspace for block scan.
@@ -95,7 +95,7 @@ int MS_CDECL ms_free_database(ms_database_t *db);
  * @param scratch: Output scratch pointer, should point to NULL before call.
  * @return: 0 for success, an error code(negative number) for failure.
  */
-int MS_CDECL ms_alloc_scratch(const ms_database_t *db, ms_scratch_t **scratch);
+int ms_alloc_scratch(const ms_database_t *db, ms_scratch_t **scratch);
 
 /**
  * @brief Free scratch workspace.
@@ -103,7 +103,7 @@ int MS_CDECL ms_alloc_scratch(const ms_database_t *db, ms_scratch_t **scratch);
  * @param scratch: Scratch object created by ms_alloc_scratch().
  * @return: 0 for success, an error code(negative number) for failure.
  */
-int MS_CDECL ms_free_scratch(ms_scratch_t *scratch);
+int ms_free_scratch(ms_scratch_t *scratch);
 
 /**
  * @brief Scan one block with explicit database and scratch.
@@ -120,7 +120,7 @@ int MS_CDECL ms_free_scratch(ms_scratch_t *scratch);
  * @param id_capacity: Capacity of @ids.
  * @return: 0 for success, MS_FIND_FAIL for no match, or an error code.
  */
-int MS_CDECL ms_scan_database(const ms_database_t *db,
+int ms_scan_database(const ms_database_t *db,
                                   const uint8_t *data,
                                   uint32_t len,
                                   ms_scratch_t *scratch,
@@ -138,7 +138,25 @@ int MS_CDECL ms_scan_database(const ms_database_t *db,
  * @param rule: Pending matching rule. On success alias is updated.
  * @return: 0 for success, MS_FIND_FAIL for no match, or an error code.
  */
-int MS_CDECL ms_find_database_rule(const ms_database_t *db, ms_rule_t *rule);
+int ms_find_database_rule(const ms_database_t *db, ms_rule_t *rule);
+
+/**
+ * @brief Remove rules from a compiled AC database.
+ *
+ * Plain rules are identified by id, key and key length. Combination rules are
+ * identified by id and use a NULL key with key length zero. Removing a plain
+ * rule also removes combinations that depend on it, matching ms_remove_rule()
+ * semantics. A multi-rule request is atomic: either every requested removal
+ * is committed, or the database remains unchanged.
+ *
+ * Existing streams become stale and return MS_STREAM_STALE until reset with
+ * ms_reset_stream(). Existing scratch objects are refreshed automatically on
+ * their next scan. Callers must externally synchronize removal with scans.
+ * HASH databases are not supported by this API.
+ */
+int ms_remove_database_rule(ms_database_t *db,
+                                      const ms_rule_t *rule,
+                                      uint32_t rule_num);
 
 /**
  * @brief Open a stream from a database.
@@ -150,7 +168,7 @@ int MS_CDECL ms_find_database_rule(const ms_database_t *db, ms_rule_t *rule);
  * @param stream: Output stream pointer, should point to NULL before call.
  * @return: 0 for success, an error code(negative number) for failure.
  */
-int MS_CDECL ms_open_stream(const ms_database_t *db, ms_stream_t **stream);
+int ms_open_stream(const ms_database_t *db, ms_stream_t **stream);
 
 /**
  * @brief Scan one chunk on a database stream with explicit scratch.
@@ -158,7 +176,7 @@ int MS_CDECL ms_open_stream(const ms_database_t *db, ms_stream_t **stream);
  * Stream owns cross-chunk state. Per-call capture buffers, state copies and
  * logical evaluation workspace come from scratch.
  */
-int MS_CDECL ms_scan_stream(ms_stream_t *stream,
+int ms_scan_stream(ms_stream_t *stream,
                                 const uint8_t *data,
                                 uint32_t len,
                                 ms_scratch_t *scratch,
@@ -169,7 +187,7 @@ int MS_CDECL ms_scan_stream(ms_stream_t *stream,
 /**
  * @brief Flush a stream at end of data without closing it.
  */
-int MS_CDECL ms_flush_stream(ms_stream_t *stream,
+int ms_flush_stream(ms_stream_t *stream,
                                  ms_scratch_t *scratch,
                                  uint32_t *ids,
                                  uint32_t *id_count,
@@ -181,7 +199,7 @@ int MS_CDECL ms_flush_stream(ms_stream_t *stream,
  * After parameter validation succeeds, the stream is released even if the
  * end-of-data evaluation reports no ids.
  */
-int MS_CDECL ms_close_stream(ms_stream_t *stream,
+int ms_close_stream(ms_stream_t *stream,
                                  ms_scratch_t *scratch,
                                  uint32_t *ids,
                                  uint32_t *id_count,

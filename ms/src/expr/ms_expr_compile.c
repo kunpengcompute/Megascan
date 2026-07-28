@@ -3,6 +3,7 @@
  */
 #include <stdbool.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "ms.h"
@@ -14,11 +15,51 @@
 #include "../ms_database_internal.h"
 #include "../ms_rule_internal.h"
 
+static int ms_compile_compare_u32(const void *left, const void *right)
+{
+    uint32_t left_value = *(const uint32_t *)left;
+    uint32_t right_value = *(const uint32_t *)right;
+
+    return (left_value > right_value) - (left_value < right_value);
+}
+
+static int ms_compile_validate_unique_ids(const uint32_t *ids,
+                                          uint32_t elements)
+{
+    uint32_t *sorted_ids;
+    uint32_t i;
+
+    if (ids == NULL) {
+        return MS_SUCCESS;
+    }
+
+    if (elements != 0 && SIZE_MAX / sizeof(uint32_t) < elements) {
+        return MS_MALLOC_FAIL;
+    }
+    sorted_ids = (uint32_t *)ms_malloc((size_t)elements * sizeof(uint32_t));
+    if (sorted_ids == NULL) {
+        return MS_MALLOC_FAIL;
+    }
+
+    (void)memcpy(sorted_ids, ids, (size_t)elements * sizeof(uint32_t));
+    qsort(sorted_ids, elements, sizeof(uint32_t), ms_compile_compare_u32);
+    for (i = 1; i < elements; i++) {
+        if (sorted_ids[i - 1] == sorted_ids[i]) {
+            ms_free(sorted_ids);
+            return MS_INVALID_PARA;
+        }
+    }
+
+    ms_free(sorted_ids);
+    return MS_SUCCESS;
+}
+
 static int ms_compile_validate(const char *const *expressions, const uint32_t *flags,
                                  const uint32_t *ids, const ms_expr_ext_t *ext,
                                  uint32_t elements)
 {
     uint32_t i;
+    int ret;
 
     if (expressions == NULL || elements == 0) {
         return MS_INVALID_PARA;
@@ -52,15 +93,11 @@ static int ms_compile_validate(const char *const *expressions, const uint32_t *f
                 return MS_INVALID_PARA;
             }
         }
-        if (ids != NULL) {
-            uint32_t j;
+    }
 
-            for (j = 0; j < i; j++) {
-                if (ids[j] == ids[i]) {
-                    return MS_INVALID_PARA;
-                }
-            }
-        }
+    ret = ms_compile_validate_unique_ids(ids, elements);
+    if (ret != MS_SUCCESS) {
+        return ret;
     }
 
     return MS_SUCCESS;
@@ -371,6 +408,7 @@ static int ms_compile_add_plain_rules_handler(ms_handler_t *handler,
 }
 
 static int ms_compile_add_plain_rules_database(ms_database_t *db,
+                                                 const ms_compile_context_t *ctx,
                                                  const char *const *expressions,
                                                  const uint32_t *flags,
                                                  const uint32_t *ids,
@@ -397,7 +435,15 @@ static int ms_compile_add_plain_rules_database(ms_database_t *db,
             continue;
         }
 
-        rules[plain_count].alias = ids ? ids[i] : 0;
+        if (ctx != NULL && ctx->ac_aliases_are_lkeys) {
+            if (plain_count >= ctx->expr_count) {
+                ms_free(rules);
+                return MS_INVALID_PARA;
+            }
+            rules[plain_count].alias = ctx->exprs[plain_count].lkey;
+        } else {
+            rules[plain_count].alias = ids ? ids[i] : 0;
+        }
         rules[plain_count].key_len = (uint32_t)len;
         rules[plain_count].key = (uint8_t *)expressions[i];
         plain_count++;
@@ -440,7 +486,6 @@ int ms_compile_multi_ext(ms_handler_t *handler,
     if (new_ctx == NULL) {
         return MS_MALLOC_FAIL;
     }
-
     old_ctx = (ms_compile_context_t *)handler->ms_compile_ctx;
     ret = ms_compile_collect_exprs(new_ctx, old_ctx, flags, ids, elements);
     if (ret != MS_SUCCESS) {
@@ -503,6 +548,7 @@ int ms_compile_database_multi_native(ms_database_t *db,
     if (new_ctx == NULL) {
         return MS_MALLOC_FAIL;
     }
+    new_ctx->ac_aliases_are_lkeys = (db->type == MS_MATCHER_TYPE_AC);
 
     old_ctx = (ms_compile_context_t *)db->ms_compile_ctx;
     ret = ms_compile_collect_exprs(new_ctx, old_ctx, flags, ids, elements);
@@ -517,7 +563,8 @@ int ms_compile_database_multi_native(ms_database_t *db,
         return ret;
     }
 
-    ret = ms_compile_add_plain_rules_database(db, expressions, flags, ids, elements);
+    ret = ms_compile_add_plain_rules_database(db, new_ctx, expressions, flags,
+                                                ids, elements);
     if (ret != MS_SUCCESS) {
         ms_compile_context_free(new_ctx);
         return ret;

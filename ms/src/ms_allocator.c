@@ -71,7 +71,7 @@ ms_free_t ms_get_db_free(void)
 }
 
 __attribute__((visibility("default")))
-int MS_CDECL ms_set_allocator(ms_alloc_t alloc_func, ms_calloc_t calloc_func, ms_free_t free_func)
+int ms_set_allocator(ms_alloc_t alloc_func, ms_calloc_t calloc_func, ms_free_t free_func)
 {
     (void)ms_set_database_allocator(alloc_func, calloc_func, free_func);
     (void)ms_set_scratch_allocator(alloc_func, calloc_func, free_func);
@@ -81,7 +81,7 @@ int MS_CDECL ms_set_allocator(ms_alloc_t alloc_func, ms_calloc_t calloc_func, ms
 }
 
 __attribute__((visibility("default")))
-int MS_CDECL ms_set_database_allocator(ms_alloc_t alloc_func, ms_calloc_t calloc_func,
+int ms_set_database_allocator(ms_alloc_t alloc_func, ms_calloc_t calloc_func,
                                            ms_free_t free_func)
 {
     g_ms_db_alloc = normalise_alloc(alloc_func);
@@ -91,7 +91,7 @@ int MS_CDECL ms_set_database_allocator(ms_alloc_t alloc_func, ms_calloc_t calloc
 }
 
 __attribute__((visibility("default")))
-int MS_CDECL ms_set_scratch_allocator(ms_alloc_t alloc_func, ms_calloc_t calloc_func,
+int ms_set_scratch_allocator(ms_alloc_t alloc_func, ms_calloc_t calloc_func,
                                           ms_free_t free_func)
 {
     g_ms_scratch_alloc = normalise_alloc(alloc_func);
@@ -101,7 +101,7 @@ int MS_CDECL ms_set_scratch_allocator(ms_alloc_t alloc_func, ms_calloc_t calloc_
 }
 
 __attribute__((visibility("default")))
-int MS_CDECL ms_set_stream_allocator(ms_alloc_t alloc_func, ms_calloc_t calloc_func,
+int ms_set_stream_allocator(ms_alloc_t alloc_func, ms_calloc_t calloc_func,
                                          ms_free_t free_func)
 {
     g_ms_stream_alloc = normalise_alloc(alloc_func);
@@ -111,7 +111,7 @@ int MS_CDECL ms_set_stream_allocator(ms_alloc_t alloc_func, ms_calloc_t calloc_f
 }
 
 __attribute__((visibility("default")))
-int MS_CDECL ms_set_misc_allocator(ms_alloc_t alloc_func, ms_calloc_t calloc_func,
+int ms_set_misc_allocator(ms_alloc_t alloc_func, ms_calloc_t calloc_func,
                                        ms_free_t free_func)
 {
     g_ms_misc_alloc = normalise_alloc(alloc_func);

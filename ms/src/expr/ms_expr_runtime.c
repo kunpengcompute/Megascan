@@ -113,7 +113,7 @@ int ms_compile_mark_aliases(const ms_compile_context_t *ctx,
     for (i = 0; i < alias_count; i++) {
         uint32_t lkey;
 
-        ret = ms_compile_context_find_lkey(ctx, aliases[i], &lkey);
+        ret = ms_compile_context_alias_to_lkey(ctx, aliases[i], &lkey);
         if (ret == MS_FIND_FAIL) {
             continue;
         }
@@ -421,8 +421,13 @@ static int ms_compile_validate_runtime_workspace(
         return MS_INVALID_PARA;
     }
 
+    if (ctx->expr_count > UINT32_MAX - ctx->comb_count ||
+        ctx->logical_count > UINT32_MAX - ctx->comb_count) {
+        return MS_INVALID_PARA;
+    }
     result_capacity = ctx->expr_count + ctx->comb_count;
-    if ((require_final_state && ctx->logical_count != 0 &&
+    if ((require_final_state && ctx->comb_count != 0 &&
+         ctx->logical_count != 0 &&
          workspace->final_logical_vector == NULL) ||
         (ctx->comb_count != 0 &&
          (workspace->active_ckey_vector == NULL ||
@@ -433,6 +438,9 @@ static int ms_compile_validate_runtime_workspace(
         (result_capacity != 0 &&
          (workspace->result_ids == NULL ||
           workspace->result_capacity < result_capacity)) ||
+        (ctx->logical_count + ctx->comb_count != 0 &&
+         (workspace->result_seen_vector == NULL ||
+          workspace->result_seen_count < ctx->logical_count + ctx->comb_count)) ||
         (ctx->ekey_count != 0 &&
          (workspace->new_exhaustion_indexes == NULL ||
           workspace->new_exhaustion_capacity < ctx->ekey_count))) {
@@ -497,17 +505,19 @@ static int ms_compile_eval_stream_matches_impl(
         }
         result.ids = workspace->result_ids;
         result.capacity = workspace->result_capacity;
+        result.seen_vector = workspace->result_seen_vector;
+        result.seen_count = workspace->result_seen_count;
+        /* Scratch clears only keys touched by the previous scan. */
         new_combinations.indexes = workspace->new_combination_indexes;
         new_combinations.capacity = workspace->new_combination_capacity;
         new_exhaustions.indexes = workspace->new_exhaustion_indexes;
         new_exhaustions.capacity = workspace->new_exhaustion_capacity;
     }
 
-    if (require_final_state && ctx->logical_count != 0) {
+    if (require_final_state && ctx->comb_count != 0 &&
+        ctx->logical_count != 0) {
         if (workspace != NULL) {
             final_logical_vector = workspace->final_logical_vector;
-            (void)memset(final_logical_vector, 0,
-                         ms_compile_logical_byte_count(ctx->logical_count));
         } else {
             final_logical_vector = (uint8_t *)ms_calloc(
                 ms_compile_logical_byte_count(ctx->logical_count), sizeof(uint8_t));
@@ -524,17 +534,21 @@ static int ms_compile_eval_stream_matches_impl(
     }
 
     for (i = 0; i < alias_count; i++) {
-        const ms_compile_expr_t *expr = ms_compile_context_find_expr(ctx, aliases[i]);
+        const ms_compile_expr_t *expr =
+            ms_compile_context_find_expr_for_alias(ctx, aliases[i]);
         uint64_t event_offset = scan_start_offset + offsets[i];
 
         if (expr == NULL) {
             continue;
         }
         if ((expr->flags & MS_FLAG_QUIET) == 0) {
-            ret = ms_compile_result_add(&result, expr->id);
+            ret = ms_compile_result_add_key(&result, expr->id, expr->lkey);
             if (ret != MS_SUCCESS) {
                 goto end;
             }
+        }
+        if (ctx->comb_count == 0) {
+            continue;
         }
 
         ret = ms_compile_mark_aliases(ctx, &aliases[i], 1, logical_vector, logical_count);
@@ -582,7 +596,7 @@ static int ms_compile_eval_stream_matches_impl(
         active_ckey_count = 0;
     }
 
-    if (final_flush) {
+    if (final_flush && ctx->comb_count != 0) {
         ret = ms_compile_eval_final_combinations(ctx,
                                                    logical_vector,
                                                    logical_count,

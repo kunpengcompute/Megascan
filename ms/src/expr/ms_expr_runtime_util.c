@@ -87,15 +87,39 @@ static int ms_compile_result_reserve(ms_compile_result_t *result)
 
 int ms_compile_result_add(ms_compile_result_t *result, uint32_t id)
 {
+    return ms_compile_result_add_key(result, id, UINT32_MAX);
+}
+
+int ms_compile_result_add_key(ms_compile_result_t *result, uint32_t id,
+                                uint32_t key)
+{
+    uint8_t seen = 0;
     int ret;
 
-    if (result == NULL || ms_compile_result_has_id(result, id)) {
+    if (result == NULL) {
+        return MS_SUCCESS;
+    }
+    if (result->seen_vector != NULL && key < result->seen_count) {
+        ret = ms_compile_bitset_get(result->seen_vector, result->seen_count,
+                                      key, &seen);
+        if (ret != MS_SUCCESS || seen) {
+            return ret;
+        }
+    } else if (ms_compile_result_has_id(result, id)) {
         return MS_SUCCESS;
     }
 
     ret = ms_compile_result_reserve(result);
     if (ret != MS_SUCCESS) {
         return ret;
+    }
+
+    if (result->seen_vector != NULL && key < result->seen_count) {
+        ret = ms_compile_bitset_set(result->seen_vector, result->seen_count,
+                                      key, 1);
+        if (ret != MS_SUCCESS) {
+            return ret;
+        }
     }
 
     result->ids[result->count] = id;
@@ -270,7 +294,8 @@ static int ms_compile_eval_one_combination(const ms_compile_context_t *ctx,
         return ret;
     }
 
-    ret = ms_compile_result_add(result, comb->id);
+    ret = ms_compile_result_add_key(result, comb->id,
+                                      ctx->logical_count + ckey);
     if (ret != MS_SUCCESS) {
         return ret;
     }
@@ -334,7 +359,7 @@ int ms_compile_context_get_ckeys_for_aliases(const ms_compile_context_t *ctx,
     for (i = 0; i < alias_count; i++) {
         uint32_t lkey;
 
-        ret = ms_compile_context_find_lkey(ctx, aliases[i], &lkey);
+        ret = ms_compile_context_alias_to_lkey(ctx, aliases[i], &lkey);
         if (ret == MS_FIND_FAIL) {
             continue;
         }
@@ -425,6 +450,31 @@ int ms_compile_context_collect_ckeys(const ms_compile_context_t *ctx,
     }
 
     *ckey_count = 0;
+    /* Per-match evaluation supplies one alias, whose relation list is already unique. */
+    if (alias_count == 1) {
+        uint32_t lkey;
+        uint32_t count;
+
+        ret = ms_compile_context_alias_to_lkey(ctx, aliases[0], &lkey);
+        if (ret == MS_FIND_FAIL) {
+            return MS_SUCCESS;
+        }
+        if (ret != MS_SUCCESS || lkey >= ctx->logical_count) {
+            return ret == MS_SUCCESS ? MS_INVALID_PARA : ret;
+        }
+
+        count = ctx->lkey_to_ckey_counts[lkey];
+        if (count > ckey_capacity) {
+            return MS_INVALID_PARA;
+        }
+        if (count != 0) {
+            (void)memcpy(ckeys, ctx->lkey_to_ckeys[lkey],
+                         count * sizeof(uint32_t));
+        }
+        *ckey_count = count;
+        return MS_SUCCESS;
+    }
+
     active_bytes = ms_compile_logical_byte_count(active_count);
     if (active_bytes != 0) {
         (void)memset(active_vector, 0, active_bytes);
@@ -433,7 +483,7 @@ int ms_compile_context_collect_ckeys(const ms_compile_context_t *ctx,
     for (i = 0; i < alias_count; i++) {
         uint32_t lkey;
 
-        ret = ms_compile_context_find_lkey(ctx, aliases[i], &lkey);
+        ret = ms_compile_context_alias_to_lkey(ctx, aliases[i], &lkey);
         if (ret == MS_FIND_FAIL) {
             continue;
         }
@@ -571,11 +621,17 @@ int ms_compile_eval_final_combinations(const ms_compile_context_t *ctx,
         return MS_INVALID_PARA;
     }
 
-    for (i = 0; i < ctx->comb_count; i++) {
-        if (!ctx->combs[i].can_match_without_active_lkey) {
-            continue;
+    if (ctx->final_ckey_count != 0 && ctx->final_ckeys == NULL) {
+        return MS_INVALID_PARA;
+    }
+
+    for (i = 0; i < ctx->final_ckey_count; i++) {
+        uint32_t ckey = ctx->final_ckeys[i];
+
+        if (ckey >= ctx->comb_count) {
+            return MS_INVALID_PARA;
         }
-        ret = ms_compile_eval_one_combination(ctx, i,
+        ret = ms_compile_eval_one_combination(ctx, ckey,
                                                 logical_vector,
                                                 logical_count,
                                                 combination_vector,
