@@ -1,229 +1,218 @@
 # API参考<a name="ZH-CN_TOPIC_0000002522230512"></a>
 
+公开头文件位于`ms/include`。Database接口包含在`ms.h`中；使用handler兼容接口时按需包含`ms_handler.h`、`ms_rule.h`、`ms_compile.h`和`ms_runtime.h`；自定义内存分配器包含`ms_allocator.h`。
+
 ## 数据结构说明<a name="ZH-CN_TOPIC_0000002522070512"></a>
 
-- 多模规则匹配引擎枚举变量：
+- 匹配引擎类型：
 
-    ```
+    ```c
     typedef enum {
-        MMPM_MATCHER_NONE = 0,
-        MMPM_MATCHER_TYPE_HASH,
-        MMPM_MATCHER_TYPE_AC,
-        MMPM_MATCHER_TYPE_MAX
-    } mmpm_matcher_type;
+        MS_MATCHER_NONE = 0,
+        MS_MATCHER_TYPE_HASH,
+        MS_MATCHER_TYPE_AC,
+        MS_MATCHER_TYPE_MAX
+    } ms_matcher_type;
     ```
 
-- 多模规则匹配错误码：
+    `MS_MATCHER_TYPE_MAX`是枚举边界值，不能作为匹配引擎类型传入接口。HASH用于定长key查找；AC支持普通规则、组合规则、Block扫描和Stream扫描。
 
-    ```
-    #define MMPM_SUCCESS            0
-    #define MMPM_INVALID_PARA       (-1)
-    #define MMPM_MALLOC_FAIL        (-2)
-    #define MMPM_BUILT_ALREADY      (-3)
-    #define MMPM_FIND_FAIL          (-4)
-    #define MMPM_INIT_RWLOCK_FAIL   (-5)
-    #define MMPM_MEMCPY_FAIL        (-6)
-    #define MMPM_NOT_SUPPORTED      (-7)
-    ```
+- 错误码：
 
-    **表 1** 错误码说明<a id="错误码说明"></a>
+    |错误码|返回值|解释|
+    |--|--|--|
+    |`MS_SUCCESS`|0|接口执行成功|
+    |`MS_INVALID_PARA`|-1|参数、对象归属或输出容量不合法|
+    |`MS_MALLOC_FAIL`|-2|内存申请失败|
+    |`MS_BUILT_ALREADY`|-3|对象已构建，不能重复构建|
+    |`MS_FIND_FAIL`|-4|扫描成功但没有可上报规则，或查找、删除目标不存在|
+    |`MS_INIT_RWLOCK_FAIL`|-5|读写锁初始化失败|
+    |`MS_MEMCPY_FAIL`|-6|内存复制失败|
+    |`MS_NOT_SUPPORTED`|-7|当前匹配类型不支持该操作|
+    |`MS_STREAM_STALE`|-8|database更新后，stream需要先reset|
 
-|错误码|返回值|解释|解决办法|
-|--|--|--|--|
-|MMPM_INVALID_PARA|-1|传入空指针，或者传入不合法的规则。例：传入的key_len为0，或者与key的实际长度不一致|根据报错的函数，检查对应的入参是否合法|
-|MMPM_MALLOC_FAIL|-2|堆内存申请失败|检查系统内存是否被其他程序大量占用；检查构建匹配引擎时是否传入过多规则|
-|MMPM_BUILT_ALREADY|-3|匹配引擎已构建成功，禁止重复构建|检查是否存在多次构建匹配引擎的错误使用方式|
-|MMPM_FIND_FAIL|-4|规则匹配失败，匹配引擎中不存在该规则|-|
-|MMPM_INIT_RWLOCK_FAIL|-5|在初始化Hash匹配引擎时，锁初始化失败|检查系统内存是否被其他程序大量占用|
-|MMPM_MEMCPY_FAIL|-6|内存复制失败|-|
-|MMPM_NOT_SUPPORTED|-7|在移除规则函数中传入AC匹配引擎的句柄|检查是否有尝试移除AC匹配引擎相关规则的行为|
+- 规则标志：
 
+    |标志|说明|
+    |--|--|
+    |`MS_FLAG_NONE`|普通上报规则|
+    |`MS_FLAG_COMBINATION`|组合规则|
+    |`MS_FLAG_QUIET`|参与组合计算但不单独上报|
+    |`MS_FLAG_SINGLEMATCH`|同一规则只上报一次|
 
-- 多模规则匹配，规则数据结构：
+- 规则和扩展参数：
 
-    ```
+    ```c
     typedef struct {
-        uint32_t alias; /* 规则别名，可重复 */
-        uint32_t key_len; 
-        uint8_t *key; /* 规则匹配key，唯一标识 */
-    } mmpm_rule_t;
+        uint32_t alias;
+        uint32_t key_len;
+        uint8_t *key;
+    } ms_rule_t;
+
+    typedef struct {
+        uint32_t flags;
+        uint64_t min_offset;
+        uint64_t max_offset;
+    } ms_expr_ext_t;
     ```
 
-- 多模规则匹配，匹配引擎句柄数据结构：
+    `ms_expr_ext_t.flags`可使用`MS_EXT_FLAG_MIN_OFFSET`和`MS_EXT_FLAG_MAX_OFFSET`。当前offset约束仅适用于组合规则，表示使组合规则成立的匹配结束位置。
 
-    ```
-    typedef struct {    
-        void *mmpm_matcher; /* 匹配引擎句柄 */
-        mmpm_matcher_type type; /* 匹配引擎种类 */
-        bool is_built; /* 匹配引擎是否已构建 */
-    } mmpm_handler_t;
-    ```
+- 运行对象：
 
+    `ms_database_t`保存编译后的规则和匹配器，`ms_scratch_t`保存扫描工作区，`ms_stream_t`保存跨分片状态。三者均为不透明类型。
 
-## mmpm\_handler\_init<a name="ZH-CN_TOPIC_0000002522230514"></a>
+## Database编译接口
 
-**接口功能<a name="section167323853"></a>**
+**接口定义**
 
-初始化多模规则匹配handler。
+```c
+int ms_create_database(ms_database_t **db, ms_matcher_type type,
+    uint32_t buckets, uint32_t secondary_buckets);
 
-**接口定义<a name="section18850182512619"></a>**
+int ms_compile_database_multi(ms_database_t **db, ms_matcher_type type,
+    uint32_t buckets, uint32_t secondary_buckets,
+    const char *const *expressions, const uint32_t *flags,
+    const uint32_t *ids, uint32_t elements);
 
-```
-int mmpm_handler_init(mmpm_handler_t *handler, mmpm_matcher_type type, uint32_t buckets, uint32_t secondary_buckets);
-```
+int ms_compile_database_multi_ext(ms_database_t **db, ms_matcher_type type,
+    uint32_t buckets, uint32_t secondary_buckets,
+    const char *const *expressions, const uint32_t *flags,
+    const uint32_t *ids, const ms_expr_ext_t *ext, uint32_t elements);
 
-**参数说明<a name="section1992151418176"></a>**
-
-|**参数名**|**描述**|**取值范围**|**输入/输出**|
-|--|--|--|--|
-|handler|匹配引擎句柄|非NULL|输入|
-|type|匹配引擎种类|mmpm_matcher_type枚举变量取值范围|输入|
-|buckets|一级hash桶数量；输入为0则使用默认配置：10万一级桶|非负值，取值范围与uint32_t保持一致|输入|
-|secondary_buckets|每个一级桶下的二级hash桶数量；输入为0则使用默认配置：每个一级桶下96个二级桶|非负值，取值范围与uint32_t保持一致|输入|
-
-
-**返回值<a name="section73338197172"></a>**
-
-- 成功：返回0。
-- 失败：返回错误码。
-
-**约束<a name="section10837102592211"></a>**
-
-请勿对同一句柄连续调用此函数。如要对同一句柄重新初始化，请先执行句柄销毁mmpm\_handler\_destroy，然后再重新执行mmpm\_handler\_init初始化。
-
-
-## mmpm\_set\_hash\_func<a name="ZH-CN_TOPIC_0000002522070522"></a>
-
-**接口功能<a name="section1427919476610"></a>**
-
-多模规则匹配引擎注册哈希计算函数。
-
-**接口定义<a name="section077114561764"></a>**
-
-```
-int mmpm_set_hash_func(mmpm_handler_t *handler, hash_calc_func hash_func);
+int ms_free_database(ms_database_t *db);
 ```
 
-**参数说明<a name="section1992151418176"></a>**
+**参数说明**
 
-|**参数名**|**描述**|**取值范围**|**输入/输出**|
-|--|--|--|--|
-|handler|匹配引擎句柄|非NULL|输入|
-|hash_func|哈希函数指针|非NULL|输入|
+|参数名|描述|
+|--|--|
+|db|输出database指针，调用前应指向`NULL`|
+|type|`MS_MATCHER_TYPE_HASH`或`MS_MATCHER_TYPE_AC`|
+|buckets|HASH一级桶数量；AC可传0|
+|secondary_buckets|HASH二级桶数量；AC可传0|
+|expressions|长度为`elements`的表达式数组|
+|flags|与表达式一一对应的规则标志数组|
+|ids|与表达式一一对应的规则ID数组|
+|ext|与表达式一一对应的扩展参数数组；不使用时可传`NULL`|
+|elements|表达式、flags、ids和ext的元素数量|
 
+`ms_compile_database_multi()`等价于将`ext`传为`NULL`后调用`ms_compile_database_multi_ext()`。组合表达式通过规则ID引用普通规则，例如`101&102`、`101|102`和`!101`。HASH database不支持组合规则。
 
-**返回值<a name="section73338197172"></a>**
+## Scratch和Block扫描接口
 
-- 成功：返回0。
-- 失败：返回错误码。
+**接口定义**
 
+```c
+int ms_alloc_scratch(const ms_database_t *db, ms_scratch_t **scratch);
+int ms_free_scratch(ms_scratch_t *scratch);
 
-## mmpm\_handler\_destroy<a name="ZH-CN_TOPIC_0000002522230520"></a>
+int ms_scan_database(const ms_database_t *db, const uint8_t *data,
+    uint32_t len, ms_scratch_t *scratch, uint32_t *ids,
+    uint32_t *id_count, uint32_t id_capacity);
 
-**接口功能<a name="section17306518720"></a>**
-
-多模规则匹配引擎资源释放函数，释放传入的多模规则匹配引擎的资源。
-
-**接口定义<a name="section984215183719"></a>**
-
-```
-int mmpm_handler_destroy(mmpm_handler_t *handler);
-```
-
-**参数说明<a name="section1992151418176"></a>**
-
-|**参数名**|**描述**|**取值范围**|**输入/输出**|
-|--|--|--|--|
-|handler|匹配引擎句柄|非NULL|输入|
-
-
-**返回值<a name="section73338197172"></a>**
-
-- 成功：返回0。
-- 失败：返回错误码。
-
-
-## mmpm\_add\_rule<a name="ZH-CN_TOPIC_0000002553350433"></a>
-
-**接口功能<a name="section77471153978"></a>**
-
-多模规则匹配引擎导入规则集合。rule-\>key和rule-\>key\_len需要一一对应，否则无法确保功能符合预期。
-
-**接口定义<a name="section11961501883"></a>**
-
-```
-int mmpm_add_rule(mmpm_handler_t *handler, mmpm_rule_t *rule, uint32_t rule_num);
+int ms_find_database_rule(const ms_database_t *db, ms_rule_t *rule);
 ```
 
-**参数说明<a name="section1992151418176"></a>**
+`scratch`必须由同一个database创建。`ms_scan_database()`当前只支持AC database；它返回本次扫描需要上报的去重规则ID及数量，不返回每次命中的起止位置或原始命中次数。没有可上报ID时返回`MS_FIND_FAIL`。输出容量不足时返回`MS_INVALID_PARA`，并通过`id_count`返回所需容量。
 
-|**参数名**|**描述**|**取值范围**|**输入/输出**|
-|--|--|--|--|
-|handler|匹配引擎句柄|非NULL|输入|
-|rule|待导入的规则数组|非NULL|输入|
-|rule_num|导入规则数量|非负值，取值范围与uint32_t保持一致；值必须与参数rule的实际数组长度一致，否则会出现访问越界异常|输入|
+## Stream扫描接口
 
+**接口定义**
 
-**返回值<a name="section73338197172"></a>**
+```c
+int ms_open_stream(const ms_database_t *db, ms_stream_t **stream);
 
-- 成功：返回0。
-- 失败：返回错误码。
+int ms_scan_stream(ms_stream_t *stream, const uint8_t *data,
+    uint32_t len, ms_scratch_t *scratch, uint32_t *ids,
+    uint32_t *id_count, uint32_t id_capacity);
 
+int ms_flush_stream(ms_stream_t *stream, ms_scratch_t *scratch,
+    uint32_t *ids, uint32_t *id_count, uint32_t id_capacity);
 
-## mmpm\_remove\_rule<a name="ZH-CN_TOPIC_0000002553190489"></a>
+int ms_close_stream(ms_stream_t *stream, ms_scratch_t *scratch,
+    uint32_t *ids, uint32_t *id_count, uint32_t id_capacity);
 
-**接口功能<a name="section6912101017818"></a>**
-
-多模规则匹配引擎删除目标规则。rule-\>key和rule-\>key\_len需要一一对应，否则无法确保功能符合预期。
-
-**接口定义<a name="section147941817387"></a>**
-
-```
-int mmpm_remove_rule(mmpm_handler_t *handler, mmpm_rule_t *rule, uint32_t rule_num);
+int ms_reset_stream(ms_stream_t *stream);
 ```
 
-**参数说明<a name="section1992151418176"></a>**
+Stream模式仅支持AC database。stream保存自动机状态、累计offset和组合规则状态，因此规则可以跨任意数量的输入分片匹配；分片大小由调用者根据真实输入决定，Megascan不要求固定大小。`scratch`仍然是每次扫描、flush和close的共同前提，且必须属于该stream绑定的database。
 
-|**参数名**|**描述**|**取值范围**|**输入/输出**|
-|--|--|--|--|
-|handler|匹配引擎句柄|非NULL|输入|
-|rule|待删除的规则数组|非NULL|输入|
-|rule_num|删除规则数量|非负值，取值范围与uint32_t保持一致值必须与参数rule的实际数组长度一致；否则会出现访问越界异常|输入|
+`ms_flush_stream()`执行流结束语义但不关闭stream；`ms_close_stream()`执行流结束语义并释放stream；`ms_reset_stream()`清除已有跨片状态。单次调用只返回本次新产生的去重规则ID。
 
+## 动态删除接口
 
-**返回值<a name="section73338197172"></a>**
+**接口定义**
 
-- 成功：返回0。
-- 失败：返回错误码。
-
-**约束<a name="section16630311902"></a>**
-
-仅支持匹配引擎为“MMPM\_MATCHER\_TYPE\_HASH”。
-
-
-## mmpm\_find\_rule<a name="ZH-CN_TOPIC_0000002522230524"></a>
-
-**接口功能<a name="section11527311084"></a>**
-
-多模规则匹配引擎匹配目标规则。rule-\>key和rule-\>key\_len需要一一对应，否则无法确保功能符合预期。
-
-**接口定义<a name="section123011441986"></a>**
-
-```
-int mmpm_find_rule(mmpm_handler_t *handler, mmpm_rule_t *rule);
+```c
+int ms_remove_database_rule(ms_database_t *db,
+    const ms_rule_t *rule, uint32_t rule_num);
 ```
 
-**参数说明<a name="section1992151418176"></a>**
+普通AC规则使用`alias + key_len + key`定位；组合规则使用`alias`定位，此时`key=NULL`且`key_len=0`。删除普通规则时，同时删除依赖该规则的组合规则。批量删除具有原子性：任一目标不存在时，database保持不变。
 
-|**参数名**|**描述**|**取值范围**|**输入/输出**|
-|--|--|--|--|
-|handler|匹配引擎句柄|非NULL|输入|
-|rule|待匹配规则|非NULL|输入/输出|
+删除成功后，已有scratch在下次扫描时自动刷新；已有stream返回`MS_STREAM_STALE`，调用`ms_reset_stream()`后按新database继续使用。HASH database不支持该接口。调用者必须在删除与并发扫描之间进行外部同步。
 
+## Handler兼容接口
 
-**返回值<a name="section73338197172"></a>**
+Handler接口保留原有的可变对象调用方式。新接入代码建议优先使用database、scratch和stream接口，因为这些接口将规则库、扫描工作区和跨分片状态分别由database、scratch和stream显式管理，资源归属和生命周期更加清晰；并发扫描时也可以为每个线程分配独立scratch，避免共享可变的扫描状态。
 
-- 成功：返回0，且命中规则别名通过rule-\>alias返回。
-- 失败：返回错误码。
+```c
+int ms_handler_init(ms_handler_t *handler, ms_matcher_type type,
+    uint32_t buckets, uint32_t secondary_buckets);
+int ms_handler_destroy(ms_handler_t *handler);
+int ms_set_hash_func(ms_handler_t *handler, hash_calc_func hash_func);
+int ms_add_rule(ms_handler_t *handler, ms_rule_t *rule, uint32_t rule_num);
+int ms_remove_rule(ms_handler_t *handler, ms_rule_t *rule, uint32_t rule_num);
+int ms_find_rule(ms_handler_t *handler, ms_rule_t *rule);
+int ms_scan_rule_stream(ms_stream_t *stream, const uint8_t *data,
+    uint32_t len);
 
+int ms_compile_multi(ms_handler_t *handler,
+    const char *const *expressions, const uint32_t *flags,
+    const uint32_t *ids, uint32_t elements);
+int ms_compile_multi_ext(ms_handler_t *handler,
+    const char *const *expressions, const uint32_t *flags,
+    const uint32_t *ids, const ms_expr_ext_t *ext, uint32_t elements);
+int ms_add_exprs(ms_handler_t *handler, const char *const *expressions,
+    const uint32_t *ids, const uint32_t *flags, uint32_t elements);
 
+int ms_scan_expr(ms_handler_t *handler, const uint8_t *data, uint32_t len,
+    uint32_t *ids, uint32_t *id_count, uint32_t id_capacity);
+int ms_open_handler_stream(ms_handler_t *handler, ms_stream_t **stream);
+int ms_scan_expr_stream(ms_stream_t *stream, const uint8_t *data,
+    uint32_t len, uint32_t *ids, uint32_t *id_count,
+    uint32_t id_capacity);
+int ms_scan_expr_stream_flush(ms_stream_t *stream, uint32_t *ids,
+    uint32_t *id_count, uint32_t id_capacity);
+int ms_close_handler_stream(ms_stream_t *stream);
+```
+
+HASH handler按key查找规则；AC handler支持表达式编译、Block和Stream扫描。`ms_remove_rule()`删除HASH规则时按key定位；删除AC普通规则时按`alias + key`定位；删除AC组合规则时按alias定位。
+
+## 内存分配器接口
+
+**接口定义**
+
+```c
+int ms_set_allocator(ms_alloc_t alloc_func, ms_calloc_t calloc_func,
+    ms_free_t free_func);
+int ms_set_database_allocator(ms_alloc_t alloc_func,
+    ms_calloc_t calloc_func, ms_free_t free_func);
+int ms_set_scratch_allocator(ms_alloc_t alloc_func,
+    ms_calloc_t calloc_func, ms_free_t free_func);
+int ms_set_stream_allocator(ms_alloc_t alloc_func,
+    ms_calloc_t calloc_func, ms_free_t free_func);
+int ms_set_misc_allocator(ms_alloc_t alloc_func,
+    ms_calloc_t calloc_func, ms_free_t free_func);
+```
+
+`ms_set_allocator()`同时设置全部分类；其他接口分别控制database、scratch、stream和misc内存。回调传`NULL`时使用标准库默认实现。每次申请都会在内部头部记录当时的free回调，因此顺序更换或恢复allocator只影响后续申请，已有内存仍由原free回调释放。原free函数及其依赖的内存池必须保持有效，直至对应内存全部释放。设置过程是进程级操作且没有内部同步，不能与其他setter或内存申请并发执行。
+
+## 并发和资源释放约束
+
+- 不同database和不同stream可由调用者并发使用。
+- 同一个scratch或stream不能在多个线程中无同步并发使用。
+- 同一个database可被多个只读扫描共享，但每个并发扫描应使用独立scratch。
+- 动态删除与扫描不能无同步并发执行。
+- 推荐释放顺序为stream、scratch、database；handler路径先关闭stream，再销毁handler。

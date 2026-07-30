@@ -421,23 +421,6 @@ $DEMO --api ms_logical_eval_inplace -h
 $DEMO --api ms_set_stream_allocator -h
 ```
 
-## 与 gnsj 功能设计对齐
-
-`log/Megascan/gnsj` 下五份功能设计是本 demo 的功能契约。接口测试按以下
-关系组织。这里的“验证”表示测试人员可通过对应参数构造该行为，不再表示 demo
-内部存在一套写死的自动回归：
-
-| 功能设计 | 主要接口 | demo 必须验证的行为 |
-| --- | --- | --- |
-| 对外接口适配 | `ms_compile_database_multi[_ext]`、`ms_alloc_scratch`、`ms_scan_database`、stream 生命周期 | 手动指定 database、scratch、block/stream 参数和 MIN/MAX offset |
-| AC 规则逻辑组合 | 编译、Block/Stream 扫描、logical API | `QUIET` 不直接上报、组合 ID 上报、跨 chunk 组合、纯否定 flush、offset；flags 按位支持 `SINGLEMATCH` |
-| AC 流模式 | `ms_open/scan/flush/close/reset_stream` | 每个 `--api` 只调用一次目标接口；data、len 和 capacity 与签名对应 |
-| 自定义内存 | 五个 `ms_set_*allocator` 接口 | custom 模式不只调用 setter，还创建并释放对应 database/scratch/stream，检查回调计数；misc 明确标注暂无公开消费者 |
-| 动态删除 | `ms_remove_rule`、`ms_remove_database_rule` | 分别验证 HASH handler 按 key、AC handler 普通规则按 alias+key、AC handler 组合规则按 alias、AC database 普通/组合规则删除，以及 database 原子失败、scratch 刷新、stream stale/reset |
-
-参数化入口遵循功能边界：HASH database 不支持 stream 和
-`ms_remove_database_rule`，HASH 动态删除使用 handler 的 `ms_remove_rule`。
-
 ## 模块接口流程
 
 模块命令展示调用顺序和所属接口：

@@ -128,6 +128,20 @@
 
 
 
+## 当前源码更新
+
+### 更新说明
+
+当前源码统一使用`ms_*`接口名称，并新增以下能力：
+
+- database、scratch和stream分离的运行模型；
+- AC普通规则和组合规则编译，以及`min_offset`、`max_offset`扩展约束；
+- Block扫描和支持跨输入分片匹配的Stream扫描；
+- AC database动态删除，包含批量原子性、scratch刷新和stream stale/reset语义；
+- database、scratch、stream和misc分类内存分配器。
+
+原handler接口继续保留，用于兼容已有调用方式。新接入代码建议优先使用database接口。接口定义和约束请参见[API参考](./api_reference.md)。
+
 ## V2.5.3<a name="ZH-CN_TOPIC_0000002552888637"></a>
 
 ### 更新说明<a name="ZH-CN_TOPIC_0000002521888672"></a>
@@ -238,6 +252,5 @@
 ### 获取文档的方法<a name="ZH-CN_TOPIC_0000002552888641"></a>
 
 您可以通过访问开源仓浏览获取相关文档。
-
 
 
