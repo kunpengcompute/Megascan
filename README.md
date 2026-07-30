@@ -56,24 +56,19 @@ cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j"$(nproc)"
 ```
 
-编译完成后，动态库位于`output/lib/libms.so`，对外头文件位于`output/include`。RPM安装、测试依赖和详细编译步骤参见[安装指南](./docs/zh/installation_guide.md)。
-
-
-## 快速入门<a name="ZH-CN_TOPIC_0000002522028892"></a>
-
-Megascan的快速入门通过使用提供的接口来具体上手应用，具体请参见[《快速入门》](./docs/zh/quick_start.md)。
+编译完成后，动态库位于`output/lib/libms.so`，对外头文件位于`output/include`。RPM安装、测试依赖和详细编译步骤参见[《安装指南》](./docs/zh/installation_guide.md)。
 
 
 ## 学习文档<a name="ZH-CN_TOPIC_0000002553028853"></a>
 
-|名称|路径|简介|
-|--|--|--|
-|快速入门|[quick_start.md](./docs/zh/quick_start.md)|提供快速上手验证指导。|
-|版本说明书|[release_notes.md](./docs/zh/release_notes.md)|提供Megascan每个发布版本的基础信息和特性更新信息。|
-|安装指南|[installation_guide.md](./docs/zh/installation_guide.md)|指导用户如何安装部署软件。|
-|API参考|[api_reference.md](./docs/zh/api_reference.md)|提供Megascan特性相关接口说明及定义等。|
-|测试指南|[test/README.md](./test/README.md)|提供KTest、单元测试和demo的构建运行方法。|
-|Demo使用说明|[test/demo/README.md](./test/demo/README.md)|提供API、session和性能测试入口说明。|
+|名称|简介|
+|--|--|
+|[快速入门](./docs/zh/quick_start.md)|提供快速上手验证指导。|
+|[版本说明书](./docs/zh/release_notes.md)|提供Megascan每个发布版本的基础信息和特性更新信息。|
+|[安装指南](./docs/zh/installation_guide.md)|指导用户如何安装部署软件。|
+|[API参考](./docs/zh/api_reference.md)|提供Megascan特性相关接口说明及定义等。|
+|[测试指南](./test/README.md)|提供KTest、单元测试和demo的构建运行方法。|
+|[Demo使用说明](./test/demo/README.md)|提供API、session和性能测试入口说明。|
 
 
 

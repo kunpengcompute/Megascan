@@ -2,7 +2,7 @@
 
 ## 前提条件
 
-请先按照[安装指南](./installation_guide.md)完成源码编译或RPM安装。本示例使用AC算法的Block模式，演示规则编译、scratch申请、数据扫描和资源释放。
+请先按照[《安装指南》](./installation_guide.md)完成源码编译或RPM安装。本示例使用AC算法的Block模式，演示规则编译、scratch申请、数据扫描和资源释放。
 
 ## 操作步骤
 
@@ -138,4 +138,4 @@ export LD_LIBRARY_PATH="$PWD/output/lib:${LD_LIBRARY_PATH:-}"
 
 ## 后续使用
 
-Stream模式在database和scratch之外创建stream，并按照实际输入分片重复调用`ms_scan_stream()`。流结束时调用`ms_flush_stream()`或`ms_close_stream()`。接口参数、返回值和使用约束参见[API参考](./api_reference.md)。
+Stream模式在database和scratch之外创建stream，并按照实际输入分片重复调用`ms_scan_stream()`。流结束时调用`ms_flush_stream()`或`ms_close_stream()`。接口参数、返回值和使用约束参见[《API参考》](./api_reference.md)。

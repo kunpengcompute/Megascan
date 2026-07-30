@@ -15,7 +15,11 @@
     } ms_matcher_type;
     ```
 
-    `MS_MATCHER_TYPE_MAX`是枚举边界值，不能作为匹配引擎类型传入接口。HASH用于定长key查找；AC支持普通规则、组合规则、Block扫描和Stream扫描。
+    HASH用于定长key查找；AC支持普通规则、组合规则、Block扫描和Stream扫描。
+
+    >![](public_sys-resources/icon-note.gif) **说明：**
+    >
+    >`MS_MATCHER_TYPE_MAX`是枚举边界值，不能作为匹配引擎类型传入接口。
 
 - 错误码：
 
@@ -31,6 +35,10 @@
     |`MS_NOT_SUPPORTED`|-7|当前匹配类型不支持该操作|
     |`MS_STREAM_STALE`|-8|database更新后，stream需要先reset|
 
+    >![](public_sys-resources/icon-note.gif) **说明：**
+    >
+    >`MS_FIND_FAIL`不一定表示接口执行异常。对于扫描接口，该返回值表示扫描已完成，但没有可上报的规则。
+
 - 规则标志：
 
     |标志|说明|
@@ -39,6 +47,10 @@
     |`MS_FLAG_COMBINATION`|组合规则|
     |`MS_FLAG_QUIET`|参与组合计算但不单独上报|
     |`MS_FLAG_SINGLEMATCH`|同一规则只上报一次|
+
+    >![](public_sys-resources/icon-note.gif) **说明：**
+    >
+    >`MS_FLAG_QUIET`只抑制规则ID上报，不影响该规则参与组合规则计算。
 
 - 规则和扩展参数：
 
@@ -56,11 +68,27 @@
     } ms_expr_ext_t;
     ```
 
-    `ms_expr_ext_t.flags`可使用`MS_EXT_FLAG_MIN_OFFSET`和`MS_EXT_FLAG_MAX_OFFSET`。当前offset约束仅适用于组合规则，表示使组合规则成立的匹配结束位置。
+    `ms_expr_ext_t.flags`可使用`MS_EXT_FLAG_MIN_OFFSET`和`MS_EXT_FLAG_MAX_OFFSET`。
+
+    >![](public_sys-resources/icon-note.gif) **说明：**
+    >
+    >当前offset约束仅适用于组合规则，表示使组合规则成立的匹配结束位置。
 
 - 运行对象：
 
     `ms_database_t`保存编译后的规则和匹配器，`ms_scratch_t`保存扫描工作区，`ms_stream_t`保存跨分片状态。三者均为不透明类型。
+
+    >![](public_sys-resources/icon-caution.gif) **注意：**
+    >
+    >不要直接访问、复制或自行释放不透明对象。对象应通过对应的创建、使用和释放接口管理，并遵守接口规定的归属关系。
+
+## 使用须知<a id="使用须知"></a>
+
+>![](public_sys-resources/icon-caution.gif) **注意：**
+>
+>自定义allocator是进程级配置，应在创建Megascan对象和启动工作线程前完成。设置过程没有内部同步，不能与其他allocator setter或内存申请并发执行。
+>
+>每次内存申请都会在内部头部记录当时的free回调，因此更换或恢复allocator只影响后续申请，已有内存仍由原free回调释放。原free函数及其依赖的内存池必须保持有效，直至对应内存全部释放。
 
 ## Database编译接口
 
@@ -207,7 +235,7 @@ int ms_set_misc_allocator(ms_alloc_t alloc_func,
     ms_calloc_t calloc_func, ms_free_t free_func);
 ```
 
-`ms_set_allocator()`同时设置全部分类；其他接口分别控制database、scratch、stream和misc内存。回调传`NULL`时使用标准库默认实现。每次申请都会在内部头部记录当时的free回调，因此顺序更换或恢复allocator只影响后续申请，已有内存仍由原free回调释放。原free函数及其依赖的内存池必须保持有效，直至对应内存全部释放。设置过程是进程级操作且没有内部同步，不能与其他setter或内存申请并发执行。
+`ms_set_allocator()`同时设置全部分类；其他接口分别控制database、scratch、stream和misc内存。回调传`NULL`时使用标准库默认实现。allocator的配置时机、释放回调记录和并发约束请参见[使用须知](#使用须知)。
 
 ## 并发和资源释放约束
 

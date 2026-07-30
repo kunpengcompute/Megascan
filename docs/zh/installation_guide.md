@@ -217,4 +217,4 @@ output/boostida-kdadk-ms-release-1.1.0.oe2203.aarch64.rpm
 
 ## 验证开发环境
 
-完成源码编译或RPM安装后，可按照[快速入门](./quick_start.md)编译示例程序。示例能够成功链接`libms.so`并输出预期规则ID，表示Megascan开发环境可用。
+完成源码编译或RPM安装后，可按照[《快速入门》](./quick_start.md)编译示例程序。示例能够成功链接`libms.so`并输出预期规则ID，表示Megascan开发环境可用。
