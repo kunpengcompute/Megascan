@@ -45,43 +45,6 @@ typedef void (*ms_free_t)(void *ptr);
 #define ISALIGNED_N(ptr, align) (((uintptr_t)(ptr)) % (align) == 0)
 
 /**
- * @brief 数据库分配器 - 用于持久化数据的内存分配
- * 
- * 这些全局变量存储用户自定义的内存分配函数，默认为标准库的 malloc/calloc/free。
- * 用户可以通过 ms_set_allocator() 函数自定义这些函数。
- */
-extern ms_alloc_t g_ms_db_alloc;
-extern ms_calloc_t g_ms_db_calloc;
-extern ms_free_t g_ms_db_free;
-
-/**
- * @brief Scratch 分配器 - 用于扫描过程中的临时工作区内存
- *
- * 后续 ms_scratch_t 会使用这组分配器。当前保留为分类型内存接口的一部分。
- */
-extern ms_alloc_t g_ms_scratch_alloc;
-extern ms_calloc_t g_ms_scratch_calloc;
-extern ms_free_t g_ms_scratch_free;
-
-/**
- * @brief Stream 分配器 - 用于流模式状态内存
- *
- * 每条流的 ms_stream_t 及其跨 chunk 保存的运行时状态使用这组分配器。
- */
-extern ms_alloc_t g_ms_stream_alloc;
-extern ms_calloc_t g_ms_stream_calloc;
-extern ms_free_t g_ms_stream_free;
-
-/**
- * @brief Misc 分配器 - 用于杂项 API 输出或临时辅助内存
- *
- * 预留给错误信息、序列化结果、信息字符串等不属于 database/scratch/stream 的内存。
- */
-extern ms_alloc_t g_ms_misc_alloc;
-extern ms_calloc_t g_ms_misc_calloc;
-extern ms_free_t g_ms_misc_free;
-
-/**
  * @brief 检查内存分配是否成功
  * 
  * @param mem 要检查的内存指针
@@ -91,28 +54,11 @@ extern ms_free_t g_ms_misc_free;
 int ms_check_alloc(const void *mem);
 
 /**
- * @brief 获取当前的数据库分配函数
- * @return 当前的 malloc 函数指针
- */
-ms_alloc_t ms_get_db_alloc(void);
-
-/**
- * @brief 获取当前的数据库分配并初始化函数
- * @return 当前的 calloc 函数指针
- */
-ms_calloc_t ms_get_db_calloc(void);
-
-/**
- * @brief 获取当前的数据库释放函数
- * @return 当前的 free 函数指针
- */
-ms_free_t ms_get_db_free(void);
-
-/**
  * @brief 设置全局内存分配器
  * 
  * 用户可以通过此函数提供自定义的内存分配函数，实现对 MS 库内存分配的完全控制。
- * 如果传入 NULL，会自动回退到标准库函数。
+ * 如果传入 NULL，会自动回退到标准库函数。设置只影响后续申请；已经申请的
+ * 内存仍使用申请时记录的 free 函数释放。
  * 
  * @param alloc_func 自定义 malloc 函数
  * @param calloc_func 自定义 calloc 函数

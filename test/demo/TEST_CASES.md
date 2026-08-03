@@ -763,6 +763,24 @@ $DEMO session allocator.flow
 - 最后一次 `allocator_stats` 显示 `active_mask=0`；
 - `SESSION_RESULT commands_failed=0`。
 
+### TC-34-008：对象存活期间顺序切换 allocator
+
+```sh
+$DEMO session <<'EOF'
+allocator_stats reset
+ms_set_database_allocator custom custom custom
+ms_compile_database_multi db1 ac 0 0 abc 0 101 1
+ms_set_database_allocator default default default
+ms_free_database db1
+allocator_stats
+exit
+EOF
+```
+
+预期：database释放成功，自定义`free`计数增加，`active_mask=0`，
+`SESSION_RESULT commands_failed=0`。这证明已有内存使用申请时记录的free，
+而不是释放时的当前全局配置。
+
 ### TC-34-E001：分配失败和中间资源清理
 
 当前 demo 的 allocator 参数只支持 `custom/default`，不能指定第 N 次申请失败。
@@ -780,6 +798,7 @@ python3 build.py testdemo_ut debug
 - `test_allocator_hash_database_init_failure_frees_created_table`
 - `test_allocator_database_scan_reuses_scratch_workspace`
 - `test_allocator_database_stream_scan_reuses_scratch`
+- `test_allocator_objects_keep_original_free_after_reconfigure`
 
 ## 7. 动态删除
 

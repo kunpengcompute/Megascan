@@ -24,6 +24,9 @@ static allocator_counter_t g_scratch_counter;
 static allocator_counter_t g_stream_counter;
 static allocator_counter_t g_all_counter;
 static uint32_t g_db_fail_on_alloc;
+static uint32_t g_replacement_db_free_count;
+static uint32_t g_replacement_scratch_free_count;
+static uint32_t g_replacement_stream_free_count;
 
 static void reset_counter(allocator_counter_t *counter)
 {
@@ -37,6 +40,9 @@ static void reset_all_counters(void)
     reset_counter(&g_stream_counter);
     reset_counter(&g_all_counter);
     g_db_fail_on_alloc = 0;
+    g_replacement_db_free_count = 0;
+    g_replacement_scratch_free_count = 0;
+    g_replacement_stream_free_count = 0;
 }
 
 static void *counter_alloc(allocator_counter_t *counter, size_t size)
@@ -119,6 +125,24 @@ static void *all_calloc(size_t nmemb, size_t size)
 static void all_free(void *ptr)
 {
     counter_free(&g_all_counter, ptr);
+}
+
+static void replacement_db_free(void *ptr)
+{
+    (void)ptr;
+    g_replacement_db_free_count++;
+}
+
+static void replacement_scratch_free(void *ptr)
+{
+    (void)ptr;
+    g_replacement_scratch_free_count++;
+}
+
+static void replacement_stream_free(void *ptr)
+{
+    (void)ptr;
+    g_replacement_stream_free_count++;
 }
 
 static ms_rule_t make_allocator_rule(uint32_t alias, const char *s)
@@ -341,6 +365,46 @@ static void test_allocator_database_stream_uses_stream_allocator(void)
     reset_allocators();
 }
 
+static void test_allocator_objects_keep_original_free_after_reconfigure(void)
+{
+    ms_database_t *db = NULL;
+    ms_scratch_t *scratch = NULL;
+    ms_stream_t *stream = NULL;
+    const char *expr[] = {"abc"};
+    uint32_t ids[] = {101};
+    uint32_t flags[] = {MS_FLAG_NONE};
+    uint32_t out_count = 0;
+
+    reset_all_counters();
+    reset_allocators();
+    EXPECT_EQ(ms_set_database_allocator(db_alloc, db_calloc, db_free), MS_SUCCESS);
+    EXPECT_EQ(ms_set_scratch_allocator(scratch_alloc, scratch_calloc, scratch_free), MS_SUCCESS);
+    EXPECT_EQ(ms_set_stream_allocator(stream_alloc, stream_calloc, stream_free), MS_SUCCESS);
+
+    EXPECT_EQ(ms_compile_database_multi(&db, MS_MATCHER_TYPE_AC, 0, 0,
+                                          expr, flags, ids, 1), MS_SUCCESS);
+    EXPECT_EQ(ms_alloc_scratch(db, &scratch), MS_SUCCESS);
+    EXPECT_EQ(ms_open_stream(db, &stream), MS_SUCCESS);
+
+    EXPECT_EQ(ms_set_database_allocator(db_alloc, db_calloc, replacement_db_free), MS_SUCCESS);
+    EXPECT_EQ(ms_set_scratch_allocator(scratch_alloc, scratch_calloc,
+                                         replacement_scratch_free), MS_SUCCESS);
+    EXPECT_EQ(ms_set_stream_allocator(stream_alloc, stream_calloc,
+                                        replacement_stream_free), MS_SUCCESS);
+
+    EXPECT_EQ(ms_close_stream(stream, scratch, NULL, &out_count, 0), MS_SUCCESS);
+    EXPECT_EQ(ms_free_scratch(scratch), MS_SUCCESS);
+    EXPECT_EQ(ms_free_database(db), MS_SUCCESS);
+
+    EXPECT_NE(g_db_counter.free_count, 0U);
+    EXPECT_NE(g_scratch_counter.free_count, 0U);
+    EXPECT_NE(g_stream_counter.free_count, 0U);
+    EXPECT_EQ(g_replacement_db_free_count, 0U);
+    EXPECT_EQ(g_replacement_scratch_free_count, 0U);
+    EXPECT_EQ(g_replacement_stream_free_count, 0U);
+    reset_allocators();
+}
+
 KTEST_ADD_TEST_CASE(SuiteAllocatorRouting, test_allocator_set_all_covers_database_and_stream_paths);
 KTEST_ADD_TEST_CASE(SuiteAllocatorRouting, test_allocator_hash_uses_database_allocator);
 KTEST_ADD_TEST_CASE(SuiteAllocatorRouting, test_allocator_hash_init_failure_frees_created_table);
@@ -350,3 +414,4 @@ KTEST_ADD_TEST_CASE(SuiteAllocatorRouting, test_allocator_database_lifecycle_use
 KTEST_ADD_TEST_CASE(SuiteAllocatorRouting, test_allocator_scratch_uses_scratch_allocator);
 KTEST_ADD_TEST_CASE(SuiteAllocatorRouting, test_allocator_legacy_scan_expr_uses_scratch_allocator);
 KTEST_ADD_TEST_CASE(SuiteAllocatorRouting, test_allocator_database_stream_uses_stream_allocator);
+KTEST_ADD_TEST_CASE(SuiteAllocatorRouting, test_allocator_objects_keep_original_free_after_reconfigure);
