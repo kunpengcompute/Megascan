@@ -16,6 +16,7 @@ typedef struct {
     uint32_t id;
     uint32_t flags;
     uint32_t lkey;
+    uint32_t pattern_len;
 } ms_compile_expr_t;
 
 typedef struct {
@@ -108,7 +109,8 @@ uint32_t ms_compile_logical_byte_count(uint32_t logical_count);
 int ms_compile_context_add_expr(ms_compile_context_t *ctx,
                                   uint32_t id,
                                   uint32_t flags,
-                                  uint32_t lkey);
+                                  uint32_t lkey,
+                                  uint32_t pattern_len);
 int ms_compile_context_add_comb(ms_compile_context_t *ctx,
                                   uint32_t id,
                                   uint32_t flags,

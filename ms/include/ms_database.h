@@ -129,6 +129,25 @@ int ms_scan_database(const ms_database_t *db,
                                   uint32_t id_capacity);
 
 /**
+ * @brief Get plain-rule match positions captured by the latest scan.
+ *
+ * Each occurrence is returned separately and ranges use [from, to). Stream
+ * offsets are absolute from the beginning of the stream. Quiet and
+ * combination rules are not included.
+ *
+ * @param scratch: Scratch used by the latest completed scan call.
+ * @param events: Output events, or NULL with zero capacity to query the count.
+ * @param event_count: Output event count or required capacity.
+ * @param event_capacity: Number of elements available in @events.
+ * @return: 0 for success, or MS_INVALID_PARA for invalid input or insufficient
+ *          capacity.
+ */
+int ms_get_match_events(const ms_scratch_t *scratch,
+                        ms_match_event_t *events,
+                        uint32_t *event_count,
+                        uint32_t event_capacity);
+
+/**
  * @brief Find one rule through a database object.
  *
  * HASH databases use fixed-key lookup. AC databases reuse the expression

@@ -29,6 +29,12 @@
 
 typedef uint32_t (*hash_calc_func)(const uint8_t *key, uint32_t key_len);
 
+typedef struct {
+    uint32_t id;
+    uint64_t from;
+    uint64_t to;
+} ms_match_event_t;
+
 typedef enum {
     MS_MATCHER_NONE = 0,
     MS_MATCHER_TYPE_HASH,

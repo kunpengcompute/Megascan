@@ -284,6 +284,7 @@ static int ms_compile_assign_logical_op_lkeys(const ms_compile_context_t *new_ct
 
 static int ms_compile_collect_exprs(ms_compile_context_t *new_ctx,
                                       const ms_compile_context_t *old_ctx,
+                                      const char *const *expressions,
                                       const uint32_t *flags,
                                       const uint32_t *ids,
                                       uint32_t elements)
@@ -304,7 +305,13 @@ static int ms_compile_collect_exprs(ms_compile_context_t *new_ctx,
             continue;
         }
 
-        ret = ms_compile_context_add_expr(new_ctx, id, flag, lkey);
+        size_t pattern_len = strlen(expressions[i]);
+
+        if (pattern_len == 0 || pattern_len > UINT32_MAX) {
+            return MS_INVALID_PARA;
+        }
+        ret = ms_compile_context_add_expr(new_ctx, id, flag, lkey,
+                                            (uint32_t)pattern_len);
         if (ret != MS_SUCCESS) {
             return ret;
         }
@@ -487,7 +494,8 @@ int ms_compile_multi_ext(ms_handler_t *handler,
         return MS_MALLOC_FAIL;
     }
     old_ctx = (ms_compile_context_t *)handler->ms_compile_ctx;
-    ret = ms_compile_collect_exprs(new_ctx, old_ctx, flags, ids, elements);
+    ret = ms_compile_collect_exprs(new_ctx, old_ctx, expressions,
+                                     flags, ids, elements);
     if (ret != MS_SUCCESS) {
         ms_compile_context_free(new_ctx);
         return ret;
@@ -551,7 +559,8 @@ int ms_compile_database_multi_native(ms_database_t *db,
     new_ctx->ac_aliases_are_lkeys = (db->type == MS_MATCHER_TYPE_AC);
 
     old_ctx = (ms_compile_context_t *)db->ms_compile_ctx;
-    ret = ms_compile_collect_exprs(new_ctx, old_ctx, flags, ids, elements);
+    ret = ms_compile_collect_exprs(new_ctx, old_ctx, expressions,
+                                     flags, ids, elements);
     if (ret != MS_SUCCESS) {
         ms_compile_context_free(new_ctx);
         return ret;
