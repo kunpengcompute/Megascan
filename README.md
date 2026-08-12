@@ -1,8 +1,20 @@
 # Megascan介绍<a name="ZH-CN_TOPIC_0000002553148843"></a>
 
+## 最新消息
+
+\[2026-09-30\]: 发布Megascan 1.0.0，提供面向大规模规则集的高性能多模式匹配能力。
+
 ## 项目介绍<a name="ZH-CN_TOPIC_0000002553028849"></a>
 
 Megascan是面向大规模规则集的多模式匹配库，结合Hash算法与AC算法，适用于超大规模定长规则和十万级不定长规则匹配场景。Megascan提供兼容handler接口，以及database、scratch和stream组成的扫描接口，支持普通规则、组合规则、Block扫描、跨分片Stream扫描和动态删除。
+
+## 特性介绍
+
+|特性名称|特性介绍|
+|--|--|
+|大规模规则集匹配技术|针对规则规模和规则长度的差异，结合Hash算法与紧凑AC自动机，降低大规模规则集匹配过程中的查找和状态访问开销。|
+|组合规则增量求值技术|通过普通规则到组合规则的反向索引，仅计算本次命中所影响的组合关系，减少大规模组合规则场景中的无效遍历。|
+|跨分片状态复用技术|通过stream保存自动机和组合规则状态，并复用scratch工作区，使连续数据能够跨任意输入分片完成匹配。|
 
 
 ## 目录结构<a name="ZH-CN_TOPIC_0000002522188896"></a>
@@ -43,32 +55,17 @@ Megascan是面向大规模规则集的多模式匹配库，结合Hash算法与AC
 
 ## 环境部署<a name="ZH-CN_TOPIC_0000002522028894"></a>
 
-编译Megascan动态库需要GCC 10.3及以上版本、CMake 3.22及以上版本和GNU Make，不依赖Boost、PCRE等第三方算法库。在openEuler上可安装基础编译工具：
-
-```bash
-sudo dnf install -y gcc gcc-c++ cmake make
-```
-
-在源码根目录执行：
-
-```bash
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build -j"$(nproc)"
-```
-
-编译完成后，动态库位于`output/lib/libms.so`，对外头文件位于`output/include`。RPM安装、测试依赖和详细编译步骤参见[《安装指南》](./docs/zh/installation_guide.md)。
+介绍Megascan的环境依赖、安装方式和编译方法，具体请参见[《安装指南》](./docs/zh/installation_guide.md)。
 
 
 ## 学习文档<a name="ZH-CN_TOPIC_0000002553028853"></a>
 
 |名称|简介|
 |--|--|
-|[快速入门](./docs/zh/quick_start.md)|提供快速上手验证指导。|
 |[版本说明书](./docs/zh/release_notes.md)|提供Megascan每个发布版本的基础信息和特性更新信息。|
 |[安装指南](./docs/zh/installation_guide.md)|指导用户如何安装部署软件。|
+|[快速入门](./docs/zh/quick_start.md)|提供快速上手验证指导。|
 |[API参考](./docs/zh/api_reference.md)|提供Megascan特性相关接口说明及定义等。|
-|[测试指南](./test/README.md)|提供KTest、单元测试和demo的构建运行方法。|
-|[Demo使用说明](./test/demo/README.md)|提供API、session和性能测试入口说明。|
 
 
 
