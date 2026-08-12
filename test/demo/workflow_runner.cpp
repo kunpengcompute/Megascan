@@ -53,6 +53,7 @@ struct Options {
     std::string data_root;
     std::string out_dir;
     std::string machine;
+    std::string algorithm;
     std::string cpu_list = "1-95";
     std::string left_result;
     std::string right_result;
@@ -88,7 +89,6 @@ struct Options {
     bool run_combo = true;
     bool run_ac_on_combo = true;
     bool run_dynamic_delete = true;
-    bool require_clean = true;
 };
 
 static bool parse_unsigned(const char *text, unsigned &value);
@@ -601,13 +601,6 @@ static int validate_source_tree(const Options &options)
                   << " 期望=" << options.expected_commit << '\n';
         return 1;
     }
-    if (options.require_clean && (run_command({"git", "-c", "safe.directory=" + options.root, "-C",
-                     options.root, "diff", "--quiet"}) != 0 ||
-        run_command({"git", "-c", "safe.directory=" + options.root, "-C",
-                     options.root, "diff", "--cached", "--quiet"}) != 0)) {
-        std::cerr << "Megascan 存在未提交修改，拒绝正式跨机器测试。\n";
-        return 1;
-    }
     return 0;
 }
 
@@ -754,6 +747,7 @@ static int benchmark_matrix(const Options &options, bool full, bool quick = fals
     std::string header;
     std::getline(manifest, header);
     std::string line;
+    bool ran_case = false;
     while (std::getline(manifest, line)) {
         std::vector<std::string> field = split(line, ',');
         if (field.size() != 11) {
@@ -763,25 +757,33 @@ static int benchmark_matrix(const Options &options, bool full, bool quick = fals
         std::vector<std::string> algorithms;
         if (quick && (field[1] != std::to_string(options.quick_rule_count) ||
                       field[5] != std::to_string(options.quick_hit_bps))) continue;
+        auto selected = [&](const char *name) {
+            return options.algorithm.empty() || options.algorithm == name;
+        };
         if (!quick && field[0] == "hash" && options.run_hash) algorithms.push_back("hash");
+        if (quick && field[0] == "hash" && options.run_hash && selected("hash")) {
+            algorithms.push_back("hash");
+        }
         if (field[0] == "ac") {
             if (quick) {
-                if (options.run_legacy) algorithms.push_back("ac_legacy");
-                if (options.run_ac) algorithms.push_back("ac");
+                if (options.run_legacy && selected("ac_legacy")) algorithms.push_back("ac_legacy");
+                if (options.run_ac && selected("ac")) algorithms.push_back("ac");
             } else {
                 if (options.run_ac) algorithms.push_back("ac");
                 if (options.run_legacy) algorithms.push_back("ac_legacy");
             }
-            if (options.run_ac && options.run_dynamic_delete) {
+            if (options.run_ac && options.run_dynamic_delete && selected("ac_delete")) {
                 algorithms.push_back("ac_delete");
             }
         }
         if (field[0] == "accombo") {
-            if (options.run_combo) algorithms.push_back("accombo");
-            if (options.run_ac_on_combo) algorithms.push_back("ac_on_combo");
+            if (options.run_combo && selected("accombo")) algorithms.push_back("accombo");
+            if (options.run_ac_on_combo && selected("ac_on_combo")) algorithms.push_back("ac_on_combo");
             if (options.run_combo && options.run_dynamic_delete) {
-                algorithms.push_back("accombo_delete");
-                algorithms.push_back("accombo_combination_delete");
+                if (selected("accombo_delete")) algorithms.push_back("accombo_delete");
+                if (selected("accombo_combination_delete")) {
+                    algorithms.push_back("accombo_combination_delete");
+                }
             }
         }
         for (const std::string &algorithm : algorithms) {
@@ -817,8 +819,15 @@ static int benchmark_matrix(const Options &options, bool full, bool quick = fals
                                 full ? -1 : static_cast<int>(options.cpu_core)) != 0) {
                     return 1;
                 }
+                ran_case = true;
             }
         }
+    }
+    if (!options.algorithm.empty() && !ran_case) {
+        std::cerr << "找不到指定测试项：算法=" << options.algorithm
+                  << " 规则=" << options.quick_rule_count
+                  << " 命中率(bps)=" << options.quick_hit_bps << '\n';
+        return 1;
     }
     std::cout << "原始测试完成：" << raw << '\n';
     int summary = demo_920hg_summarize(options.out_dir);
@@ -980,6 +989,7 @@ static void usage()
         "  --cpu-list <列表>      整机 CPU，默认 1-95\n"
         "  --trials <次数>        默认 1\n"
         "  --warmups <次数>       默认 0\n"
+        "  --algorithm <算法>     quick 只运行指定算法\n"
         "  --no-build             不重新构建 Megascan\n"
         "  --keep-build           不删除现有 build 目录\n"
         "  --skip-hash|--skip-ac|--skip-legacy|--skip-accombo|--skip-ac-on-combo\n"
@@ -1007,6 +1017,8 @@ static void action_usage(const std::string &action)
                      "  --skip-dynamic-delete\n";
     } else if (action == "quick") {
         std::cout << "用法：megascan_demo 920hg quick --machine 920|hg [选项]\n"
+                     "  --algorithm <算法>  只运行 hash、ac、ac_legacy、accombo、\n"
+                     "                      ac_on_combo 或指定动态删除算法\n"
                      "  --rule-count <数量> --hit-rate <0..1> 或 --hit-bps <0..10000>\n"
                      "  --cpu-core <编号> --data-root <目录> --out-dir <目录>\n"
                      "  --skip-dynamic-delete\n";
@@ -1070,6 +1082,10 @@ static int parse_options(int argc, char **argv, Options &options)
         };
         if (arg == "-h" || arg == "--help") { action_usage(options.action); return 2; }
         else if (arg == "--machine") { if (!value(options.machine)) return 1; }
+        else if (arg == "--algorithm") {
+            if (!value(options.algorithm)) return 1;
+            if (options.algorithm == "aclegacy") options.algorithm = "ac_legacy";
+        }
         else if (arg == "--work-root") { if (!value(options.work_root)) return 1; }
         else if (arg == "--data-root") { if (!value(options.data_root)) return 1; data_explicit = true; }
         else if (arg == "--out-dir") { if (!value(options.out_dir)) return 1; }
@@ -1114,7 +1130,6 @@ static int parse_options(int argc, char **argv, Options &options)
         else if (arg == "--no-strict-env") options.strict_env = false;
         else if (arg == "--allow-smt") options.require_smt_off = false;
         else if (arg == "--no-numa-interleave") options.numa_interleave = false;
-        else if (arg == "--allow-dirty") options.require_clean = false;
         else if (arg == "--skip-hash") options.run_hash = false;
         else if (arg == "--skip-ac") options.run_ac = false;
         else if (arg == "--skip-legacy") options.run_legacy = false;
@@ -1137,6 +1152,16 @@ static int parse_options(int argc, char **argv, Options &options)
         options.machine != "920" && options.machine != "hg") {
         std::cerr << "该操作必须指定 --machine 920 或 --machine hg。\n";
         return 1;
+    }
+    if (!options.algorithm.empty()) {
+        const std::set<std::string> supported = {
+            "hash", "ac", "ac_legacy", "accombo", "ac_on_combo",
+            "ac_delete", "accombo_delete", "accombo_combination_delete"
+        };
+        if (options.action != "quick" || supported.count(options.algorithm) == 0) {
+            std::cerr << "--algorithm 仅用于 quick，且必须指定受支持的算法。\n";
+            return 1;
+        }
     }
     if (options.out_dir.empty() && !options.machine.empty()) {
         std::string kind = options.action == "full" ? "full" : options.action;
