@@ -6,7 +6,7 @@
 
 #include <stdint.h>
 
-#include "ms_common.h"
+#include "ms_database.h"
 
 #define DEMO_ARRAY_SIZE(a) (sizeof(a) / sizeof((a)[0]))
 
@@ -27,6 +27,7 @@ int demo_result_from_ret(int ret);
 int demo_parse_expr_spec(int argc, char **argv, int extended,
                          int ids_before_flags, demo_expr_spec_t *spec);
 void demo_free_expr_spec(demo_expr_spec_t *spec);
+void demo_print_match_events(const ms_scratch_t *scratch);
 
 void demo_list_api_tests(void);
 void demo_print_api_cli_help(const char *prog);

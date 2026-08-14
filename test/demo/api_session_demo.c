@@ -413,6 +413,9 @@ static int command_scan_db(session_state_t *state, int argc, char **argv)
            ret == MS_FIND_FAIL ? "NO_MATCH" : "ERROR",
            ret, demo_ret_name(ret), argv[1], argv[4]);
     print_ids(ids, count, capacity);
+    if (ret == MS_SUCCESS || ret == MS_FIND_FAIL) {
+        demo_print_match_events(state->scratches[scratch_slot].value);
+    }
     free(ids);
     return ret == MS_SUCCESS || ret == MS_FIND_FAIL ? 0 : 1;
 }
@@ -534,6 +537,9 @@ static int stream_output_command(session_state_t *state, int argc, char **argv,
            argv[0], ret, demo_ret_name(ret), argv[1],
            argv[operation == 0 ? 4 : 2]);
     print_ids(ids, count, capacity);
+    if (operation == 0 && (ret == MS_SUCCESS || ret == MS_FIND_FAIL)) {
+        demo_print_match_events(state->scratches[scratch_slot].value);
+    }
     free(ids);
     if (operation == 2 && ret != MS_INVALID_PARA) {
         (void)memset(&state->streams[stream_slot], 0,

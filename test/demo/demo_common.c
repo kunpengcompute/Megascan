@@ -8,6 +8,39 @@
 #include <stdlib.h>
 #include <string.h>
 
+void demo_print_match_events(const ms_scratch_t *scratch)
+{
+    ms_match_event_t *events = NULL;
+    uint32_t count = 0;
+    uint32_t i;
+    int ret;
+
+    ret = ms_get_match_events(scratch, NULL, &count, 0);
+    if (ret == MS_SUCCESS && count != 0) {
+        events = (ms_match_event_t *)calloc(count, sizeof(*events));
+        if (events == NULL) {
+            printf("plain_match_events ret=%d(%s)\n",
+                   MS_MALLOC_FAIL, demo_ret_name(MS_MALLOC_FAIL));
+            return;
+        }
+        ret = ms_get_match_events(scratch, events, &count, count);
+    }
+    if (ret != MS_SUCCESS) {
+        printf("plain_match_events ret=%d(%s)\n", ret, demo_ret_name(ret));
+        free(events);
+        return;
+    }
+
+    printf("plain_match_count=%u matches=[", count);
+    for (i = 0; i < count; i++) {
+        printf("%s{id=%u,from=%llu,to=%llu}", i == 0 ? "" : ",",
+               events[i].id, (unsigned long long)events[i].from,
+               (unsigned long long)events[i].to);
+    }
+    printf("]\n");
+    free(events);
+}
+
 int demo_same(const char *left, const char *right)
 {
     return left != NULL && right != NULL && strcmp(left, right) == 0;

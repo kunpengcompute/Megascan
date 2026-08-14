@@ -34,6 +34,8 @@ struct ms_scratch {
     uint64_t *offsets;
     uint32_t capture_count;
     uint32_t capture_capacity;
+    uint64_t capture_start_offset;
+    bool capture_valid;
     ms_compile_runtime_workspace_t workspace;
     ms_state_change_log_t logical_changes;
     ms_state_change_log_t combination_changes;
@@ -507,6 +509,7 @@ static void ms_scratch_begin_scan(ms_scratch_t *scratch)
     }
     scratch->block_state_dirty = false;
     scratch->capture_count = 0;
+    scratch->capture_valid = false;
 }
 
 static int ms_scratch_capture_reserve(ms_scratch_t *scratch)
@@ -564,6 +567,60 @@ static int ms_scratch_capture_alias(uint32_t alias, uint64_t end_offset, void *c
     scratch->aliases[scratch->capture_count] = alias;
     scratch->offsets[scratch->capture_count] = end_offset;
     scratch->capture_count++;
+    return MS_SUCCESS;
+}
+
+__attribute__((visibility("default")))
+int ms_get_match_events(const ms_scratch_t *scratch,
+                        ms_match_event_t *events,
+                        uint32_t *event_count,
+                        uint32_t event_capacity)
+{
+    const ms_compile_context_t *ctx;
+    uint32_t required = 0;
+    uint32_t i;
+
+    if (scratch == NULL || event_count == NULL || !scratch->capture_valid ||
+        (event_capacity != 0 && events == NULL)) {
+        return MS_INVALID_PARA;
+    }
+    ctx = (const ms_compile_context_t *)scratch->db->ms_compile_ctx;
+    if (ctx == NULL) {
+        return MS_INVALID_PARA;
+    }
+    for (i = 0; i < scratch->capture_count; i++) {
+        const ms_compile_expr_t *expr =
+            ms_compile_context_find_expr_for_alias(ctx, scratch->aliases[i]);
+
+        if (expr != NULL && (expr->flags & MS_FLAG_QUIET) == 0) {
+            required++;
+        }
+    }
+    *event_count = required;
+    if (events == NULL && event_capacity == 0) {
+        return MS_SUCCESS;
+    }
+    if (required > event_capacity) {
+        return MS_INVALID_PARA;
+    }
+
+    required = 0;
+    for (i = 0; i < scratch->capture_count; i++) {
+        const ms_compile_expr_t *expr =
+            ms_compile_context_find_expr_for_alias(ctx, scratch->aliases[i]);
+        uint64_t to;
+
+        if (expr == NULL || (expr->flags & MS_FLAG_QUIET) != 0) {
+            continue;
+        }
+        to = scratch->capture_start_offset + scratch->offsets[i];
+        events[required].id = expr->id;
+        events[required].from = to >= expr->pattern_len
+                                    ? to - expr->pattern_len
+                                    : 0;
+        events[required].to = to;
+        required++;
+    }
     return MS_SUCCESS;
 }
 
@@ -639,6 +696,11 @@ int ms_scan_database(const ms_database_t *db,
         id_count,
         id_capacity,
         &scratch->workspace);
+
+    if (ret == MS_SUCCESS || ret == MS_FIND_FAIL) {
+        scratch->capture_start_offset = 0;
+        scratch->capture_valid = true;
+    }
 
     return ret;
 }
@@ -953,6 +1015,7 @@ int ms_scan_stream(ms_stream_t *stream,
                                 uint32_t id_capacity)
 {
     uint32_t next_node_index;
+    uint64_t scan_start_offset;
     int scan_ret;
     int ret;
 
@@ -965,6 +1028,7 @@ int ms_scan_stream(ms_stream_t *stream,
     }
     *id_count = 0;
     ms_scratch_begin_scan(scratch);
+    scan_start_offset = stream->offset;
     next_node_index = stream->node_index;
     if (stream->acdb != NULL) {
         scan_ret = ms_acdb_match_state_cb(stream->acdb, data, len,
@@ -1015,6 +1079,8 @@ int ms_scan_stream(ms_stream_t *stream,
         }
         stream->node_index = next_node_index;
         stream->offset += len;
+        scratch->capture_start_offset = scan_start_offset;
+        scratch->capture_valid = true;
         ret = eval_ret;
     } else {
         ms_scratch_finish_stream_changes(stream, scratch, true);
@@ -1071,6 +1137,8 @@ int ms_flush_stream(ms_stream_t *stream,
         if (commit_ret != MS_SUCCESS) {
             return commit_ret;
         }
+        scratch->capture_start_offset = stream->offset;
+        scratch->capture_valid = true;
         ret = eval_ret;
     } else {
         ms_scratch_finish_stream_changes(stream, scratch, true);

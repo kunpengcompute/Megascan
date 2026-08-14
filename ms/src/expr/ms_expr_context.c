@@ -466,7 +466,8 @@ static int ms_compile_context_reserve_final_ckeys(ms_compile_context_t *ctx)
 int ms_compile_context_add_expr(ms_compile_context_t *ctx,
                                   uint32_t id,
                                   uint32_t flags,
-                                  uint32_t lkey)
+                                  uint32_t lkey,
+                                  uint32_t pattern_len)
 {
     int ret = ms_compile_context_reserve_exprs(ctx);
     if (ret != MS_SUCCESS) {
@@ -488,6 +489,7 @@ int ms_compile_context_add_expr(ms_compile_context_t *ctx,
     ctx->exprs[ctx->expr_count].id = id;
     ctx->exprs[ctx->expr_count].flags = flags;
     ctx->exprs[ctx->expr_count].lkey = lkey;
+    ctx->exprs[ctx->expr_count].pattern_len = pattern_len;
     ctx->lkey_to_expr_indexes[lkey] = ctx->expr_count;
     ctx->expr_count++;
     return MS_SUCCESS;
@@ -839,7 +841,8 @@ int ms_compile_context_clone(const ms_compile_context_t *ctx,
     for (i = 0; i < ctx->expr_count; i++) {
         ret = ms_compile_context_add_expr(new_ctx, ctx->exprs[i].id,
                                            ctx->exprs[i].flags,
-                                           ctx->exprs[i].lkey);
+                                           ctx->exprs[i].lkey,
+                                           ctx->exprs[i].pattern_len);
         if (ret != MS_SUCCESS) {
             ms_compile_context_free(new_ctx);
             return ret;
@@ -892,7 +895,8 @@ static int ms_compile_append_context_impl(ms_compile_context_t **ctx_slot,
     for (i = 0; i < new_ctx->expr_count; i++) {
         ret = ms_compile_context_add_expr(ctx, new_ctx->exprs[i].id,
                                             new_ctx->exprs[i].flags,
-                                            new_ctx->exprs[i].lkey);
+                                            new_ctx->exprs[i].lkey,
+                                            new_ctx->exprs[i].pattern_len);
         if (ret != MS_SUCCESS) {
             return ret;
         }
