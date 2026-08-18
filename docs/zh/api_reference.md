@@ -66,9 +66,17 @@
         uint64_t min_offset;
         uint64_t max_offset;
     } ms_expr_ext_t;
+
+    typedef struct {
+        uint32_t id;
+        uint64_t from;
+        uint64_t to;
+    } ms_match_event_t;
     ```
 
     `ms_expr_ext_t.flags`可使用`MS_EXT_FLAG_MIN_OFFSET`和`MS_EXT_FLAG_MAX_OFFSET`。
+
+    `ms_match_event_t`表示普通规则的一次命中，位置范围采用`[from, to)`。
 
     >![](public_sys-resources/icon-note.gif) **说明：**
     >
@@ -82,7 +90,7 @@
     >
     >不要直接访问、复制或自行释放不透明对象。对象应通过对应的创建、使用和释放接口管理，并遵守接口规定的归属关系。
 
-## 使用须知<a id="使用须知"></a>
+## 使用须知<a name="ZH-CN_TOPIC_0000002522070513"></a>
 
 >![](public_sys-resources/icon-caution.gif) **注意：**
 >
@@ -90,7 +98,7 @@
 >
 >每次内存申请都会在内部头部记录当时的free回调，因此更换或恢复allocator只影响后续申请，已有内存仍由原free回调释放。原free函数及其依赖的内存池必须保持有效，直至对应内存全部释放。
 
-## Database编译接口
+## Database编译接口<a name="ZH-CN_TOPIC_0000002522070514"></a>
 
 **接口定义**
 
@@ -127,7 +135,7 @@ int ms_free_database(ms_database_t *db);
 
 `ms_compile_database_multi()`等价于将`ext`传为`NULL`后调用`ms_compile_database_multi_ext()`。组合表达式通过规则ID引用普通规则，例如`101&102`、`101|102`和`!101`。HASH database不支持组合规则。
 
-## Scratch和Block扫描接口
+## Scratch和Block扫描接口<a name="ZH-CN_TOPIC_0000002522070515"></a>
 
 **接口定义**
 
@@ -139,12 +147,18 @@ int ms_scan_database(const ms_database_t *db, const uint8_t *data,
     uint32_t len, ms_scratch_t *scratch, uint32_t *ids,
     uint32_t *id_count, uint32_t id_capacity);
 
+int ms_get_match_events(const ms_scratch_t *scratch,
+    ms_match_event_t *events, uint32_t *event_count,
+    uint32_t event_capacity);
+
 int ms_find_database_rule(const ms_database_t *db, ms_rule_t *rule);
 ```
 
-`scratch`必须由同一个database创建。`ms_scan_database()`当前只支持AC database；它返回本次扫描需要上报的去重规则ID及数量，不返回每次命中的起止位置或原始命中次数。没有可上报ID时返回`MS_FIND_FAIL`。输出容量不足时返回`MS_INVALID_PARA`，并通过`id_count`返回所需容量。
+`scratch`必须由同一个database创建。`ms_scan_database()`当前只支持AC database；它通过`ids`和`id_count`返回本次扫描需要上报的去重规则ID及数量。没有可上报ID时返回`MS_FIND_FAIL`。输出容量不足时返回`MS_INVALID_PARA`，并通过`id_count`返回所需容量。
 
-## Stream扫描接口
+扫描完成后可调用`ms_get_match_events()`读取该scratch最近一次扫描捕获的普通规则命中。每次命中单独返回，包含规则ID和`[from, to)`位置；Quiet规则和组合规则不在事件中。先将`events`传`NULL`、`event_capacity`传0获取所需数量，再按该数量分配数组并再次调用。
+
+## Stream扫描接口<a name="ZH-CN_TOPIC_0000002522070516"></a>
 
 **接口定义**
 
@@ -166,9 +180,9 @@ int ms_reset_stream(ms_stream_t *stream);
 
 Stream模式仅支持AC database。stream保存自动机状态、累计offset和组合规则状态，因此规则可以跨任意数量的输入分片匹配；分片大小由调用者根据真实输入决定，Megascan不要求固定大小。`scratch`仍然是每次扫描、flush和close的共同前提，且必须属于该stream绑定的database。
 
-`ms_flush_stream()`执行流结束语义但不关闭stream；`ms_close_stream()`执行流结束语义并释放stream；`ms_reset_stream()`清除已有跨片状态。单次调用只返回本次新产生的去重规则ID。
+`ms_flush_stream()`执行流结束语义但不关闭stream；`ms_close_stream()`执行流结束语义并释放stream；`ms_reset_stream()`清除已有跨片状态。单次调用只返回本次新产生的去重规则ID。每次`ms_scan_stream()`完成后，可通过`ms_get_match_events()`读取该分片新产生的普通规则命中，位置是从流起点计算的绝对位置。
 
-## 动态删除接口
+## 动态删除接口<a name="ZH-CN_TOPIC_0000002522070517"></a>
 
 **接口定义**
 
@@ -181,7 +195,7 @@ int ms_remove_database_rule(ms_database_t *db,
 
 删除成功后，已有scratch在下次扫描时自动刷新；已有stream返回`MS_STREAM_STALE`，调用`ms_reset_stream()`后按新database继续使用。HASH database不支持该接口。调用者必须在删除与并发扫描之间进行外部同步。
 
-## Handler兼容接口
+## Handler兼容接口<a name="ZH-CN_TOPIC_0000002522070518"></a>
 
 Handler接口保留原有的可变对象调用方式。新接入代码建议优先使用database、scratch和stream接口，因为这些接口将规则库、扫描工作区和跨分片状态分别由database、scratch和stream显式管理，资源归属和生命周期更加清晰；并发扫描时也可以为每个线程分配独立scratch，避免共享可变的扫描状态。
 
@@ -218,7 +232,47 @@ int ms_close_handler_stream(ms_stream_t *stream);
 
 HASH handler按key查找规则；AC handler支持表达式编译、Block和Stream扫描。`ms_remove_rule()`删除HASH规则时按key定位；删除AC普通规则时按`alias + key`定位；删除AC组合规则时按alias定位。
 
-## 内存分配器接口
+## 组合辅助接口<a name="ZH-CN_TOPIC_0000002522070519"></a>
+
+**接口定义**
+
+```c
+int ms_compile_eval_combinations(ms_handler_t *handler,
+    const uint32_t *aliases, uint32_t alias_count,
+    uint32_t *comb_ids, uint32_t *comb_count,
+    uint32_t comb_capacity);
+
+int ms_compile_scan_ac_combinations(ms_handler_t *handler,
+    const uint8_t *data, uint32_t len,
+    uint32_t *comb_ids, uint32_t *comb_count,
+    uint32_t comb_capacity);
+```
+
+`ms_compile_eval_combinations()`根据已命中的普通规则alias计算组合规则ID；`ms_compile_scan_ac_combinations()`扫描一段完整数据并只返回组合规则ID。两者属于Handler兼容接口。
+
+组合编译上下文由handler持有，并在`ms_handler_destroy()`中统一释放，调用方不需要单独管理。
+
+## 逻辑表达式接口<a name="ZH-CN_TOPIC_0000002522070520"></a>
+
+**接口定义**
+
+```c
+int ms_logical_parse(const char *logical, ms_logical_tree_t *tree);
+void ms_logical_tree_destroy(ms_logical_tree_t *tree);
+int ms_logical_set(uint8_t *logical_vector, uint32_t logical_count,
+    uint32_t key, uint8_t value);
+int ms_logical_get(const uint8_t *logical_vector, uint32_t logical_count,
+    uint32_t key, uint8_t *value);
+int ms_logical_clear(uint8_t *logical_vector, uint32_t logical_count);
+int ms_logical_eval(const ms_logical_tree_t *tree,
+    uint8_t *logical_vector, uint32_t logical_count, uint8_t *matched);
+int ms_logical_eval_inplace(const ms_logical_tree_t *tree,
+    uint8_t *logical_vector, uint32_t logical_count, uint8_t *matched);
+```
+
+`ms_logical_parse()`将包含`!`、`&`、`|`和括号的表达式解析为逻辑树；`ms_logical_set()`、`ms_logical_get()`和`ms_logical_clear()`管理规则状态向量；`ms_logical_eval()`和`ms_logical_eval_inplace()`计算表达式结果。逻辑树不再使用时调用`ms_logical_tree_destroy()`释放。
+
+## 内存分配器接口<a name="ZH-CN_TOPIC_0000002522070521"></a>
 
 **接口定义**
 
@@ -235,9 +289,17 @@ int ms_set_misc_allocator(ms_alloc_t alloc_func,
     ms_calloc_t calloc_func, ms_free_t free_func);
 ```
 
-`ms_set_allocator()`同时设置全部分类；其他接口分别控制database、scratch、stream和misc内存。回调传`NULL`时使用标准库默认实现。allocator的配置时机、释放回调记录和并发约束请参见[使用须知](#使用须知)。
+|接口|作用范围|
+|--|--|
+|`ms_set_allocator()`|同时设置全部内存分类|
+|`ms_set_database_allocator()`|database、HASH表、AC自动机和组合编译上下文|
+|`ms_set_scratch_allocator()`|scratch、命中缓存和扫描工作区|
+|`ms_set_stream_allocator()`|stream对象及跨分片状态|
+|`ms_set_misc_allocator()`|杂项API内存|
 
-## 并发和资源释放约束
+三个回调参数依次对应`malloc`、`calloc`和`free`。回调传`NULL`时使用标准库默认实现。allocator的配置时机、释放回调记录和并发约束请参见[使用须知](#ZH-CN_TOPIC_0000002522070513)。
+
+## 并发和资源释放约束<a name="ZH-CN_TOPIC_0000002522070522"></a>
 
 - 不同database和不同stream可由调用者并发使用。
 - 同一个scratch或stream不能在多个线程中无同步并发使用。

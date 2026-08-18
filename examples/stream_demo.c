@@ -22,18 +22,18 @@
  */
 
 /*
- *运行方式：
- *1. cd至Megascan根目录，如：cd /home/Megascan；
- *2. 编译Megascan: rm -rf build output && cmake -S . -B build && cmake --build build -j$(nproc);
- *3. 在Megascan根目录执行：
-    gcc examples/stream_demo.c \
-    -I./output/include \
-    -L./output/lib \
-    -lms \
-    -Wl,-rpath,$PWD/output/lib \
-    -o examples/stream_demo
- *4. 运行代码：./examples/stream_demo
- *5. ALL STREAM DEMO TESTS PASSED打印则全部可用
+ * 运行方式：
+ * 1. cd至Megascan根目录，如：cd /home/Megascan；
+ * 2. 编译Megascan: rm -rf build output && cmake -S . -B build && cmake --build build -j$(nproc);
+ * 3. 在Megascan根目录执行：
+     gcc examples/stream_demo.c \
+     -I./output/include \
+     -L./output/lib \
+     -lms \
+     -Wl,-rpath,$PWD/output/lib \
+     -o examples/stream_demo
+ * 4. 运行代码：./examples/stream_demo
+ * 5. ALL STREAM DEMO TESTS PASSED打印则全部可用
  */
 
 static int g_failures = 0;

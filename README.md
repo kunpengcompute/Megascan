@@ -75,13 +75,11 @@ Megascan是面向大规模规则集的多模式匹配库，结合Hash算法与AC
 
 **缓冲区溢出安全保护<a name="section14653204420151"></a>**
 
-此项仅Megascan特性需关注。
-
 为阻止缓冲区溢出攻击，建议使用ASLR（Address space layout randomization）技术，通过对堆、栈、共享库映射等线性区布局的随机化，增加攻击者预测目的地址的难度，防止攻击者直接定位攻击代码位置。该技术可作用于堆、栈、内存映射区（mmap基址、shared libraries、vdso页）。
 
 开启方式：
 
-```
+```bash
 echo 2 >/proc/sys/kernel/randomize_va_space
 ```
 

@@ -516,10 +516,6 @@ $DEMO --api ms_set_misc_allocator custom custom custom
 
 Database、scratch 和 stream 测试会实际创建并释放对应对象，然后检查自定义回调计数。当前没有使用 misc allocator 的公开对象创建接口，因此 misc 测试只验证 setter 和恢复默认值，并在输出中明确标注该边界。
 allocator 接口按函数签名依次传入 alloc、calloc 和 free 三个选择。
-逻辑求值：
-```sh
-$DEMO --api ms_logical_eval '101&!102' 101=1,102=0 256
-```
 
 ## 手动 Benchmark
 设置已有数据目录：
@@ -533,7 +529,7 @@ $DEMO benchmark -a ac -M both -n 50000 \
   -p ./ac_raw.csv -T local -R 1 -w 0 -c 1
 ```
 主要参数：
-- `-a`：`hash`、`ac`、`accombo`、`ac_legacy`、`ac_on_combo`。
+- `-a`：`hash`、`ac`、`accombo`、`ac_on_combo`。
 - `-M`：`lookup`、`block`、`stream-full`、`both`。
 - `-n`：规则数量；`-t`：规则文件；`-s`：corpus。
 - `-p`：原始 CSV；`-T`：机器标识。
@@ -648,7 +644,7 @@ $DEMO 920hg full --machine hg \
 - `--no-clean`：不执行 CMake `--clean-first`。
 - `--expected-commit <hash>`：要求当前提交匹配。
 - `--allow-dirty`：允许 tracked 修改，不建议用于正式比较。
-- `--skip-hash`、`--skip-ac`、`--skip-legacy`、`--skip-accombo`、`--skip-ac-on-combo`：跳过算法。
+- `--skip-hash`、`--skip-ac`、`--skip-accombo`、`--skip-ac-on-combo`：跳过算法。
 两台机器必须使用相同构建、算法、trial 和 warmup 选项。
 
 ## Quick 检查
@@ -687,7 +683,6 @@ $DEMO 920hg summarize --out-dir /data/results/single/920
 - `block_stream_gate.csv`、`block_vs_stream.csv`：模式对比。
 - `accombo_vs_ac.csv`：ACCombo/AC 对比。
 - `accombo_vs_ac_on_combo.csv`、`accombo_vs_ac_same_data.csv`：同数据对比。
-- `ac_vs_ac_legacy.csv`：新旧 AC 对比。
 默认一个 trial，因此 p50 等于本次结果；保留 p50 字段用于兼容多 trial 数据。
 
 ## 计时标准
