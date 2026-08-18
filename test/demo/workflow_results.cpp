@@ -367,8 +367,6 @@ int demo_920hg_summarize(const std::string &out_dir, double max_difference)
         }
         return fields;
     };
-    std::vector<Row> legacy = pair_algorithms(summary, "ac", "ac_legacy", {}, "ac", "ac_legacy");
-    write_csv(out_dir + "/ac_vs_ac_legacy.csv", pair_fields("ac", "ac_legacy"), legacy);
     std::vector<Row> ac_compare = pair_algorithms(summary, "accombo", "ac", {}, "accombo", "ac");
     const std::vector<std::string> ac_compare_fields = {"machine", "mode", "rule_count",
         "query_count", "payload_size", "configured_hit_rate", "ac_query_ops_p50",
