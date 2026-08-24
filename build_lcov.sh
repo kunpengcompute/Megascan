@@ -1,7 +1,7 @@
 #!/bin/bash 
  ##############################################################
 # Copyright (c) 2026 Huawei Technologies Co., Ltd.
-# excute Unit test
+# Execute Unit test
 ##############################################################
 set -e
  

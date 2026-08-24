@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22.0)
-project(DADK C)
+project(Megascan C)
 
 add_subdirectory(ms)
 

@@ -1,7 +1,7 @@
 #!/bin/bash
 ##############################################################
 # Copyright (c) 2026 Huawei Technologies Co., Ltd.
-# Generage ut coverage report
+# Generate ut coverage report
 ##############################################################
 set -e
 
@@ -11,12 +11,12 @@ current_path=$(cd $(dirname $0); pwd)
 # src_path=${current_path}/../../../build/vdml
 src_path=${current_path}/../build/src/ut/
 outpath=${current_path}/../build/cover
-mkdir ${outpath}
+mkdir -p ${outpath}
 for file in $(ls ${current_path}/../build/bin/); do
 	${current_path}/../build/bin/${file}
 done
 echo "   "
-find $src_path -name *.gcda
+find $src_path -name '*.gcda'
 echo "   "
 testinfo=${outpath}/test.info
 lcov -d $src_path -t 'test' -o ${testinfo} -b . -c --rc lcov_branch_coverage=1

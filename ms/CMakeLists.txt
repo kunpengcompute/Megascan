@@ -52,5 +52,8 @@ add_custom_command(TARGET ms POST_BUILD
             ${CMAKE_CURRENT_SOURCE_DIR}/include/ms_logical.h
             ${CMAKE_CURRENT_SOURCE_DIR}/include/ms_allocator.h
             ${CMAKE_CURRENT_SOURCE_DIR}/include/ms_database.h
+            ${CMAKE_CURRENT_SOURCE_DIR}/include/ms_handler.h
+            ${CMAKE_CURRENT_SOURCE_DIR}/include/ms_hash.h
+            ${CMAKE_CURRENT_SOURCE_DIR}/include/ms_ac.h
             ${CMAKE_SOURCE_DIR}/output/include
 )
