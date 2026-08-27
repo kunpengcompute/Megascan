@@ -18,9 +18,6 @@ function build_ms()
 
     cmake --build build # install to ./output
     
-    mkdir -p output/lib
-    cp ./output/lib/libms.so ./output/
-    
     cd ./output
     tar -czvf ms.tar.gz lib/ include/
     mkdir -p rpmbuild/SOURCES

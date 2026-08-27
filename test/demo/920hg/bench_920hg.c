@@ -30,6 +30,7 @@
 #define KIND_ACCOMBO 3u
 #define HASH_ADD_BATCH 65536u
 #define OUTPUT_CAPACITY 64u
+#define CACHE_LINE_SIZE 64u
 
 static void wait_for_attached_profiler(void)
 {
@@ -48,7 +49,6 @@ typedef enum {
     ALG_HASH = 1,
     ALG_AC = 2,
     ALG_ACCOMBO = 3,
-    ALG_AC_LEGACY = 4,
     ALG_AC_ON_COMBO = 5,
     ALG_AC_DELETE = 6,
     ALG_ACCOMBO_DELETE = 7,
@@ -119,12 +119,12 @@ typedef struct {
     algorithm_t algorithm;
     const corpus_t *corpus;
     ms_handler_t *hash_handler;
-    ms_handler_t *legacy_handler;
     const ms_database_t *db;
     ms_scratch_t *scratch;
     ms_stream_t *stream;
     const uint32_t *expected_ids_after_delete;
     const uint32_t *expected_output_ids_after_delete;
+    uint32_t start_query;
     uint32_t output_ids[OUTPUT_CAPACITY];
 } scan_context_t;
 
@@ -157,7 +157,7 @@ typedef struct {
     check_status_t semantic_effect;
 } dynamic_delete_checks_t;
 
-typedef struct {
+typedef struct __attribute__((aligned(CACHE_LINE_SIZE))) {
     scan_context_t context;
     bench_mode_t mode;
     int cpu_core;
@@ -170,6 +170,9 @@ typedef struct {
     int stop;
     int failed;
 } worker_arg_t;
+
+_Static_assert(sizeof(worker_arg_t) % CACHE_LINE_SIZE == 0,
+               "worker arguments must not share cache lines");
 
 typedef struct {
     worker_arg_t *args;
@@ -550,29 +553,6 @@ static int add_hash_rules(ms_handler_t *handler, const tuple_t *rules,
     return 0;
 }
 
-static int add_legacy_ac_rules(ms_handler_t *handler, const expression_set_t *set)
-{
-    ms_rule_t *rules = (ms_rule_t *)calloc(set->count, sizeof(*rules));
-    uint32_t i;
-    int ret;
-
-    if (rules == NULL) {
-        return -1;
-    }
-    for (i = 0; i < set->count; i++) {
-        rules[i].alias = set->ids[i];
-        rules[i].key = (uint8_t *)set->expressions[i];
-        rules[i].key_len = (uint32_t)strlen(set->expressions[i]);
-    }
-    ret = ms_add_rule(handler, rules, set->count);
-    free(rules);
-    if (ret != MS_SUCCESS) {
-        fprintf(stderr, "legacy ms_add_rule failed ret=%d\n", ret);
-        return -1;
-    }
-    return 0;
-}
-
 static int compile_database_atomic_only(ms_database_t **db,
                                         const expression_set_t *set)
 {
@@ -679,23 +659,6 @@ static int scan_one(scan_context_t *ctx, bench_mode_t mode,
         *id_count_out = ret == MS_SUCCESS ? 1u : 0u;
         return 0;
     }
-    if (ctx->algorithm == ALG_AC_LEGACY) {
-        if (mode == MODE_BLOCK) {
-            ret = ms_scan_expr(ctx->legacy_handler, payload, payload_size,
-                               ctx->output_ids, &count, OUTPUT_CAPACITY);
-        } else {
-            if (ms_reset_stream(ctx->stream) != MS_SUCCESS) {
-                return -1;
-            }
-            ret = ms_scan_expr_stream(ctx->stream, payload, payload_size,
-                                      ctx->output_ids, &count, OUTPUT_CAPACITY);
-        }
-        if (!scan_result_ok(ret)) {
-            return -1;
-        }
-        *id_count_out = count;
-        return 0;
-    }
     if (mode == MODE_BLOCK) {
         ret = ms_scan_database(ctx->db, payload, payload_size, ctx->scratch,
                                ctx->output_ids, &count, OUTPUT_CAPACITY);
@@ -723,36 +686,38 @@ static int scan_corpus(scan_context_t *ctx, bench_mode_t mode,
                        int validate)
 {
     uint32_t i;
+    uint32_t query = ctx->start_query;
 
     (void)memset(stats, 0, sizeof(*stats));
     for (i = 0; i < ctx->corpus->header.query_count; i++) {
-        const corpus_record_header_t *record = record_header(ctx->corpus, i);
-        const uint8_t *payload = record_payload(ctx->corpus, i);
+        const corpus_record_header_t *record = record_header(ctx->corpus, query);
+        const uint8_t *payload = record_payload(ctx->corpus, query);
         uint32_t id_count = 0;
 
         if (scan_one(ctx, mode, payload, ctx->corpus->header.payload_size,
                      &id_count) != 0) {
-            fprintf(stderr, "scan failed query=%u mode=%d\n", i, mode);
+            fprintf(stderr, "scan failed query=%u mode=%d\n", query, mode);
             return -1;
         }
         uint32_t expected_ids = ctx->expected_ids_after_delete != NULL ?
-            ctx->expected_ids_after_delete[i] :
+            ctx->expected_ids_after_delete[query] :
             (ctx->algorithm == ALG_AC_ON_COMBO ?
                  record->expected_candidates : record->expected_ids);
 
         if (validate && id_count != expected_ids) {
             fprintf(stderr,
                     "result mismatch query=%u mode=%d expected=%u actual=%u\n",
-                    i, mode, expected_ids, id_count);
+                    query, mode, expected_ids, id_count);
             return -1;
         }
         if (validate && expected_ids != 0 &&
             ctx->expected_output_ids_after_delete != NULL &&
             !output_contains_id(ctx->output_ids, id_count,
-                                ctx->expected_output_ids_after_delete[i])) {
+                                ctx->expected_output_ids_after_delete[query])) {
             fprintf(stderr,
                     "result id mismatch query=%u mode=%d expected_id=%u\n",
-                    i, mode, ctx->expected_output_ids_after_delete[i]);
+                    query, mode,
+                    ctx->expected_output_ids_after_delete[query]);
             return -1;
         }
         stats->queries++;
@@ -762,6 +727,10 @@ static int scan_corpus(scan_context_t *ctx, bench_mode_t mode,
         stats->reported_ids += id_count;
         stats->expected_ids += expected_ids;
         stats->expected_candidates += record->expected_candidates;
+        query++;
+        if (query == ctx->corpus->header.query_count) {
+            query = 0;
+        }
     }
     return 0;
 }
@@ -1054,14 +1023,6 @@ static int init_worker_context(scan_context_t *context,
     if (context->algorithm == ALG_HASH) {
         return 0;
     }
-    if (context->algorithm == ALG_AC_LEGACY) {
-        if ((selected_mode == MODE_STREAM || selected_mode == MODE_BOTH) &&
-            ms_open_handler_stream(context->legacy_handler,
-                                   &context->stream) != MS_SUCCESS) {
-            return -1;
-        }
-        return 0;
-    }
     if (ms_alloc_scratch(context->db, &context->scratch) != MS_SUCCESS) {
         return -1;
     }
@@ -1079,14 +1040,10 @@ static void destroy_worker_context(scan_context_t *context)
     uint32_t output_count = 0;
 
     if (context->stream != NULL) {
-        if (context->algorithm == ALG_AC_LEGACY) {
-            (void)ms_close_handler_stream(context->stream);
-        } else {
-            (void)ms_reset_stream(context->stream);
-            (void)ms_close_stream(context->stream, context->scratch,
-                                  context->output_ids, &output_count,
-                                  OUTPUT_CAPACITY);
-        }
+        (void)ms_reset_stream(context->stream);
+        (void)ms_close_stream(context->stream, context->scratch,
+                              context->output_ids, &output_count,
+                              OUTPUT_CAPACITY);
         context->stream = NULL;
     }
     if (context->scratch != NULL) {
@@ -1098,6 +1055,7 @@ static void destroy_worker_context(scan_context_t *context)
 static void *worker_main(void *opaque)
 {
     worker_arg_t *arg = (worker_arg_t *)opaque;
+    scan_stats_t stats;
     int launch;
 
     do {
@@ -1119,8 +1077,11 @@ static void *worker_main(void *opaque)
         if (arg->stop) {
             break;
         }
-        arg->failed = scan_corpus(&arg->context, arg->mode, &arg->stats,
+        arg->failed = scan_corpus(&arg->context, arg->mode, &stats,
                                   arg->validate) != 0;
+        if (!arg->failed) {
+            arg->stats = stats;
+        }
         (void)pthread_barrier_wait(arg->done_barrier);
     }
     return NULL;
@@ -1187,6 +1148,8 @@ static int init_worker_pool(worker_pool_t *pool,
         if (init_worker_context(&arg->context, shared, selected_mode) != 0) {
             goto error;
         }
+        arg->context.start_query = (uint32_t)(
+            (uint64_t)i * shared->corpus->header.query_count / worker_count);
         arg->cpu_core = cpu_cores == NULL ? -1 : cpu_cores[i];
         arg->ready_barrier = &pool->ready_barrier;
         arg->start_barrier = &pool->start_barrier;
@@ -1275,7 +1238,6 @@ static const char *algorithm_name(algorithm_t algorithm)
     return algorithm == ALG_HASH ? "hash" :
            algorithm == ALG_AC ? "ac" :
            algorithm == ALG_ACCOMBO ? "accombo" :
-           algorithm == ALG_AC_LEGACY ? "ac_legacy" :
            algorithm == ALG_AC_ON_COMBO ? "ac_on_combo" :
            algorithm == ALG_AC_DELETE ? "ac_delete" :
            algorithm == ALG_ACCOMBO_DELETE ? "accombo_delete" :
@@ -1405,8 +1367,6 @@ static int parse_algorithm(const char *text, algorithm_t *algorithm)
         *algorithm = ALG_AC;
     } else if (strcmp(text, "accombo") == 0) {
         *algorithm = ALG_ACCOMBO;
-    } else if (strcmp(text, "ac_legacy") == 0) {
-        *algorithm = ALG_AC_LEGACY;
     } else if (strcmp(text, "ac_on_combo") == 0) {
         *algorithm = ALG_AC_ON_COMBO;
     } else if (strcmp(text, "ac_delete") == 0) {
@@ -1440,7 +1400,7 @@ static int parse_mode(const char *text, bench_mode_t *mode)
 static void usage(const char *program)
 {
     fprintf(stderr,
-            "Usage: %s -a hash|ac|accombo|ac_legacy|ac_on_combo|"
+            "Usage: %s -a hash|ac|accombo|ac_on_combo|"
             "ac_delete|accombo_delete|accombo_combination_delete "
             "-M lookup|block|stream-full|both "
             "-n rules -t rules_file -s corpus -p csv -T machine "
@@ -1470,9 +1430,7 @@ int main(int argc, char **argv)
     expression_set_t expressions = {0};
     corpus_t corpus = {0};
     ms_handler_t hash_handler = {0};
-    ms_handler_t legacy_handler = {0};
     int hash_inited = 0;
-    int legacy_inited = 0;
     ms_database_t *db = NULL;
     scan_context_t shared_context = {0};
     worker_pool_t pool = {0};
@@ -1550,7 +1508,7 @@ int main(int argc, char **argv)
     }
     fprintf(stderr, "[phase] preload corpus start\n");
     if (load_corpus(corpus_path, &corpus) != 0 ||
-        (algorithm == ALG_AC_LEGACY || algorithm == ALG_AC_DELETE ?
+        (algorithm == ALG_AC_DELETE ?
              corpus.header.kind != KIND_AC :
          algorithm == ALG_AC_ON_COMBO ||
                  algorithm == ALG_ACCOMBO_DELETE ||
@@ -1587,15 +1545,6 @@ int main(int argc, char **argv)
         if (add_hash_rules(&hash_handler, hash_rules, rule_count) != 0) {
             goto end;
         }
-    } else if (algorithm == ALG_AC_LEGACY) {
-        if (ms_handler_init(&legacy_handler, MS_MATCHER_TYPE_AC, 0, 0) !=
-            MS_SUCCESS) {
-            goto end;
-        }
-        legacy_inited = 1;
-        if (add_legacy_ac_rules(&legacy_handler, &expressions) != 0) {
-            goto end;
-        }
     } else if (algorithm == ALG_AC_ON_COMBO) {
         if (compile_database_atomic_only(&db, &expressions) != 0) {
             goto end;
@@ -1616,7 +1565,6 @@ int main(int argc, char **argv)
     shared_context.algorithm = algorithm;
     shared_context.corpus = &corpus;
     shared_context.hash_handler = &hash_handler;
-    shared_context.legacy_handler = &legacy_handler;
     shared_context.db = db;
     if (init_worker_pool(&pool, &shared_context, selected_mode, cpu_cores,
                          worker_count) != 0) {
@@ -1777,9 +1725,6 @@ end:
     }
     if (hash_inited) {
         (void)ms_handler_destroy(&hash_handler);
-    }
-    if (legacy_inited) {
-        (void)ms_handler_destroy(&legacy_handler);
     }
     free(hash_rules);
     free(cpu_cores);

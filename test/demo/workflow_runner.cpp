@@ -85,7 +85,6 @@ struct Options {
     bool numa_interleave = true;
     bool run_hash = true;
     bool run_ac = true;
-    bool run_legacy = true;
     bool run_combo = true;
     bool run_ac_on_combo = true;
     bool run_dynamic_delete = true;
@@ -766,11 +765,9 @@ static int benchmark_matrix(const Options &options, bool full, bool quick = fals
         }
         if (field[0] == "ac") {
             if (quick) {
-                if (options.run_legacy && selected("ac_legacy")) algorithms.push_back("ac_legacy");
                 if (options.run_ac && selected("ac")) algorithms.push_back("ac");
             } else {
                 if (options.run_ac) algorithms.push_back("ac");
-                if (options.run_legacy) algorithms.push_back("ac_legacy");
             }
             if (options.run_ac && options.run_dynamic_delete && selected("ac_delete")) {
                 algorithms.push_back("ac_delete");
@@ -992,7 +989,7 @@ static void usage()
         "  --algorithm <算法>     quick 只运行指定算法\n"
         "  --no-build             不重新构建 Megascan\n"
         "  --keep-build           不删除现有 build 目录\n"
-        "  --skip-hash|--skip-ac|--skip-legacy|--skip-accombo|--skip-ac-on-combo\n"
+        "  --skip-hash|--skip-ac|--skip-accombo|--skip-ac-on-combo\n"
         "  --skip-dynamic-delete  跳过真实规则库动态删除测试项\n"
         "  -h, --help             显示帮助\n";
 }
@@ -1008,7 +1005,7 @@ static void action_usage(const std::string &action)
         std::cout << "用法：megascan_demo 920hg single --machine 920|hg [测试选项]\n"
                      "  --data-root <目录> --out-dir <目录> --cpu-core <编号>\n"
                      "  --trials <奇数> --warmups <次数> --no-build --keep-build --no-clean\n"
-                     "  --skip-hash --skip-ac --skip-legacy --skip-accombo --skip-ac-on-combo\n"
+                     "  --skip-hash --skip-ac --skip-accombo --skip-ac-on-combo\n"
                      "  --skip-dynamic-delete\n";
     } else if (action == "full") {
         std::cout << "用法：megascan_demo 920hg full --machine 920|hg [测试选项]\n"
@@ -1017,7 +1014,7 @@ static void action_usage(const std::string &action)
                      "  --skip-dynamic-delete\n";
     } else if (action == "quick") {
         std::cout << "用法：megascan_demo 920hg quick --machine 920|hg [选项]\n"
-                     "  --algorithm <算法>  只运行 hash、ac、ac_legacy、accombo、\n"
+                     "  --algorithm <算法>  只运行 hash、ac、accombo、\n"
                      "                      ac_on_combo 或指定动态删除算法\n"
                      "  --rule-count <数量> --hit-rate <0..1> 或 --hit-bps <0..10000>\n"
                      "  --cpu-core <编号> --data-root <目录> --out-dir <目录>\n"
@@ -1084,7 +1081,6 @@ static int parse_options(int argc, char **argv, Options &options)
         else if (arg == "--machine") { if (!value(options.machine)) return 1; }
         else if (arg == "--algorithm") {
             if (!value(options.algorithm)) return 1;
-            if (options.algorithm == "aclegacy") options.algorithm = "ac_legacy";
         }
         else if (arg == "--work-root") { if (!value(options.work_root)) return 1; }
         else if (arg == "--data-root") { if (!value(options.data_root)) return 1; data_explicit = true; }
@@ -1132,7 +1128,6 @@ static int parse_options(int argc, char **argv, Options &options)
         else if (arg == "--no-numa-interleave") options.numa_interleave = false;
         else if (arg == "--skip-hash") options.run_hash = false;
         else if (arg == "--skip-ac") options.run_ac = false;
-        else if (arg == "--skip-legacy") options.run_legacy = false;
         else if (arg == "--skip-accombo") options.run_combo = false;
         else if (arg == "--skip-ac-on-combo") options.run_ac_on_combo = false;
         else if (arg == "--skip-dynamic-delete") options.run_dynamic_delete = false;
@@ -1155,7 +1150,7 @@ static int parse_options(int argc, char **argv, Options &options)
     }
     if (!options.algorithm.empty()) {
         const std::set<std::string> supported = {
-            "hash", "ac", "ac_legacy", "accombo", "ac_on_combo",
+            "hash", "ac", "accombo", "ac_on_combo",
             "ac_delete", "accombo_delete", "accombo_combination_delete"
         };
         if (options.action != "quick" || supported.count(options.algorithm) == 0) {
