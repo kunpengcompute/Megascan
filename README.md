@@ -123,4 +123,6 @@ echo 2 >/proc/sys/kernel/randomize_va_space
 
 ## License<a name="ZH-CN_TOPIC_0000002522028888"></a>
 
-本项目采用Private Repository Source Code License 1.0，具体请参见[LICENSE](LICENSE)文件。
+本项目采用木兰宽松许可证第2版（Mulan PSL v2），具体请参见[LICENSE](LICENSE)文件。
+
+本项目的文档采用CC BY 4.0许可证，具体请参见[LICENSE](docs/LICENSE)文件。

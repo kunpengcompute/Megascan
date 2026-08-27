@@ -6,7 +6,7 @@ ExclusiveArch:  aarch64
 Summary:        The Million-rule Multi-Pattern Matcher.
 Source0:        ms.tar.gz
 BuildArch:      aarch64
-License:        commercial
+License:        MulanPSL-2.0
 BuildRequires:  rpm
  
 %description
@@ -27,9 +27,13 @@ install -m 755 lib/*.so %{buildroot}/usr/local/lib
 install -d %{buildroot}/usr/local/include
 install -m 644 include/*.h %{buildroot}/usr/local/include
 
+install -d %{buildroot}%{_licensedir}/%{name}
+install -m 644 LICENSE %{buildroot}%{_licensedir}/%{name}/LICENSE
+
 %files
 /usr/local/lib/*.so
 /usr/local/include/*.h
+%license %{_licensedir}/%{name}/LICENSE
  
 %post -p /sbin/ldconfig
 %postun -p /sbin/ldconfig

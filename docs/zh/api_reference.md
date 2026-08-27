@@ -4,91 +4,91 @@
 
 ## 数据结构说明<a name="ZH-CN_TOPIC_0000002522070512"></a>
 
-- 匹配引擎类型：
+**匹配引擎类型**
 
-    ```c
-    typedef enum {
-        MS_MATCHER_NONE = 0,
-        MS_MATCHER_TYPE_HASH,
-        MS_MATCHER_TYPE_AC,
-        MS_MATCHER_TYPE_MAX
-    } ms_matcher_type;
-    ```
+```c
+typedef enum {
+    MS_MATCHER_NONE = 0,
+    MS_MATCHER_TYPE_HASH,
+    MS_MATCHER_TYPE_AC,
+    MS_MATCHER_TYPE_MAX
+} ms_matcher_type;
+```
 
-    HASH用于定长key查找；AC支持普通规则、组合规则、Block扫描和Stream扫描。
+HASH用于定长key查找；AC支持普通规则、组合规则、Block扫描和Stream扫描。
 
-    >![](public_sys-resources/icon-note.gif) **说明：**
-    >
-    >`MS_MATCHER_TYPE_MAX`是枚举边界值，不能作为匹配引擎类型传入接口。
+>![](public_sys-resources/icon-note.gif) **说明：**
+>
+>`MS_MATCHER_TYPE_MAX`是枚举边界值，不能作为匹配引擎类型传入接口。
 
-- 错误码：
+**错误码**
 
-    |错误码|返回值|解释|
-    |--|--|--|
-    |`MS_SUCCESS`|0|接口执行成功|
-    |`MS_INVALID_PARA`|-1|参数、对象归属或输出容量不合法|
-    |`MS_MALLOC_FAIL`|-2|内存申请失败|
-    |`MS_BUILT_ALREADY`|-3|对象已构建，不能重复构建|
-    |`MS_FIND_FAIL`|-4|扫描成功但没有可上报规则，或查找、删除目标不存在|
-    |`MS_INIT_RWLOCK_FAIL`|-5|读写锁初始化失败|
-    |`MS_MEMCPY_FAIL`|-6|内存复制失败|
-    |`MS_NOT_SUPPORTED`|-7|当前匹配类型不支持该操作|
-    |`MS_STREAM_STALE`|-8|database更新后，stream需要先reset|
+|错误码|返回值|解释|
+|--|--|--|
+|`MS_SUCCESS`|0|接口执行成功|
+|`MS_INVALID_PARA`|-1|参数、对象归属或输出容量不合法|
+|`MS_MALLOC_FAIL`|-2|内存申请失败|
+|`MS_BUILT_ALREADY`|-3|对象已构建，不能重复构建|
+|`MS_FIND_FAIL`|-4|扫描成功但没有可上报规则，或查找、删除目标不存在|
+|`MS_INIT_RWLOCK_FAIL`|-5|读写锁初始化失败|
+|`MS_MEMCPY_FAIL`|-6|内存复制失败|
+|`MS_NOT_SUPPORTED`|-7|当前匹配类型不支持该操作|
+|`MS_STREAM_STALE`|-8|database更新后，stream需要先reset|
 
-    >![](public_sys-resources/icon-note.gif) **说明：**
-    >
-    >`MS_FIND_FAIL`不一定表示接口执行异常。对于扫描接口，该返回值表示扫描已完成，但没有可上报的规则。
+>![](public_sys-resources/icon-note.gif) **说明：**
+>
+>`MS_FIND_FAIL`不一定表示接口执行异常。对于扫描接口，该返回值表示扫描已完成，但没有可上报的规则。
 
-- 规则标志：
+**规则标志**
 
-    |标志|说明|
-    |--|--|
-    |`MS_FLAG_NONE`|普通上报规则|
-    |`MS_FLAG_COMBINATION`|组合规则|
-    |`MS_FLAG_QUIET`|参与组合计算但不单独上报|
-    |`MS_FLAG_SINGLEMATCH`|同一规则只上报一次|
+|标志|说明|
+|--|--|
+|`MS_FLAG_NONE`|普通上报规则|
+|`MS_FLAG_COMBINATION`|组合规则|
+|`MS_FLAG_QUIET`|参与组合计算但不单独上报|
+|`MS_FLAG_SINGLEMATCH`|同一规则只上报一次|
 
-    >![](public_sys-resources/icon-note.gif) **说明：**
-    >
-    >`MS_FLAG_QUIET`只抑制规则ID上报，不影响该规则参与组合规则计算。
+>![](public_sys-resources/icon-note.gif) **说明：**
+>
+>`MS_FLAG_QUIET`只抑制规则ID上报，不影响该规则参与组合规则计算。
 
-- 规则和扩展参数：
+**规则和扩展参数**
 
-    ```c
-    typedef struct {
-        uint32_t alias;
-        uint32_t key_len;
-        uint8_t *key;
-    } ms_rule_t;
+```c
+typedef struct {
+    uint32_t alias;
+    uint32_t key_len;
+    uint8_t *key;
+} ms_rule_t;
 
-    typedef struct {
-        uint32_t flags;
-        uint64_t min_offset;
-        uint64_t max_offset;
-    } ms_expr_ext_t;
+typedef struct {
+    uint32_t flags;
+    uint64_t min_offset;
+    uint64_t max_offset;
+} ms_expr_ext_t;
 
-    typedef struct {
-        uint32_t id;
-        uint64_t from;
-        uint64_t to;
-    } ms_match_event_t;
-    ```
+typedef struct {
+    uint32_t id;
+    uint64_t from;
+    uint64_t to;
+} ms_match_event_t;
+```
 
-    `ms_expr_ext_t.flags`可使用`MS_EXT_FLAG_MIN_OFFSET`和`MS_EXT_FLAG_MAX_OFFSET`。
+`ms_expr_ext_t.flags`可使用`MS_EXT_FLAG_MIN_OFFSET`和`MS_EXT_FLAG_MAX_OFFSET`。
 
-    `ms_match_event_t`表示普通规则的一次命中，位置范围采用`[from, to)`。
+`ms_match_event_t`表示普通规则的一次命中，位置范围采用`[from, to)`。
 
-    >![](public_sys-resources/icon-note.gif) **说明：**
-    >
-    >当前offset约束仅适用于组合规则，表示使组合规则成立的匹配结束位置。
+>![](public_sys-resources/icon-note.gif) **说明：**
+>
+>当前offset约束仅适用于组合规则，表示使组合规则成立的匹配结束位置。
 
-- 运行对象：
+**运行对象**
 
-    `ms_database_t`保存编译后的规则和匹配器，`ms_scratch_t`保存扫描工作区，`ms_stream_t`保存跨分片状态。三者均为不透明类型。
+`ms_database_t`保存编译后的规则和匹配器，`ms_scratch_t`保存扫描工作区，`ms_stream_t`保存跨分片状态。三者均为不透明类型。
 
-    >![](public_sys-resources/icon-caution.gif) **注意：**
-    >
-    >不要直接访问、复制或自行释放不透明对象。对象应通过对应的创建、使用和释放接口管理，并遵守接口规定的归属关系。
+>![](public_sys-resources/icon-caution.gif) **注意：**
+>
+>不要直接访问、复制或自行释放不透明对象。对象应通过对应的创建、使用和释放接口管理，并遵守接口规定的归属关系。
 
 ## 使用须知<a name="ZH-CN_TOPIC_0000002522070513"></a>
 

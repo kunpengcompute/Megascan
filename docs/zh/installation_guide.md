@@ -14,6 +14,8 @@
 
 编译Megascan动态库不依赖Boost、PCRE等第三方算法库。
 
+**表 2** 软件依赖
+
 |软件|版本|用途|
 |--|--|--|
 |GCC|10.3及以上|必选，编译Megascan动态库|
@@ -135,7 +137,8 @@ python3 build.py debug
 已获取正式RPM软件包时，可直接安装：
 
 ```bash
-sudo rpm -ivh boostida-kdadk-ms-release-xxxx.aarch64.rpm
+sudo rpm -ivh boostida-ms-release-xxxx.aarch64.rpm
+sudo ldconfig
 ```
 
 其中`xxxx`表示软件版本。安装完成后，默认文件位置如下：
@@ -148,15 +151,15 @@ sudo rpm -ivh boostida-kdadk-ms-release-xxxx.aarch64.rpm
 检查安装结果：
 
 ```bash
-rpm -q boostkit-kdadk-ms
-rpm -ql boostkit-kdadk-ms
+rpm -q boostkit-ms
+rpm -ql boostkit-ms
 ldconfig -p | grep libms
 ```
 
 安装成功的回显示例如下，版本号和头文件列表以实际软件包为准：
 
 ```text
-boostkit-kdadk-ms-1.1.0-oe2203.aarch64
+boostkit-ms-1.0.0-oe2203.aarch64
 /usr/local/lib/libms.so
 /usr/local/include/ms.h
 ...
@@ -166,7 +169,7 @@ libms.so (libc6,AArch64) => /usr/local/lib/libms.so
 升级已安装的软件包时使用：
 
 ```bash
-sudo rpm -Uvh boostida-kdadk-ms-release-xxxx.aarch64.rpm
+sudo rpm -Uvh boostida-ms-release-xxxx.aarch64.rpm
 ```
 
 升级成功的回显示例如下，软件包名称和进度以实际结果为准：
@@ -175,9 +178,9 @@ sudo rpm -Uvh boostida-kdadk-ms-release-xxxx.aarch64.rpm
 Verifying...                          ################################# [100%]
 Preparing...                          ################################# [100%]
 Updating / installing...
-   1:boostkit-kdadk-ms-xxxx           ################################# [ 50%]
+   1:boostkit-ms-xxxx           ################################# [ 50%]
 Cleaning up / removing...
-   2:boostkit-kdadk-ms-xxxx           ################################# [100%]
+   2:boostkit-ms-xxxx           ################################# [100%]
 ```
 
 ## 构建RPM软件包
@@ -210,7 +213,7 @@ ls -1 output/*.rpm
 回显示例：
 
 ```text
-output/boostida-kdadk-ms-release-1.1.0.oe2203.aarch64.rpm
+output/boostida-ms-release-1.0.0.oe2203.aarch64.rpm
 ```
 
 该脚本会重新构建源码并整理打包目录，不建议用于仅需要`libms.so`的日常增量编译。
