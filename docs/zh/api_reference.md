@@ -306,3 +306,9 @@ int ms_set_misc_allocator(ms_alloc_t alloc_func,
 - 同一个database可被多个只读扫描共享，但每个并发扫描应使用独立scratch。
 - 动态删除与扫描不能无同步并发执行。
 - 推荐释放顺序为stream、scratch、database；handler路径先关闭stream，再销毁handler。
+
+## 修订记录
+
+| 文档版本 | 发布日期 | 修改说明 |
+| -------- | -------- | -------- |
+| 01 | 2026-09-30 | 第一次正式发布 |

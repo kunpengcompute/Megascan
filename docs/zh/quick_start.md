@@ -163,3 +163,9 @@ ALL STREAM DEMO TESTS PASSED
 ## 后续使用
 
 Stream模式在database和scratch之外创建stream，并按照实际输入分片重复调用`ms_scan_stream()`。流结束时调用`ms_flush_stream()`或`ms_close_stream()`。接口参数、返回值和使用约束参见[《API参考》](./api_reference.md)。
+
+## 修订记录
+
+| 文档版本 | 发布日期 | 修改说明 |
+| -------- | -------- | -------- |
+| 01 | 2026-09-30 | 第一次正式发布 |
