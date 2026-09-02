@@ -1,13 +1,12 @@
 ### KTest测试框架：
 #### 1、整体介绍
-KTest测试框架内部支持（gtest、cunit）两种测试框架，用户可在最外层CMakelists.txt中指定具体采用何种框架
-具体编写测试码，参考:https://codehub-y.huawei.com/Kunpeng-Computing-DC/Intelligent-NIC/Intelligent-NIC-SDK/Network-Acc/wiki/view/doc/699869。
-用户使用框架时可修改项均在CMakelists.txt中通过注释指出，用户可参考修改
+KTest测试框架支持gtest和CUnit两种测试框架，用户可在最外层CMakeLists.txt中指定具体采用何种框架。
+测试代码的编写方式可参考仓库中的现有测试用例以及gtest或CUnit的公开文档。
+用户可修改的配置项已在CMakeLists.txt中通过注释标出。
 #### 2、编译
 前提：
 1、首先保证源码已编译完成
-2、拷贝压缩包[cunit.tar.gz](https://rnd-isourceb.huawei.com/images/DG/20210812/79f91d50-d54e-4a16-a225-250ec4e0128a/cunit.tar.gz)到test/public/cunit下
-3、解压test/public/cunit下的cunit.tar.gz(由于目前开源库引进目录未定，采用此种方式，后续需要更改)
+2、从CUnit公开发布渠道获取源码包，并将编译生成的头文件和库文件分别放入`test/public/cunit/include`和`test/public/cunit/lib`目录。
 ```c
 python build.py [all/target(for example:hwoff_ut)] [release/debug/clean] [cover/asan/tsan/run]
 cover:覆盖率
@@ -36,5 +35,4 @@ cd ./build/bin/
 cd test
 python3 debug cover
 ```
-报告生成位置为：build/cover/lcov_result目录下，可将整个目录拷贝至pc上查看网页形式index.html报告
-![image.png](https://rnd-isourceb.huawei.com/images/SH/20210825/64178385-f254-44da-804a-3475a53b0a38/image.png)
+报告生成位置为`build/cover/lcov_result`目录，可通过浏览器打开其中的`index.html`查看报告。
