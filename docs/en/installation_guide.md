@@ -16,7 +16,7 @@ To use KDADK-MMPM smoothly and securely, ensure that your environment is one of 
 
 |Software|Version|How to Obtain|
 |--|--|--|
-|Boostkit-boostida-kdadk-mmpm-2.5.3.zip|2.5.3|Contact Huawei technical support.|
+|Boostkit-boostida-kdadk-mmpm-2.5.3.zip|2.5.3|Obtain the software package from the **Smart Data Analysis > Resource Download** page.|
 
 
 To use KDADK-MMPM smoothly and securely, ensure that your environment is one of the verified environments. If you encounter any problem when using this feature, check that your environment is a verified environment.
@@ -24,15 +24,28 @@ To use KDADK-MMPM smoothly and securely, ensure that your environment is one of 
 
 **Obtaining the Software Package and Verifying Its Integrity<a name="section5964123113114"></a>**
 
-1. Obtain the software digital certificate and software package from the Kunpeng community.
+1. Obtain the software package and its SHA-256 checksum file from the Kunpeng community.
 
     Obtain the  **Boostkit-boostida-kdadk-mmpm-2.5.3.zip**  software package as instructed in  [Table 2](environment-requirements.md#table95981444171712). 
 
     >![](public_sys-resources/icon-note.gif) **NOTE:** 
     >Before using the software package, read and agree to  [Kunpeng BoostKit User License Agreement 2.0](https://www.hikunpeng.com/en/legal/developer/boostkit/software/protocol).
 
-2. <a name="li11603165572014"></a>Obtain the  [verification tool and guide](https://support.huawei.com/enterprise/en/tool/pgp-verify-TL1000000054).
-3. Verify the package integrity by following instructions in the  _OpenPGP Signature Verification Guide_  obtained in step  [2](#li11603165572014).
+2. Calculate the SHA-256 checksum of the software package.
+
+    Run the following command on Linux:
+
+    ```sh
+    sha256sum Boostkit-boostida-kdadk-mmpm-2.5.3.zip
+    ```
+
+    Run the following command on Windows:
+
+    ```sh
+    certutil -hashfile Boostkit-boostida-kdadk-mmpm-2.5.3.zip SHA256
+    ```
+
+3. Compare the calculated checksum with the value recorded in the SHA-256 checksum file. If the values match, the software package is intact. If they do not match, obtain the software package again.
 
 **Installing the Software Package<a name="section3965331101111"></a>**
 
@@ -62,5 +75,3 @@ KDADK-MMPM is a multi-pattern rule matching software package, which accelerates 
     ```
 
     Successful compilation and normal execution of your program indicate that KDADK-MMPM has been successfully enabled.
-
-

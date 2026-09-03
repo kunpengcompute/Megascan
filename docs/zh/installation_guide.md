@@ -24,15 +24,28 @@
 
 **软件安装包获取与完整性校验<a name="section5964123113114"></a>**
 
-1. 从鲲鹏社区获取对应的软件数字证书和软件安装包。
+1. 从鲲鹏社区获取软件安装包及其对应的SHA-256校验文件。
 
     参见[**表 2** 软件要求](#软件要求)获取**Boostkit-boostida-kdadk-mmpm-2.5.3.zip**软件包。
 
     >![](public_sys-resources/icon-note.gif) **说明：** 
     >使用软件包前请先阅读《[鲲鹏应用使能套件BoostKit用户许可协议 2.0](https://www.hikunpeng.com/zh/legal/developer/boostkit/software/protocol)》，如确认继续使用，则默认同意协议的条款和条件。
 
-2. <a name="li11603165572014"></a>获取[校验工具和校验方法](https://support.huawei.com/enterprise/zh/tool/pgp-verify-TL1000000054)。
-3. 请参考[2](#li11603165572014)中下载的《OpenPGP签名验证指南》进行软件包完整性检查。
+2. 计算软件安装包的SHA-256校验值。
+
+    Linux执行命令如下：
+
+    ```sh
+    sha256sum Boostkit-boostida-kdadk-mmpm-2.5.3.zip
+    ```
+
+    Windows执行命令如下：
+
+    ```sh
+    certutil -hashfile Boostkit-boostida-kdadk-mmpm-2.5.3.zip SHA256
+    ```
+
+3. 将计算得到的校验值与SHA-256校验文件中记录的值进行比较。如果两者一致，说明软件安装包完整；如果不一致，请重新获取软件安装包。
 
 **安装软件包<a name="section3965331101111"></a>**
 
@@ -62,5 +75,3 @@ KDADK-MMPM（Million-rule Multi-Pattern Matcher）是多模规则匹配软件包
     ```
 
     若编译成功且程序能够正常运行，表明已成功使能KDADK-MMPM。
-
-
