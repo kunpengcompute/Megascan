@@ -19,7 +19,7 @@ function build_ms()
     cmake --build build # install to ./output
     
     cd ./output
-    tar -czvf ms.tar.gz lib/ include/
+    tar -czvf ms.tar.gz lib/ include/ -C "$workspace_dir" LICENSE
     mkdir -p rpmbuild/SOURCES
     mv ms.tar.gz rpmbuild/SOURCES
 

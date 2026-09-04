@@ -4,7 +4,7 @@
 
 KTest测试框架内部支持gtest、cunit两种测试框架，用户可在`test/CMakeLists.txt`中指定具体采用何种框架。当前Megascan使用cunit。
 
-具体编写测试码，参考：https://codehub-y.huawei.com/Kunpeng-Computing-DC/Intelligent-NIC/Intelligent-NIC-SDK/Network-Acc/wiki/view/doc/699869。
+具体测试代码可参考`test/src/ut`目录中的现有用例。
 
 用户使用框架时可修改项均在`test/CMakeLists.txt`中通过注释指出，用户可参考修改。
 
@@ -14,7 +14,7 @@ KTest测试框架内部支持gtest、cunit两种测试框架，用户可在`test
 
 1. 首先保证源码已编译完成。
 2. openEuler可通过`sudo dnf install -y python3 CUnit-devel`安装测试依赖。
-3. 如果环境中没有`CUnit-devel`软件包，可将[cunit.tar.gz](https://rnd-isourceb.huawei.com/images/DG/20210812/79f91d50-d54e-4a16-a225-250ec4e0128a/cunit.tar.gz)拷贝到`test/public/cunit`目录并解压。
+3. 如果环境中没有`CUnit-devel`软件包，可从CUnit上游源码构建，并确保CUnit头文件和库能够被`test/CMakeLists.txt`找到。
 
     ```text
     python3 build.py [target] [release/debug/clean] [cover/asan/tsan]

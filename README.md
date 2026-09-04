@@ -75,13 +75,11 @@ Megascan是面向大规模规则集的多模式匹配库，结合Hash算法与AC
 
 **缓冲区溢出安全保护<a name="section14653204420151"></a>**
 
-此项仅Megascan特性需关注。
-
 为阻止缓冲区溢出攻击，建议使用ASLR（Address space layout randomization）技术，通过对堆、栈、共享库映射等线性区布局的随机化，增加攻击者预测目的地址的难度，防止攻击者直接定位攻击代码位置。该技术可作用于堆、栈、内存映射区（mmap基址、shared libraries、vdso页）。
 
 开启方式：
 
-```
+```bash
 echo 2 >/proc/sys/kernel/randomize_va_space
 ```
 
@@ -90,7 +88,7 @@ echo 2 >/proc/sys/kernel/randomize_va_space
 
 如果使用过程中有任何问题，或者需要反馈特性需求和bug报告，可以提交Issue联系我们，具体贡献方法可参考[这里](https://gitcode.com/boostkit/community/blob/master/docs/contributor/contributing.md)。
 
-1. 提交错误报告：如果您在Megascan中发现了一个不存在安全问题的漏洞，请在Megascan仓库中的Issues中搜索，以防该漏洞被重复提交，如果找不到漏洞可以创建一个新的Issues。如果发现了一个安全问题请不要将其公开，请参见《安全问题处理方式》。提交错误报告时应该包含完整信息。
+1. 提交错误报告：如果您在Megascan中发现了一个不存在安全问题的漏洞，请在Megascan仓库中的Issues中搜索，以防该漏洞被重复提交，如果找不到漏洞可以创建一个新的Issues。如果发现了一个安全问题请不要将其公开，请参阅安全问题处理方式。提交错误报告时应该包含完整信息。
 2. 安全问题处理：本项目中对安全问题处理的形式，请通过邮箱通知项目核心人员确认编辑。
 3. 解决现有问题：通过查看仓库的Issues列表可以发现需要处理的问题信息，可以尝试解决其中的某个问题。
 4. 如何提出新功能：请使用Issues的Feature标签进行标记，我们会定期处理和确认开发。
@@ -125,4 +123,6 @@ echo 2 >/proc/sys/kernel/randomize_va_space
 
 ## License<a name="ZH-CN_TOPIC_0000002522028888"></a>
 
-本项目采用Private Repository Source Code License 1.0，具体请参见[LICENSE](LICENSE)文件。
+本项目采用木兰宽松许可证第2版（Mulan PSL v2），具体请参见[LICENSE](LICENSE)文件。
+
+本项目的文档采用CC BY 4.0许可证，具体请参见[LICENSE](docs/LICENSE)文件。

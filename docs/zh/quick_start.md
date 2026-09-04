@@ -136,6 +136,36 @@ echo $?
 export LD_LIBRARY_PATH="$PWD/output/lib:${LD_LIBRARY_PATH:-}"
 ```
 
+### 5. 运行Stream示例
+
+源码目录中的`examples/stream_demo.c`用于验证Stream模式。完成Megascan源码编译后，在源码根目录执行：
+
+```bash
+gcc examples/stream_demo.c -o examples/stream_demo \
+  -I./output/include \
+  -L./output/lib \
+  -Wl,-rpath,"$PWD/output/lib" \
+  -lms -pthread
+```
+
+运行示例：
+
+```bash
+./examples/stream_demo
+```
+
+该示例覆盖跨分片匹配、多分片匹配、两个stream交错扫描、前缀续扫、reset、空分片、动态删除后的stale状态、删除失败后的stream状态和异常参数。全部场景通过时输出：
+
+```text
+ALL STREAM DEMO TESTS PASSED
+```
+
 ## 后续使用
 
 Stream模式在database和scratch之外创建stream，并按照实际输入分片重复调用`ms_scan_stream()`。流结束时调用`ms_flush_stream()`或`ms_close_stream()`。接口参数、返回值和使用约束参见[《API参考》](./api_reference.md)。
+
+## 修订记录
+
+| 文档版本 | 发布日期 | 修改说明 |
+| -------- | -------- | -------- |
+| 01 | 2026-09-30 | 第一次正式发布 |
