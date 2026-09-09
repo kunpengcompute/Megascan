@@ -32,7 +32,7 @@ namespace {
 const char *RAW_HEADER =
     "machine,algorithm,mode,trial,rule_count,atomic_rule_count,"
     "combination_rule_count,query_count,payload_size,configured_hit_rate,"
-    "expected_hits,actual_matches,expected_ids,reported_ids,"
+    "observed_hit_rate,expected_hits,actual_matches,expected_ids,reported_ids,"
     "expected_candidates,total_bytes,elapsed_ns,query_ops,throughput_gib_s,"
     "compile_ns,rss_compile_growth_kb,warmups,timing_scope,workers,cpu_list";
 
