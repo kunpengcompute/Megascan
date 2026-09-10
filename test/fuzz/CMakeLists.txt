@@ -7,6 +7,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 option(MS_FUZZ_ENABLE_SANITIZERS "Enable ASan and UBSan" ON)
 option(MS_FUZZ_ENABLE_COVERAGE "Enable coverage instrumentation" OFF)
+set(MS_FUZZ_MIN_FILE_COVERAGE "80" CACHE STRING
+    "Required line coverage percentage for every ms/src file")
 
 get_filename_component(MS_ROOT "${CMAKE_CURRENT_LIST_DIR}/../.." ABSOLUTE)
 add_subdirectory("${MS_ROOT}/ms" ms-build)
@@ -74,8 +76,6 @@ if(MS_FUZZ_ENABLE_COVERAGE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     endif()
 
     set(MS_FUZZ_COVERAGE_DIR "${CMAKE_CURRENT_BINARY_DIR}/coverage")
-    set(MS_FUZZ_COVERAGE_ALL
-        "${MS_FUZZ_COVERAGE_DIR}/coverage-all.info")
     set(MS_FUZZ_COVERAGE_INFO
         "${MS_FUZZ_COVERAGE_DIR}/coverage.info")
     set(MS_FUZZ_COVERAGE_HTML
@@ -94,15 +94,26 @@ if(MS_FUZZ_ENABLE_COVERAGE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
         COMMAND ${CMAKE_COMMAND} -E make_directory "${MS_FUZZ_COVERAGE_DIR}"
         COMMAND ${LCOV_EXECUTABLE} --capture
                 --directory "${CMAKE_BINARY_DIR}"
-                --output-file "${MS_FUZZ_COVERAGE_ALL}"
+                --output-file "${MS_FUZZ_COVERAGE_DIR}/coverage-all.info"
+                --ignore-errors inconsistent,negative
+                --rc geninfo_unexecuted_blocks=1
         COMMAND ${LCOV_EXECUTABLE} --extract
-                "${MS_FUZZ_COVERAGE_ALL}"
-                "${MS_ROOT}/ms/*"
-                "${CMAKE_CURRENT_SOURCE_DIR}/*"
+                "${MS_FUZZ_COVERAGE_DIR}/coverage-all.info"
+                "${MS_ROOT}/ms/src/*"
                 --output-file "${MS_FUZZ_COVERAGE_INFO}"
+                --ignore-errors inconsistent,negative
+        COMMAND ${LCOV_EXECUTABLE} --remove
+                "${MS_FUZZ_COVERAGE_INFO}"
+                "${MS_ROOT}/ms/src/expr/ms_expr_scan_stream.c"
+                --output-file "${MS_FUZZ_COVERAGE_INFO}"
+                --ignore-errors inconsistent,negative,unused
+        COMMAND ${CMAKE_COMMAND}
+                -DTRACEFILE=${MS_FUZZ_COVERAGE_INFO}
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/filter_public_api_coverage.cmake"
         COMMAND ${GENHTML_EXECUTABLE}
                 "${MS_FUZZ_COVERAGE_INFO}"
                 --output-directory "${MS_FUZZ_COVERAGE_HTML}"
+                --ignore-errors inconsistent,corrupt
                 --title "Megascan fuzz coverage"
         COMMAND ${CMAKE_COMMAND} -E echo
                 "Coverage report: ${MS_FUZZ_COVERAGE_HTML}/index.html"

@@ -16,6 +16,7 @@ void printUsage(const char *program) {
         << "  --seed N                 Random seed (0 uses the built-in seed)\n"
         << "  --rounds N               Number of cases (default: 1000)\n"
         << "  --duration-seconds N     Stop normally after approximately N seconds\n"
+        << "  --calls-per-api N        Run until every exported API reaches N calls\n"
         << "  --max-pattern-length N   Maximum random pattern suffix (default: 16)\n"
         << "  --max-data-length N      Maximum input length (default: 256)\n"
         << "  --threads N              Local worker threads (default: 1)\n"
@@ -94,6 +95,12 @@ int main(int argc, char **argv) {
                 return 2;
             }
             config.durationSeconds = static_cast<uint32_t>(value);
+        } else if (option == "--calls-per-api") {
+            if (!readValue(argc, argv, i,
+                           std::numeric_limits<uint64_t>::max(), value)) {
+                return 2;
+            }
+            config.callsPerApi = value;
         } else if (option == "--max-pattern-length") {
             if (!readValue(argc, argv, i, uint32Max, value)) {
                 return 2;
@@ -130,6 +137,14 @@ int main(int argc, char **argv) {
         return 2;
     }
     if (config.durationSeconds != 0 && !roundsSpecified) {
+        config.rounds = std::numeric_limits<uint32_t>::max();
+    }
+    if (config.callsPerApi != 0) {
+        if (config.threads != 1) {
+            std::cerr << "calls-per-api scheduling requires --threads 1 so the "
+                         "minimum API call target remains exact\n";
+            return 2;
+        }
         config.rounds = std::numeric_limits<uint32_t>::max();
     }
     return runFuzz(config);
