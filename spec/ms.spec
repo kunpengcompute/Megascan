@@ -1,6 +1,6 @@
-%define _build_name_fmt %%{ARCH}/boostida-kdadk-ms-release-%%{VERSION}.%%{RELEASE}.%%{ARCH}.rpm
-Name:           boostkit-kdadk-ms
-Version:        1.1.0
+%define _build_name_fmt %%{ARCH}/boostkit-ms-release-%%{VERSION}.%%{RELEASE}.%%{ARCH}.rpm
+Name:           boostkit-ms
+Version:        1.0.0
 Release:        oe2203%{?dist}
 ExclusiveArch:  aarch64
 Summary:        The Million-rule Multi-Pattern Matcher.
@@ -12,9 +12,9 @@ BuildRequires:  rpm
 %description
 Kunpeng Million-rule Multi-Pattern Matcher Library
 Product Name:           Kunpeng BoostKit
-Product Version:        25.3.0
-Component Name:         BoostKit-boostida-KDADK
-Component Version:      1.1
+Product Version:        26.2RC1
+Component Name:         BoostKit-MS
+Component Version:      1.0
 Component AppendInfo:	kunpeng
  
 %prep
