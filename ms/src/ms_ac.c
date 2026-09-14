@@ -789,6 +789,9 @@ int ac_automaton_match_state_cb(ACAutomaton *automaton,
         data == NULL || node_index == NULL || cb == NULL) {
         return MS_INVALID_PARA;
     }
+    if (*node_index >= automaton->id_count) {
+        return MS_INVALID_PARA;
+    }
 
     uint32_t state = *node_index;
     for (uint32_t i = 0; i < len; i++) {
@@ -824,6 +827,9 @@ int ac_automaton_match_state(ACAutomaton *automaton,
 
     if (automaton == NULL || automaton->table == NULL ||
         automaton->output == NULL || data == NULL || node_index == NULL) {
+        return MS_INVALID_PARA;
+    }
+    if (*node_index >= automaton->id_count) {
         return MS_INVALID_PARA;
     }
 

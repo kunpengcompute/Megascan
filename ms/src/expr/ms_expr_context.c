@@ -161,7 +161,13 @@ static int ms_compile_context_reserve_lkey_relations(ms_compile_context_t *ctx,
         return MS_SUCCESS;
     }
 
-    new_capacity = ctx->lkey_to_ckey_capacity ? ctx->lkey_to_ckey_capacity * 2u : 4u;
+    if (ctx->lkey_to_ckey_capacity > UINT32_MAX / 2u) {
+        new_capacity = logical_count;
+    } else {
+        new_capacity = ctx->lkey_to_ckey_capacity
+                           ? ctx->lkey_to_ckey_capacity * 2u
+                           : 4u;
+    }
     while (new_capacity < logical_count) {
         if (new_capacity > UINT32_MAX / 2u) {
             new_capacity = logical_count;
@@ -246,6 +252,9 @@ static int ms_compile_context_add_lkey_relation(ms_compile_context_t *ctx,
     }
 
     if (ctx->lkey_to_ckey_counts[lkey] >= ctx->lkey_to_ckey_capacities[lkey]) {
+        if (ctx->lkey_to_ckey_capacities[lkey] > UINT32_MAX / 2u) {
+            return MS_MALLOC_FAIL;
+        }
         new_capacity = ctx->lkey_to_ckey_capacities[lkey] ? ctx->lkey_to_ckey_capacities[lkey] * 2 : 4;
         new_ckeys = (uint32_t *)ms_calloc(new_capacity, sizeof(uint32_t));
         if (new_ckeys == NULL) {
@@ -396,7 +405,10 @@ static int ms_compile_context_reserve_exprs(ms_compile_context_t *ctx)
         return MS_SUCCESS;
     }
 
-    new_capacity = ctx->expr_capacity ? ctx->expr_capacity * 2 : 4;
+    if (ctx->expr_capacity > UINT32_MAX / 2u) {
+        return MS_MALLOC_FAIL;
+    }
+    new_capacity = ctx->expr_capacity ? ctx->expr_capacity * 2u : 4u;
     exprs = (ms_compile_expr_t *)ms_calloc(new_capacity, sizeof(ms_compile_expr_t));
     if (exprs == NULL) {
         return MS_MALLOC_FAIL;
@@ -421,7 +433,10 @@ static int ms_compile_context_reserve_combs(ms_compile_context_t *ctx)
         return MS_SUCCESS;
     }
 
-    new_capacity = ctx->comb_capacity ? ctx->comb_capacity * 2 : 4;
+    if (ctx->comb_capacity > UINT32_MAX / 2u) {
+        return MS_MALLOC_FAIL;
+    }
+    new_capacity = ctx->comb_capacity ? ctx->comb_capacity * 2u : 4u;
     combs = (ms_compile_comb_t *)ms_calloc(new_capacity, sizeof(ms_compile_comb_t));
     if (combs == NULL) {
         return MS_MALLOC_FAIL;
@@ -446,7 +461,12 @@ static int ms_compile_context_reserve_final_ckeys(ms_compile_context_t *ctx)
         return MS_SUCCESS;
     }
 
-    new_capacity = ctx->final_ckey_capacity ? ctx->final_ckey_capacity * 2 : 4;
+    if (ctx->final_ckey_capacity > UINT32_MAX / 2u) {
+        return MS_MALLOC_FAIL;
+    }
+    new_capacity = ctx->final_ckey_capacity
+                       ? ctx->final_ckey_capacity * 2u
+                       : 4u;
     final_ckeys = (uint32_t *)ms_calloc(new_capacity, sizeof(uint32_t));
     if (final_ckeys == NULL) {
         return MS_MALLOC_FAIL;

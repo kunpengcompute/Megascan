@@ -20,7 +20,10 @@ int ms_compile_alias_capture_reserve(ms_compile_alias_capture_t *capture)
         return MS_SUCCESS;
     }
 
-    new_capacity = capture->capacity ? capture->capacity * 2 : 4;
+    if (capture->capacity > UINT32_MAX / 2u) {
+        return MS_MALLOC_FAIL;
+    }
+    new_capacity = capture->capacity ? capture->capacity * 2u : 4u;
     aliases = (uint32_t *)ms_calloc(new_capacity, sizeof(uint32_t));
     offsets = (uint64_t *)ms_calloc(new_capacity, sizeof(uint64_t));
     if (aliases == NULL || offsets == NULL) {

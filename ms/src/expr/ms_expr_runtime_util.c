@@ -69,7 +69,10 @@ static int ms_compile_result_reserve(ms_compile_result_t *result)
         return MS_SUCCESS;
     }
 
-    new_capacity = result->capacity ? result->capacity * 2 : 4;
+    if (result->capacity > UINT32_MAX / 2u) {
+        return MS_MALLOC_FAIL;
+    }
+    new_capacity = result->capacity ? result->capacity * 2u : 4u;
     ids = (uint32_t *)ms_calloc(new_capacity, sizeof(uint32_t));
     if (ids == NULL) {
         return MS_MALLOC_FAIL;
@@ -144,7 +147,10 @@ static int ms_compile_index_list_add(ms_compile_index_list_t *list, uint32_t ind
     }
 
     if (list->count >= list->capacity) {
-        new_capacity = list->capacity ? list->capacity * 2 : 4;
+        if (list->capacity > UINT32_MAX / 2u) {
+            return MS_MALLOC_FAIL;
+        }
+        new_capacity = list->capacity ? list->capacity * 2u : 4u;
         indexes = (uint32_t *)ms_calloc(new_capacity, sizeof(uint32_t));
         if (indexes == NULL) {
             return MS_MALLOC_FAIL;
