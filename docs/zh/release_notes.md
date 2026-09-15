@@ -46,7 +46,7 @@
 
 ### 与操作系统和数据库配套说明<a name="ZH-CN_TOPIC_0000002552768619"></a>
 
-- 支持openEuler 22.03 LTS SP4、openEuler 24.03 LTS SP1版本。
+- 支持openEuler 22.03 LTS SP4、openEuler 24.03 LTS SP3版本。
 - 不涉及数据库配套。
 
 ## V1.0.0<a name="ZH-CN_TOPIC_0000002552888637"></a>
@@ -74,6 +74,16 @@
 <tr id="row_new_feature_stream"><td class="firstcol" valign="top" width="30%" headers="new_feature_name"><p>跨分片状态复用技术</p>
 </td>
 <td class="cellrowborder" valign="top" width="70%" headers="new_feature_description"><p>通过stream保存自动机和组合规则状态，并复用scratch工作区，使连续数据能够跨任意输入分片完成匹配。</p>
+</td>
+</tr>
+<tr id="row_new_feature_rule_removal"><td class="firstcol" valign="top" width="30%" headers="new_feature_name"><p>动态规则删除</p>
+</td>
+<td class="cellrowborder" valign="top" width="70%" headers="new_feature_description"><p>支持从AC规则库中动态删除普通规则和组合规则。</p>
+</td>
+</tr>
+<tr id="row_new_feature_allocator"><td class="firstcol" valign="top" width="30%" headers="new_feature_name"><p>内存分配函数配置</p>
+</td>
+<td class="cellrowborder" valign="top" width="70%" headers="new_feature_description"><p>支持配置自定义内存申请和释放函数。</p>
 </td>
 </tr>
 </tbody>

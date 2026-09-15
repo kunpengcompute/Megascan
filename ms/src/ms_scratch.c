@@ -522,7 +522,20 @@ static int ms_scratch_capture_reserve(ms_scratch_t *scratch)
         return MS_SUCCESS;
     }
 
-    new_capacity = scratch->capture_capacity ? scratch->capture_capacity * 2 : 4;
+    if (scratch->capture_capacity > UINT32_MAX / 2u) {
+        return MS_MALLOC_FAIL;
+    }
+    new_capacity = scratch->capture_capacity
+                       ? scratch->capture_capacity * 2u
+                       : 4u;
+#if SIZE_MAX < UINT64_MAX
+    if (new_capacity > SIZE_MAX / sizeof(uint32_t) ||
+        new_capacity > SIZE_MAX / sizeof(uint64_t) ||
+        scratch->capture_count > SIZE_MAX / sizeof(uint32_t) ||
+        scratch->capture_count > SIZE_MAX / sizeof(uint64_t)) {
+        return MS_MALLOC_FAIL;
+    }
+#endif
     aliases = (uint32_t *)ms_scratch_calloc(new_capacity, sizeof(uint32_t));
     offsets = (uint64_t *)ms_scratch_calloc(new_capacity, sizeof(uint64_t));
     if (aliases == NULL || offsets == NULL) {
@@ -536,11 +549,13 @@ static int ms_scratch_capture_reserve(ms_scratch_t *scratch)
     }
 
     if (scratch->aliases != NULL) {
-        (void)memcpy(aliases, scratch->aliases, scratch->capture_count * sizeof(uint32_t));
+        (void)memcpy(aliases, scratch->aliases,
+                     (size_t)scratch->capture_count * sizeof(uint32_t));
         ms_scratch_free(scratch->aliases);
     }
     if (scratch->offsets != NULL) {
-        (void)memcpy(offsets, scratch->offsets, scratch->capture_count * sizeof(uint64_t));
+        (void)memcpy(offsets, scratch->offsets,
+                     (size_t)scratch->capture_count * sizeof(uint64_t));
         ms_scratch_free(scratch->offsets);
     }
 

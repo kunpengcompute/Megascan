@@ -1250,6 +1250,13 @@ static const char *mode_name(bench_mode_t mode)
            mode == MODE_BLOCK ? "block" : "stream-full";
 }
 
+static const char *RAW_RESULT_HEADER =
+    "machine,algorithm,mode,trial,rule_count,atomic_rule_count,"
+    "combination_rule_count,query_count,payload_size,configured_hit_rate,"
+    "observed_hit_rate,expected_hits,actual_matches,expected_ids,reported_ids,"
+    "expected_candidates,total_bytes,elapsed_ns,query_ops,throughput_gib_s,"
+    "compile_ns,rss_compile_growth_kb,warmups,timing_scope,workers,cpu_list";
+
 static int append_result(const char *csv_path, const char *machine,
                          algorithm_t algorithm, bench_mode_t mode,
                          uint32_t trial,
@@ -1265,6 +1272,8 @@ static int append_result(const char *csv_path, const char *machine,
     double gib_s = ((double)stats->bytes / 1073741824.0) / seconds;
     double hit_rate = (double)corpus->header.hit_count /
                       corpus->header.query_count;
+    double observed_hit_rate = stats->queries == 0u ? 0.0 :
+                               (double)stats->matches / stats->queries;
     uint64_t expected_hits = stats->expected_matches;
     uint32_t atomic_count = algorithm == ALG_HASH ? rule_count : set->atomic_count;
     uint32_t combo_count =
@@ -1276,14 +1285,17 @@ static int append_result(const char *csv_path, const char *machine,
     if (fp == NULL) {
         return -1;
     }
+    if (ftell(fp) == 0L) {
+        fprintf(fp, "%s\n", RAW_RESULT_HEADER);
+    }
     fprintf(fp,
-            "%s,%s,%s,%u,%u,%u,%u,%" PRIu64 ",%u,%.8f,%" PRIu64 ",%" PRIu64
+            "%s,%s,%s,%u,%u,%u,%u,%" PRIu64 ",%u,%.8f,%.8f,%" PRIu64 ",%" PRIu64
             ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64
             ",%" PRIu64 ",%.2f,%.8f,%" PRIu64 ",%" PRIu64
             ",%u,%s,%u,\"%s\"\n",
             machine, algorithm_name(algorithm), mode_name(mode), trial,
             rule_count, atomic_count, combo_count, stats->queries,
-            corpus->header.payload_size, hit_rate, expected_hits,
+            corpus->header.payload_size, hit_rate, observed_hit_rate, expected_hits,
             stats->matches, stats->expected_ids, stats->reported_ids,
             stats->expected_candidates, stats->bytes, elapsed_ns, query_ops,
             gib_s, compile_ns, rss_growth_kb, warmups, timing_scope,
@@ -1305,11 +1317,18 @@ static int timed_mode(worker_pool_t *pool, const scan_context_t *shared,
         return -1;
     }
     printf("machine=%s algorithm=%s mode=%s trial=%u workers=%u query_ops=%.2f "
-           "throughput_gib_s=%.8f matches=%" PRIu64 " ids=%" PRIu64 "\n",
+           "throughput_gib_s=%.8f configured_hit_rate=%.8f "
+           "observed_hit_rate=%.8f rss_compile_growth_kb=%" PRIu64 " "
+           "matches=%" PRIu64 " ids=%" PRIu64 "\n",
            machine, algorithm_name(shared->algorithm), mode_name(mode), trial,
            pool->count,
            (double)stats.queries / ((double)elapsed / 1e9),
            ((double)stats.bytes / 1073741824.0) / ((double)elapsed / 1e9),
+           (double)shared->corpus->header.hit_count /
+               shared->corpus->header.query_count,
+           stats.queries == 0u ? 0.0 :
+               (double)stats.matches / stats.queries,
+           rss_growth_kb,
            stats.matches, stats.reported_ids);
     return append_result(csv_path, machine, shared->algorithm, mode, trial,
                          rule_count, set, shared->corpus, &stats, elapsed,

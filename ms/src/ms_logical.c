@@ -66,7 +66,12 @@ static int ms_logical_reserve_ops(ms_logical_tree_t *tree)
         return MS_SUCCESS;
     }
 
-    new_capacity = tree->op_capacity ? tree->op_capacity * 2 : MS_LOGICAL_INITIAL_CAPACITY;
+    if (tree->op_capacity > UINT32_MAX / 2u) {
+        return MS_MALLOC_FAIL;
+    }
+    new_capacity = tree->op_capacity
+                       ? tree->op_capacity * 2u
+                       : MS_LOGICAL_INITIAL_CAPACITY;
     ops = (ms_logical_op_t *)ms_calloc(new_capacity, sizeof(ms_logical_op_t));
     if (ops == NULL) {
         return MS_MALLOC_FAIL;
@@ -128,7 +133,10 @@ static int ms_logical_push_operand(uint32_t **stack, uint32_t *count,
     uint32_t new_capacity;
 
     if (*count >= *capacity) {
-        new_capacity = *capacity ? *capacity * 2 : MS_LOGICAL_INITIAL_CAPACITY;
+        if (*capacity > UINT32_MAX / 2u) {
+            return MS_MALLOC_FAIL;
+        }
+        new_capacity = *capacity ? *capacity * 2u : MS_LOGICAL_INITIAL_CAPACITY;
         new_stack = (uint32_t *)ms_calloc(new_capacity, sizeof(uint32_t));
         if (new_stack == NULL) {
             return MS_MALLOC_FAIL;
@@ -154,7 +162,10 @@ static int ms_logical_push_operator(ms_logical_operator_t **stack,
     uint32_t new_capacity;
 
     if (*count >= *capacity) {
-        new_capacity = *capacity ? *capacity * 2 : MS_LOGICAL_INITIAL_CAPACITY;
+        if (*capacity > UINT32_MAX / 2u) {
+            return MS_MALLOC_FAIL;
+        }
+        new_capacity = *capacity ? *capacity * 2u : MS_LOGICAL_INITIAL_CAPACITY;
         new_stack = (ms_logical_operator_t *)ms_calloc(new_capacity, sizeof(ms_logical_operator_t));
         if (new_stack == NULL) {
             return MS_MALLOC_FAIL;

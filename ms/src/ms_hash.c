@@ -8,7 +8,6 @@
 #include "ms_hash.h"
 #include "ms_allocator.h"
 
-#define ALIGN(s) (((s) + 63) & ~63)
 #define ALIGN_SIZE      64
 
 #define DEFAULT_SUBBUCKET_NUM   96
@@ -54,7 +53,10 @@ int hash_table_create(ms_hash **hash_table, uint32_t buckets, uint16_t key_size)
 
 int hash_table_build(ms_hash *hash_table, uint32_t secondary_buckets)
 {
-    uint64_t buckets_cnt, subbuckets_cnt;
+    uint32_t buckets_cnt, subbuckets_cnt;
+    size_t bucket_count_size, subbucket_count_size;
+    size_t bucket_bytes, subbucket_count, subbucket_bytes;
+    size_t aligned_bucket_bytes, aligned_subbucket_bytes;
     size_t malloc_size = 0;
     uint8_t *malloc_ptr = NULL;
     uint32_t i, j;
@@ -70,9 +72,37 @@ int hash_table_build(ms_hash *hash_table, uint32_t secondary_buckets)
 
     buckets_cnt = hash_table->bucket_num;
     subbuckets_cnt = secondary_buckets ? secondary_buckets : DEFAULT_SUBBUCKET_NUM;
+    bucket_count_size = (size_t)buckets_cnt;
+    subbucket_count_size = (size_t)subbuckets_cnt;
 
-    malloc_size += ALIGN(sizeof(ms_hash_bucket) * buckets_cnt);
-    malloc_size += ALIGN(sizeof(ms_hash_subbucket) * buckets_cnt * subbuckets_cnt);
+    if (bucket_count_size > SIZE_MAX / sizeof(ms_hash_bucket)) {
+        return MS_MALLOC_FAIL;
+    }
+    bucket_bytes = sizeof(ms_hash_bucket) * bucket_count_size;
+    if (bucket_bytes > SIZE_MAX - (ALIGN_SIZE - 1u)) {
+        return MS_MALLOC_FAIL;
+    }
+    aligned_bucket_bytes = (bucket_bytes + ALIGN_SIZE - 1u) &
+                           ~((size_t)ALIGN_SIZE - 1u);
+
+    if (bucket_count_size != 0 &&
+        subbucket_count_size > SIZE_MAX / bucket_count_size) {
+        return MS_MALLOC_FAIL;
+    }
+    subbucket_count = bucket_count_size * subbucket_count_size;
+    if (subbucket_count > SIZE_MAX / sizeof(ms_hash_subbucket)) {
+        return MS_MALLOC_FAIL;
+    }
+    subbucket_bytes = sizeof(ms_hash_subbucket) * subbucket_count;
+    if (subbucket_bytes > SIZE_MAX - (ALIGN_SIZE - 1u)) {
+        return MS_MALLOC_FAIL;
+    }
+    aligned_subbucket_bytes = (subbucket_bytes + ALIGN_SIZE - 1u) &
+                              ~((size_t)ALIGN_SIZE - 1u);
+    if (aligned_bucket_bytes > SIZE_MAX - aligned_subbucket_bytes) {
+        return MS_MALLOC_FAIL;
+    }
+    malloc_size = aligned_bucket_bytes + aligned_subbucket_bytes;
 
     malloc_ptr = (uint8_t *)ms_database_aligned_alloc(malloc_size, ALIGN_SIZE);
     if (malloc_ptr == NULL) {
@@ -82,7 +112,7 @@ int hash_table_build(ms_hash *hash_table, uint32_t secondary_buckets)
     memset(malloc_ptr, 0, malloc_size);
     hash_table->buckets = (ms_hash_bucket *)malloc_ptr;
 
-    malloc_ptr += ALIGN(sizeof(ms_hash_bucket) * buckets_cnt);
+    malloc_ptr += aligned_bucket_bytes;
     for (i = 0; i < buckets_cnt; i++) {
         hash_table->buckets[i].subbuckets = \
             (ms_hash_subbucket *)(malloc_ptr + i * (sizeof(ms_hash_subbucket) * subbuckets_cnt));
@@ -135,7 +165,9 @@ int hash_table_add(ms_hash *hash_table, uint32_t alias, const uint8_t *key, uint
     uint32_t hash, bucket_idx, subbucket_idx;
     ms_hash_node *node = NULL;
 
-    if (hash_table == NULL || key == NULL || key_len == 0 || key_len > hash_table->key_size) {
+    if (hash_table == NULL || !hash_table->build_ok ||
+        hash_table->hash_func == NULL || hash_table->buckets == NULL ||
+        key == NULL || key_len == 0 || key_len > hash_table->key_size) {
         return MS_INVALID_PARA;
     }
     
@@ -214,7 +246,8 @@ int hash_table_remove(ms_hash *hash_table, const uint8_t *key, uint32_t key_len)
     uint32_t hash, bucket_idx, subbucket_idx;
     ms_hash_node *node = NULL;
 
-    if (hash_table == NULL) {
+    if (hash_table == NULL || !hash_table->build_ok ||
+        hash_table->hash_func == NULL || hash_table->buckets == NULL) {
         return MS_INVALID_PARA;
     }
 

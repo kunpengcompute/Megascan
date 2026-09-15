@@ -137,7 +137,7 @@ python3 build.py debug
 已获取正式RPM软件包时，可直接安装：
 
 ```bash
-sudo rpm -ivh boostida-ms-release-xxxx.aarch64.rpm
+sudo rpm -ivh boostkit-ms-release-xxxx.aarch64.rpm
 sudo ldconfig
 ```
 
@@ -169,7 +169,7 @@ libms.so (libc6,AArch64) => /usr/local/lib/libms.so
 升级已安装的软件包时使用：
 
 ```bash
-sudo rpm -Uvh boostida-ms-release-xxxx.aarch64.rpm
+sudo rpm -Uvh boostkit-ms-release-xxxx.aarch64.rpm
 ```
 
 升级成功的回显示例如下，软件包名称和进度以实际结果为准：
@@ -213,7 +213,7 @@ ls -1 output/*.rpm
 回显示例：
 
 ```text
-output/boostida-ms-release-1.0.0.oe2203.aarch64.rpm
+output/boostkit-ms-release-1.0.0.oe2203.aarch64.rpm
 ```
 
 该脚本会重新构建源码并整理打包目录，不建议用于仅需要`libms.so`的日常增量编译。
