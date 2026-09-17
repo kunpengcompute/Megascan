@@ -12,7 +12,7 @@ BuildRequires:  rpm
 %description
 Kunpeng Million-rule Multi-Pattern Matcher Library
 Product Name:           Kunpeng BoostKit
-Product Version:        26.2RC1
+Product Version:        26.2.RC1
 Component Name:         BoostKit-MS
 Component Version:      1.0
 Component AppendInfo:	kunpeng
