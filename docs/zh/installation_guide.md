@@ -11,7 +11,6 @@
 |openEuler 22.03 LTS SP4|鲲鹏920新型号处理器|10.3.1|
 |openEuler 24.03 LTS SP3|鲲鹏920新型号处理器|12.3.1|
 
-
 编译Megascan动态库不依赖Boost、PCRE等第三方算法库。
 
 **表 2** 软件依赖

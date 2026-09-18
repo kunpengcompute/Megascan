@@ -74,7 +74,7 @@ typedef struct {
 } ms_match_event_t;
 ```
 
-`ms_expr_ext_t.flags`可使用`MS_EXT_FLAG_MIN_OFFSET`和`MS_EXT_FLAG_MAX_OFFSET`。
+`ms_expr_ext_t.flags`可使用`MS_EXT_FLAG_MIN_OFFSET`启用最小偏移约束，使用`MS_EXT_FLAG_MAX_OFFSET`启用最大偏移约束；两者可组合使用，此时`min_offset`不能大于`max_offset`。
 
 `ms_match_event_t`表示普通规则的一次命中，位置范围采用`[from, to)`。
 
@@ -199,6 +199,8 @@ int ms_remove_database_rule(ms_database_t *db,
 
 Handler接口保留原有的可变对象调用方式。新接入代码建议优先使用database、scratch和stream接口，因为这些接口将规则库、扫描工作区和跨分片状态分别由database、scratch和stream显式管理，资源归属和生命周期更加清晰；并发扫描时也可以为每个线程分配独立scratch，避免共享可变的扫描状态。
 
+`ms_handler_t`由调用方分配，使用前应零初始化（例如`ms_handler_t handler = {0};`），使用完成后调用`ms_handler_destroy()`。
+
 ```c
 int ms_handler_init(ms_handler_t *handler, ms_matcher_type type,
     uint32_t buckets, uint32_t secondary_buckets);
@@ -270,7 +272,7 @@ int ms_logical_eval_inplace(const ms_logical_tree_t *tree,
     uint8_t *logical_vector, uint32_t logical_count, uint8_t *matched);
 ```
 
-`ms_logical_parse()`将包含`!`、`&`、`|`和括号的表达式解析为逻辑树；`ms_logical_set()`、`ms_logical_get()`和`ms_logical_clear()`管理规则状态向量；`ms_logical_eval()`和`ms_logical_eval_inplace()`计算表达式结果。逻辑树不再使用时调用`ms_logical_tree_destroy()`释放。
+`ms_logical_tree_t`由调用方分配，建议零初始化（例如`ms_logical_tree_t tree = {0};`）。`ms_logical_parse()`将包含`!`、`&`、`|`和括号的表达式解析为逻辑树；`ms_logical_set()`、`ms_logical_get()`和`ms_logical_clear()`管理规则状态向量；`ms_logical_eval()`和`ms_logical_eval_inplace()`计算表达式结果，并通过输出参数`matched`返回匹配状态，`1`表示匹配，`0`表示未匹配。接口是否执行成功以返回值为准。逻辑树不再使用或对同一对象重新解析前，应调用`ms_logical_tree_destroy()`释放。
 
 ## 内存分配器接口<a name="ZH-CN_TOPIC_0000002522070521"></a>
 
