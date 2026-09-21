@@ -27,7 +27,7 @@
  * @return: 0 for success, MS_FIND_FAIL for no reported IDs, or an error code.
  */
 int ms_scan_expr(ms_handler_t *handler, const uint8_t *data, uint32_t len,
-                   uint32_t *ids, uint32_t *id_count, uint32_t id_capacity);
+                 uint32_t *ids, uint32_t *id_count, uint32_t id_capacity);
 
 /**
  * Open a stream for AC matching.
@@ -60,7 +60,8 @@ int ms_open_handler_stream(ms_handler_t *handler, ms_stream_t **stream);
  * @return: 0 for success, MS_FIND_FAIL for no reported IDs, or an error code.
  */
 int ms_scan_expr_stream(ms_stream_t *stream, const uint8_t *data, uint32_t len,
-                          uint32_t *ids, uint32_t *id_count, uint32_t id_capacity);
+                        uint32_t *ids, uint32_t *id_count,
+                        uint32_t id_capacity);
 
 /**
  * Flush an expression stream at end of data.
@@ -73,10 +74,8 @@ int ms_scan_expr_stream(ms_stream_t *stream, const uint8_t *data, uint32_t len,
  * This wrapper allocates temporary scratch and delegates to the full stream
  * API.
  */
-int ms_scan_expr_stream_flush(ms_stream_t *stream,
-                                uint32_t *ids,
-                                uint32_t *id_count,
-                                uint32_t id_capacity);
+int ms_scan_expr_stream_flush(ms_stream_t *stream, uint32_t *ids,
+                              uint32_t *id_count, uint32_t id_capacity);
 
 /**
  * Reset an opened AC stream to initial state.

@@ -18,11 +18,12 @@ typedef struct ms_scratch ms_scratch_t;
  * @param db: Output database pointer, should point to NULL before call.
  * @param type: Matcher type.
  * @param buckets: Main bucket count for HASH, 0 is allowed for AC.
- * @param secondary_buckets: Secondary bucket count for HASH, 0 is allowed for AC.
+ * @param secondary_buckets: Secondary bucket count for HASH, 0 is allowed for
+ * AC.
  * @return: 0 for success, an error code(negative number) for failure.
  */
 int ms_create_database(ms_database_t **db, ms_matcher_type type,
-                                    uint32_t buckets, uint32_t secondary_buckets);
+                       uint32_t buckets, uint32_t secondary_buckets);
 
 /**
  * @brief Compile multiple expressions into a database.
@@ -40,14 +41,11 @@ int ms_create_database(ms_database_t **db, ms_matcher_type type,
  * @param elements: Number of expressions.
  * @return: 0 for success, an error code(negative number) for failure.
  */
-int ms_compile_database_multi(ms_database_t **db,
-                                           ms_matcher_type type,
-                                           uint32_t buckets,
-                                           uint32_t secondary_buckets,
-                                           const char *const *expressions,
-                                           const uint32_t *flags,
-                                           const uint32_t *ids,
-                                           uint32_t elements);
+int ms_compile_database_multi(ms_database_t **db, ms_matcher_type type,
+                              uint32_t buckets, uint32_t secondary_buckets,
+                              const char *const *expressions,
+                              const uint32_t *flags, const uint32_t *ids,
+                              uint32_t elements);
 
 /**
  * @brief Compile multiple expressions with extended options into a database.
@@ -66,15 +64,11 @@ int ms_compile_database_multi(ms_database_t **db,
  * @param elements: Number of expressions.
  * @return: 0 for success, an error code(negative number) for failure.
  */
-int ms_compile_database_multi_ext(ms_database_t **db,
-                                               ms_matcher_type type,
-                                               uint32_t buckets,
-                                               uint32_t secondary_buckets,
-                                               const char *const *expressions,
-                                               const uint32_t *flags,
-                                               const uint32_t *ids,
-                                               const ms_expr_ext_t *ext,
-                                               uint32_t elements);
+int ms_compile_database_multi_ext(ms_database_t **db, ms_matcher_type type,
+                                  uint32_t buckets, uint32_t secondary_buckets,
+                                  const char *const *expressions,
+                                  const uint32_t *flags, const uint32_t *ids,
+                                  const ms_expr_ext_t *ext, uint32_t elements);
 
 /**
  * @brief Free a database object.
@@ -120,13 +114,9 @@ int ms_free_scratch(ms_scratch_t *scratch);
  * @param id_capacity: Capacity of @ids.
  * @return: 0 for success, MS_FIND_FAIL for no match, or an error code.
  */
-int ms_scan_database(const ms_database_t *db,
-                                  const uint8_t *data,
-                                  uint32_t len,
-                                  ms_scratch_t *scratch,
-                                  uint32_t *ids,
-                                  uint32_t *id_count,
-                                  uint32_t id_capacity);
+int ms_scan_database(const ms_database_t *db, const uint8_t *data, uint32_t len,
+                     ms_scratch_t *scratch, uint32_t *ids, uint32_t *id_count,
+                     uint32_t id_capacity);
 
 /**
  * @brief Get plain-rule match positions captured by the latest scan.
@@ -142,10 +132,8 @@ int ms_scan_database(const ms_database_t *db,
  * @return: 0 for success, or MS_INVALID_PARA for invalid input or insufficient
  *          capacity.
  */
-int ms_get_match_events(const ms_scratch_t *scratch,
-                        ms_match_event_t *events,
-                        uint32_t *event_count,
-                        uint32_t event_capacity);
+int ms_get_match_events(const ms_scratch_t *scratch, ms_match_event_t *events,
+                        uint32_t *event_count, uint32_t event_capacity);
 
 /**
  * @brief Find one rule through a database object.
@@ -173,9 +161,8 @@ int ms_find_database_rule(const ms_database_t *db, ms_rule_t *rule);
  * their next scan. Callers must externally synchronize removal with scans.
  * HASH databases are not supported by this API.
  */
-int ms_remove_database_rule(ms_database_t *db,
-                                      const ms_rule_t *rule,
-                                      uint32_t rule_num);
+int ms_remove_database_rule(ms_database_t *db, const ms_rule_t *rule,
+                            uint32_t rule_num);
 
 /**
  * @brief Open a stream from a database.
@@ -195,22 +182,15 @@ int ms_open_stream(const ms_database_t *db, ms_stream_t **stream);
  * Stream owns cross-chunk state. Per-call capture buffers, state copies and
  * logical evaluation workspace come from scratch.
  */
-int ms_scan_stream(ms_stream_t *stream,
-                                const uint8_t *data,
-                                uint32_t len,
-                                ms_scratch_t *scratch,
-                                uint32_t *ids,
-                                uint32_t *id_count,
-                                uint32_t id_capacity);
+int ms_scan_stream(ms_stream_t *stream, const uint8_t *data, uint32_t len,
+                   ms_scratch_t *scratch, uint32_t *ids, uint32_t *id_count,
+                   uint32_t id_capacity);
 
 /**
  * @brief Flush a stream at end of data without closing it.
  */
-int ms_flush_stream(ms_stream_t *stream,
-                                 ms_scratch_t *scratch,
-                                 uint32_t *ids,
-                                 uint32_t *id_count,
-                                 uint32_t id_capacity);
+int ms_flush_stream(ms_stream_t *stream, ms_scratch_t *scratch, uint32_t *ids,
+                    uint32_t *id_count, uint32_t id_capacity);
 
 /**
  * @brief Flush a stream at end of data and close it.
@@ -218,10 +198,7 @@ int ms_flush_stream(ms_stream_t *stream,
  * After parameter validation succeeds, the stream is released even if the
  * end-of-data evaluation reports no ids.
  */
-int ms_close_stream(ms_stream_t *stream,
-                                 ms_scratch_t *scratch,
-                                 uint32_t *ids,
-                                 uint32_t *id_count,
-                                 uint32_t id_capacity);
+int ms_close_stream(ms_stream_t *stream, ms_scratch_t *scratch, uint32_t *ids,
+                    uint32_t *id_count, uint32_t id_capacity);
 
 #endif

@@ -16,12 +16,12 @@
  * ms_scratch_t and ms_stream_t.
  */
 typedef struct {
-    void *ms_matcher;
-    void *ms_compile_ctx;
-    ms_matcher_type type;
+  void *ms_matcher;
+  void *ms_compile_ctx;
+  ms_matcher_type type;
 
-    /* mark whether the ac automation has been built. */
-    bool is_built;
+  /* mark whether the ac automation has been built. */
+  bool is_built;
 } ms_handler_t;
 
 /**
@@ -32,7 +32,7 @@ typedef struct {
  * ms_compile_database_multi*().
  */
 int ms_handler_init(ms_handler_t *handler, ms_matcher_type type,
-                      uint32_t buckets, uint32_t secondary_buckets);
+                    uint32_t buckets, uint32_t secondary_buckets);
 
 /**
  * Destroy multi-pattern matching handler.

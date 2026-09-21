@@ -4,12 +4,12 @@
 #ifndef MS_ALLOCATOR_H
 #define MS_ALLOCATOR_H
 
-#include <stdlib.h>
 #include <stdint.h>
+#include <stdlib.h>
 
 /**
  * @brief 内存分配函数指针类型
- * 
+ *
  * @param size 要分配的内存大小（字节）
  * @return 成功返回分配的内存指针，失败返回 NULL
  */
@@ -17,9 +17,9 @@ typedef void *(*ms_alloc_t)(size_t size);
 
 /**
  * @brief 内存分配并初始化函数指针类型
- * 
+ *
  * 与 malloc 类似，但会将分配的内存初始化为零。
- * 
+ *
  * @param nmemb 元素数量
  * @param size 每个元素的大小（字节）
  * @return 成功返回分配并清零的内存指针，失败返回 NULL
@@ -28,25 +28,25 @@ typedef void *(*ms_calloc_t)(size_t nmemb, size_t size);
 
 /**
  * @brief 内存释放函数指针类型
- * 
+ *
  * @param ptr 要释放的内存指针（可以是 NULL）
  */
 typedef void (*ms_free_t)(void *ptr);
 
 /**
  * @brief 检查内存地址是否对齐的宏
- * 
+ *
  * @param ptr 要检查的内存指针
  * @param align 对齐边界（必须是 2 的幂次方）
  * @return 如果地址对齐返回 true，否则返回 false
- * 
+ *
  * 原理：将指针转换为整数后取模，如果余数为 0 说明对齐。
  */
 #define ISALIGNED_N(ptr, align) (((uintptr_t)(ptr)) % (align) == 0)
 
 /**
  * @brief 检查内存分配是否成功
- * 
+ *
  * @param mem 要检查的内存指针
  * @return MS_SUCCESS 表示成功，MS_MALLOC_FAIL 表示内存分配失败，
  *         MS_INVALID_PARA 表示对齐检查失败
@@ -55,17 +55,18 @@ int ms_check_alloc(const void *mem);
 
 /**
  * @brief 设置全局内存分配器
- * 
+ *
  * 用户可以通过此函数提供自定义的内存分配函数，实现对 MS 库内存分配的完全控制。
  * 如果传入 NULL，会自动回退到标准库函数。设置只影响后续申请；已经申请的
  * 内存仍使用申请时记录的 free 函数释放。
- * 
+ *
  * @param alloc_func 自定义 malloc 函数
  * @param calloc_func 自定义 calloc 函数
  * @param free_func 自定义 free 函数
  * @return MS_SUCCESS 表示成功
  */
-int ms_set_allocator(ms_alloc_t alloc_func, ms_calloc_t calloc_func, ms_free_t free_func);
+int ms_set_allocator(ms_alloc_t alloc_func, ms_calloc_t calloc_func,
+                     ms_free_t free_func);
 
 /**
  * @brief 设置数据库内存分配器
@@ -79,7 +80,7 @@ int ms_set_allocator(ms_alloc_t alloc_func, ms_calloc_t calloc_func, ms_free_t f
  * @return MS_SUCCESS 表示成功
  */
 int ms_set_database_allocator(ms_alloc_t alloc_func, ms_calloc_t calloc_func,
-                                           ms_free_t free_func);
+                              ms_free_t free_func);
 
 /**
  * @brief 设置 Scratch 内存分配器
@@ -93,7 +94,7 @@ int ms_set_database_allocator(ms_alloc_t alloc_func, ms_calloc_t calloc_func,
  * @return MS_SUCCESS 表示成功
  */
 int ms_set_scratch_allocator(ms_alloc_t alloc_func, ms_calloc_t calloc_func,
-                                          ms_free_t free_func);
+                             ms_free_t free_func);
 
 /**
  * @brief 设置 Stream 内存分配器
@@ -107,7 +108,7 @@ int ms_set_scratch_allocator(ms_alloc_t alloc_func, ms_calloc_t calloc_func,
  * @return MS_SUCCESS 表示成功
  */
 int ms_set_stream_allocator(ms_alloc_t alloc_func, ms_calloc_t calloc_func,
-                                         ms_free_t free_func);
+                            ms_free_t free_func);
 
 /**
  * @brief 设置 Misc 内存分配器
@@ -121,13 +122,13 @@ int ms_set_stream_allocator(ms_alloc_t alloc_func, ms_calloc_t calloc_func,
  * @return MS_SUCCESS 表示成功
  */
 int ms_set_misc_allocator(ms_alloc_t alloc_func, ms_calloc_t calloc_func,
-                                       ms_free_t free_func);
+                          ms_free_t free_func);
 
 /**
  * @brief MS 封装的 malloc 函数
- * 
+ *
  * 使用当前设置的数据库分配器进行内存分配。
- * 
+ *
  * @param size 要分配的内存大小（字节）
  * @return 成功返回分配的内存指针，失败返回 NULL
  */
@@ -135,9 +136,9 @@ void *ms_malloc(size_t size);
 
 /**
  * @brief MS 封装的 calloc 函数
- * 
+ *
  * 使用当前设置的数据库分配器进行内存分配并初始化为零。
- * 
+ *
  * @param nmemb 元素数量
  * @param size 每个元素的大小（字节）
  * @return 成功返回分配并清零的内存指针，失败返回 NULL
@@ -146,9 +147,9 @@ void *ms_calloc(size_t nmemb, size_t size);
 
 /**
  * @brief MS 封装的 free 函数
- * 
+ *
  * 使用当前设置的数据库分配器释放内存。
- * 
+ *
  * @param ptr 要释放的内存指针（可以是 NULL）
  */
 void ms_free(void *ptr);
