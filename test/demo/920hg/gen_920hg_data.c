@@ -76,7 +76,7 @@ static void fill_tuple(tuple_t *tuple, uint32_t index, uint32_t seed,
 static void make_literal(uint32_t index, uint32_t seed,
                          char literal[LITERAL_SIZE + 1u])
 {
-    static const char alphabet[] = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    static const char alphabet[] = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // pragma: allowlist secret
     uint64_t mixed = mix64(((uint64_t)seed << 32) | index);
     uint32_t value = index;
     uint32_t i;

@@ -857,7 +857,7 @@ static int compile_profile_benchmark(const Options &options, const std::string &
     std::string build = options.root + "/build-profile";
     if (options.fresh_build && remove_tree(build) != 0 && errno != ENOENT) return 1;
     if (run_command({"cmake", "-S", options.root, "-B", build,
-                     "-DCMAKE_BUILD_TYPE=RelWithDebInfo", "-DMS_ENABLE_PROFILING=ON"}) != 0) return 1;
+                     "-DCMAKE_BUILD_TYPE=RelWithDebInfo", "-DMS_ENABLE_PROFILING=ON"}) != 0) return 1; // pragma: allowlist secret
     const char *jobs = getenv("BUILD_JOBS");
     if (run_command({"cmake", "--build", build, "--parallel",
                      jobs == nullptr ? std::to_string(sysconf(_SC_NPROCESSORS_ONLN)) : jobs}) != 0) return 1;
