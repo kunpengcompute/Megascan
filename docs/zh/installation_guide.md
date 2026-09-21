@@ -1,77 +1,228 @@
 # 安装指南<a name="ZH-CN_TOPIC_0000002553346771"></a>
 
-## 环境要求<a name="ZH-CN_TOPIC_0000002522226848"></a>
+本文介绍Megascan的源码编译和RPM安装方法。源码编译适用于开发、调试和自定义构建；RPM适用于已获取正式软件包的部署场景。
 
-为保证您可以顺利安全地使用KDADK-MMPM，请确保所使用的环境信息在已验证环境范围内。若您在使用过程中遇到问题，建议先检查使用的环境能否切换为已验证的环境范围。
+为保证您可以顺利安全地使用Megascan，请确保所使用的环境信息在已验证环境范围内。若您在使用过程中遇到问题，建议先检查使用的环境能否切换为已验证的环境范围。
 
 **表 1** 已验证环境<a id="已验证环境"></a>
 
 |操作系统|CPU类型|GCC版本|
 |--|--|--|
 |openEuler 22.03 LTS SP4|鲲鹏920新型号处理器|10.3.1|
-|openEuler 24.03 LTS SP1|鲲鹏920新型号处理器|12.3.1|
+|openEuler 24.03 LTS SP3|鲲鹏920新型号处理器|12.3.1|
 
+编译Megascan动态库不依赖Boost、PCRE等第三方算法库。
 
-**表 2** 软件要求<a id="软件要求"></a>
+**表 2** 软件依赖
 
-|软件名称|版本|获取方式|
+|软件|版本|用途|
 |--|--|--|
-|Boostkit-boostida-kdadk-mmpm-2.5.3.zip|2.5.3|请前往“智能数据分析>资源下载”页面获取软件包。|
+|GCC|10.3及以上|必选，编译Megascan动态库|
+|CMake|3.22及以上|必选，生成构建工程|
+|GNU Make|操作系统配套版本|必选，执行默认构建|
+|glibc及POSIX Threads|操作系统配套版本|必选，提供基础运行库和线程接口|
+|Python 3|3.8及以上|可选，构建测试程序|
+|CUnit|1.0及以上|可选，运行单元测试|
+|rpm-build、tar|操作系统配套版本|可选，构建RPM软件包|
 
+在openEuler上可安装基础编译工具：
 
-为保证您可以顺利安全地使用KDADK-MMPM，请确保所使用的环境信息在已验证环境范围内。若您在使用过程中遇到问题，建议先检查使用的环境能否切换为已验证的环境范围。
-## 软件部署<a name="ZH-CN_TOPIC_0000002553186817"></a>
+```bash
+sudo dnf install -y gcc gcc-c++ cmake make
+```
 
-**软件安装包获取与完整性校验<a name="section5964123113114"></a>**
+安装后检查版本：
 
-1. 从鲲鹏社区获取软件安装包及其对应的SHA-256校验文件。
+```bash
+gcc --version
+cmake --version
+make --version
+```
 
-    参见[**表 2** 软件要求](#软件要求)获取**Boostkit-boostida-kdadk-mmpm-2.5.3.zip**软件包。
+## 源码编译
 
-    >![](public_sys-resources/icon-note.gif) **说明：** 
-    >使用软件包前请先阅读《[鲲鹏应用使能套件BoostKit用户许可协议 2.0](https://www.hikunpeng.com/zh/legal/developer/boostkit/software/protocol)》，如确认继续使用，则默认同意协议的条款和条件。
+以下命令均在Megascan源码根目录执行。
 
-2. 计算软件安装包的SHA-256校验值。
+1. 进入源码目录。
 
-    Linux执行命令如下：
-
-    ```sh
-    sha256sum Boostkit-boostida-kdadk-mmpm-2.5.3.zip
+    ```bash
+    cd Megascan
     ```
 
-    Windows执行命令如下：
+2. 生成Release构建目录。
 
-    ```sh
-    certutil -hashfile Boostkit-boostida-kdadk-mmpm-2.5.3.zip SHA256
+    ```bash
+    cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
     ```
 
-3. 将计算得到的校验值与SHA-256校验文件中记录的值进行比较。如果两者一致，说明软件安装包完整；如果不一致，请重新获取软件安装包。
+3. 编译动态库。
 
-**安装软件包<a name="section3965331101111"></a>**
-
-KDADK-MMPM（Million-rule Multi-Pattern Matcher）是多模规则匹配软件包，可以提升超大规模定长规则匹配或十万不定长规则匹配性能。
-
-1. 请参见[**表 2** 软件要求](#软件要求)获取KDADK-MMPM相关软件包**Boostkit-boostida-kdadk-mmpm-2.5.3.zip**。
-2. 解压缩**Boostkit-boostida-kdadk-mmpm-2.5.3.zip**，得到KDADK-MMPM二进制RPM包。
-3. 安装KDADK-MMPM。
-
-    ```
-    rpm -ivh mmpm-xxxx.aarch64.rpm
+    ```bash
+    cmake --build build -j"$(nproc)"
     ```
 
-    ![](figures/1.png)
+4. 检查编译产物。
 
-    操作结束后，会将动态库安装至“/usr/local/lib“，对外函数接口头文件安装至“/usr/local/include“。
-
-    >![](public_sys-resources/icon-note.gif) **说明：** 
-    >上述命令中涉及到的xxxx代表版本号。
-
-4. 使能KDADK-MMPM。
-
-    使用KDADK-MMPM时需在程序中包含mmpm.h头文件并调用KDADK-MMPM相关函数。以GCC为例，编译链接时添加-lmmpm参数即可完成库的链接。详细使用方法可参见[zh-cn\_topic\_0000002553346765.md](zh-cn_topic_0000002553346765.md)中的示例。
-
-    ```
-    gcc your_program.c -o your_program -lmmpm
+    ```bash
+    test -f output/lib/libms.so && echo "libms.so: OK"
+    test -f output/include/ms.h && echo "ms.h: OK"
     ```
 
-    若编译成功且程序能够正常运行，表明已成功使能KDADK-MMPM。
+    回显示例：
+
+    ```text
+    libms.so: OK
+    ms.h: OK
+    ```
+
+编译完成后的主要产物如下：
+
+|路径|说明|
+|--|--|
+|`output/lib/libms.so`|Megascan动态库|
+|`output/include/*.h`|对外头文件|
+|`build/`|CMake中间文件|
+
+需要保留调试符号和栈帧信息时，可单独创建构建目录：
+
+```bash
+cmake -S . -B build-profile \
+  -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+  -DMS_ENABLE_PROFILING=ON
+cmake --build build-profile -j"$(nproc)"
+```
+
+重新构建时，删除对应构建目录后再次执行CMake命令即可：
+
+```bash
+rm -rf build
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j"$(nproc)"
+```
+
+## 编译并运行测试
+
+测试程序依赖Python 3和CUnit。在openEuler上可先安装：
+
+```bash
+sudo dnf install -y python3 CUnit-devel
+```
+
+如果环境中没有`CUnit-devel`软件包，请参见[《KTest测试框架》](../../test/README.md)，将CUnit头文件和库放入测试工程。
+
+完成Megascan动态库编译后，在源码根目录执行：
+
+```bash
+cd test
+python3 build.py debug
+```
+
+运行单元测试：
+
+```bash
+./build/bin/testdemo_ut
+```
+
+查看demo帮助：
+
+```bash
+./build/bin/megascan_demo --help
+```
+
+此时所在目录为`Megascan/test`，因此两个程序的实际生成位置分别为`Megascan/test/build/bin/testdemo_ut`和`Megascan/test/build/bin/megascan_demo`。KTest说明、测试通过条件和覆盖率方法请参见[《KTest测试框架》](../../test/README.md)，demo的完整使用方法请参见[《Demo使用说明》](../../test/demo/README.md)。
+
+## 安装RPM软件包
+
+已获取正式RPM软件包时，可直接安装：
+
+```bash
+sudo rpm -ivh boostkit-ms-release-xxxx.aarch64.rpm
+sudo ldconfig
+```
+
+其中`xxxx`表示软件版本。安装完成后，默认文件位置如下：
+
+|路径|说明|
+|--|--|
+|`/usr/local/lib/libms.so`|Megascan动态库|
+|`/usr/local/include/*.h`|对外头文件|
+
+检查安装结果：
+
+```bash
+rpm -q boostkit-ms
+rpm -ql boostkit-ms
+ldconfig -p | grep libms
+```
+
+安装成功的回显示例如下，版本号和头文件列表以实际软件包为准：
+
+```text
+boostkit-ms-1.0.0-oe2203.aarch64
+/usr/local/lib/libms.so
+/usr/local/include/ms.h
+...
+libms.so (libc6,AArch64) => /usr/local/lib/libms.so
+```
+
+升级已安装的软件包时使用：
+
+```bash
+sudo rpm -Uvh boostkit-ms-release-xxxx.aarch64.rpm
+```
+
+升级成功的回显示例如下，软件包名称和进度以实际结果为准：
+
+```text
+Verifying...                          ################################# [100%]
+Preparing...                          ################################# [100%]
+Updating / installing...
+   1:boostkit-ms-xxxx           ################################# [ 50%]
+Cleaning up / removing...
+   2:boostkit-ms-xxxx           ################################# [100%]
+```
+
+## 构建RPM软件包
+
+`build.sh`用于在AArch64环境构建RPM，执行前需要安装打包工具：
+
+```bash
+sudo dnf install -y rpm-build tar
+```
+
+安装成功后，`dnf`命令末尾通常显示：
+
+```text
+Complete!
+```
+
+在源码根目录执行：
+
+```bash
+chmod +x build.sh
+./build.sh
+```
+
+生成的软件包位于`output`目录，可执行以下命令确认：
+
+```bash
+ls -1 output/*.rpm
+```
+
+回显示例：
+
+```text
+output/boostkit-ms-release-1.0.0.oe2203.aarch64.rpm
+```
+
+该脚本会重新构建源码并整理打包目录，不建议用于仅需要`libms.so`的日常增量编译。
+
+## 验证开发环境
+
+完成源码编译或RPM安装后，可按照[《快速入门》](./quick_start.md)编译示例程序。示例能够成功链接`libms.so`并输出预期规则ID，表示Megascan开发环境可用。
+
+## 修订记录
+
+| 文档版本 | 发布日期 | 修改说明 |
+| -------- | -------- | -------- |
+| 01 | 2026-09-30 | 第一次正式发布 |

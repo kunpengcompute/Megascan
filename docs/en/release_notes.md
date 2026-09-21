@@ -12,7 +12,7 @@
 </tr>
 <tr id="row226mcpsimp"><th class="firstcol" valign="top" width="26%" id="mcps1.1.3.2.1"><p id="p228mcpsimp"><a name="p228mcpsimp"></a><a name="p228mcpsimp"></a>Product Version</p>
 </th>
-<td class="cellrowborder" valign="top" width="74%" headers="mcps1.1.3.2.1 "><p id="p230mcpsimp"><a name="p230mcpsimp"></a><a name="p230mcpsimp"></a>25.3.0</p>
+<td class="cellrowborder" valign="top" width="74%" headers="mcps1.1.3.2.1 "><p id="p230mcpsimp"><a name="p230mcpsimp"></a><a name="p230mcpsimp"></a>26.2.RC1</p>
 </td>
 </tr>
 <tr id="row231mcpsimp"><th class="firstcol" valign="top" width="26%" id="mcps1.1.3.3.1"><p id="p233mcpsimp"><a name="p233mcpsimp"></a><a name="p233mcpsimp"></a>Software</p>
@@ -230,8 +230,8 @@ N/A
 
 |Document|Description|Delivery Method|
 |--|--|--|
-|Kunpeng BoostKit 25.3.0 Intelligent Data Analytics Developer Guide|Provides guidance on how to use Intelligent Data Analytics features and related APIs.|Kunpeng community|
-|Kunpeng BoostKit 25.3.0 Intelligent Data Analytics Release Notes|Describes the release information.|
+|Kunpeng BoostKit 26.2.RC1 Intelligent Data Analytics Developer Guide|Provides guidance on how to use Intelligent Data Analytics features and related APIs.|Kunpeng community|
+|Kunpeng BoostKit 26.2.RC1 Intelligent Data Analytics Release Notes|Describes the release information.|
 
 
 

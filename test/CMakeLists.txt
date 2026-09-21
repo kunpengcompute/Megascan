@@ -3,7 +3,7 @@ set(EXECUTABLE_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/build/bin)
 set(CMAKE_CXX_STANDARD 14)
 
 # 设置测试框架采用CUNIT/GTEST
-set(USE_TEST_FRAMWORK CUNIT)
+set(USE_TEST_FRAMEWORK CUNIT)
 
 # 设置依赖头文件路径
 set(PROJECT_INCLUDE_DIR
@@ -20,15 +20,18 @@ set(PROJECT_LINK_DIR
 
 set(CMAKE_BUILD_TYPE Debug)
 set(CMAKE_CXX_FLAGS
-    "-march=armv8-a+crc \
-    -g \
+    "-g \
     -Wall \
     -Wdate-time \
     -Wextra"
 )
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64|ARM64)$")
+    set(CMAKE_CXX_FLAGS "-march=armv8-a+crc ${CMAKE_CXX_FLAGS}")
+endif()
 add_link_options(--coverage)
 
-LINK_DIRECTORIES(${PROJECT_LINK_DIR})
+LINK_DIRECTORIES(${PROJECT_LINK_DIR}
+                ${CMAKE_CURRENT_SOURCE_DIR}/../output/)
 
 # coverage option
 if(COVER)
@@ -39,3 +42,4 @@ endif()
 
 add_subdirectory(public)
 add_subdirectory(src)
+add_subdirectory(demo)
