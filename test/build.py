@@ -30,15 +30,17 @@ def build_func(target, build_param):
     os.chdir(build_path)
     cmake_param = "cmake .." + build_param
     log(cmake_param)
-    subprocess.run(cmake_param, shell=True)
-    subprocess.run("make " + target, shell=True)
-    os.chdir(src_path)
-    if not os.listdir(build_path + "/bin"):
+    try:
+        subprocess.run(cmake_param, shell=True, check=True)
+        subprocess.run("make " + target, shell=True, check=True)
+    finally:
+        os.chdir(src_path)
+    bin_path = build_path + "/bin"
+    if not os.path.isdir(bin_path) or not os.listdir(bin_path):
         log("build failed")
         raise Exception("build failed")
-        return -1
     log("build testcode success")
-    
+    return 0
 
 def compile_src(target = "all", type = "release", extra = ""):
     """
@@ -56,7 +58,7 @@ def compile_src(target = "all", type = "release", extra = ""):
         clean_func()
         return
     build_param = param_sheet[type] + param_sheet[extra]
-    if build_func(target, build_param) != -1 and (extra == "cover" or extra == "run"):
+    if build_func(target, build_param) == 0 and extra == "cover":
         compile_done()
 
 def start_compile(user_arg):
@@ -95,20 +97,25 @@ def start_compile(user_arg):
     if (type in type_sheet and extra in extra_sheet):
         return (target, type, extra)
     else:
-        log("use: ./build.py [all/target] [release/debug/clean] [cover/asan/tsan/run]")
+        log("use: ./build.py [all/target] [release/debug/clean] [cover/asan/tsan]")
         exit()
 
 def compile_done():
     proc = subprocess.run("bash ./script/lcov_test.sh", shell=True, stdout=subprocess.PIPE)
+    proc.check_returncode()
     print(proc.stdout.decode("utf-8"))
     ret = proc.stdout.decode("utf-8").splitlines()
-    for i in range(0, len(ret)):
-        if "Run Summary" in ret[i]:
-            break
-    test_info = ret[i + 2].split()
-    test_cost = ret[i + 5].split()[3]
+    summary_index = next((i for i, line in enumerate(ret) if "Run Summary" in line), -1)
+    summary_lines = ret[summary_index + 1:] if summary_index >= 0 else []
+    test_info = next((line.split() for line in summary_lines
+                      if line.split() and line.split()[0] == "tests"), None)
+    elapsed_info = next((line.split() for line in summary_lines
+                         if line.strip().startswith("Elapsed time")), None)
+    if test_info is None or len(test_info) < 6 or elapsed_info is None or len(elapsed_info) < 4:
+        raise RuntimeError("Run Summary not found or incomplete")
+    test_cost = elapsed_info[3]
     xml_list = ["<?xml version='1.0' encoding='UTF-8'?>",
-               '<testsuits tests="%s" failures="%s" disabled="%s" errors="%s" timestamp="%s" time="%s" name="ALLTest"/>' % (
+               '<testsuites tests="%s" failures="%s" disabled="%s" errors="%s" timestamp="%s" time="%s" name="ALLTest"/>' % (
                test_info[1], test_info[4], test_info[5], test_info[4], time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime()), test_cost)]
     xml_str = "\n".join(xml_list)
     with open("%s/build/test_result.xml" % path, 'w+') as fp:

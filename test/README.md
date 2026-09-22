@@ -1,38 +1,58 @@
 ### KTest测试框架：
+
 #### 1、整体介绍
-KTest测试框架支持gtest和CUnit两种测试框架，用户可在最外层CMakeLists.txt中指定具体采用何种框架。
-测试代码的编写方式可参考仓库中的现有测试用例以及gtest或CUnit的公开文档。
-用户可修改的配置项已在CMakeLists.txt中通过注释标出。
+
+KTest测试框架内部支持gtest、cunit两种测试框架，用户可在`test/CMakeLists.txt`中指定具体采用何种框架。当前Megascan使用cunit。
+
+具体测试代码可参考`test/src/ut`目录中的现有用例。
+
+用户使用框架时可修改项均在`test/CMakeLists.txt`中通过注释指出，用户可参考修改。
+
 #### 2、编译
+
 前提：
-1、首先保证源码已编译完成
-2、从CUnit公开发布渠道获取源码包，并将编译生成的头文件和库文件分别放入`test/public/cunit/include`和`test/public/cunit/lib`目录。
-```c
-python build.py [all/target(for example:hwoff_ut)] [release/debug/clean] [cover/asan/tsan/run]
-cover:覆盖率
-asan:内存检测（暂未开启）
-tsan:线程竞争检测（暂未开启）
-run:编译后自动运行（暂未开启）
+
+1. 首先保证源码已编译完成。
+2. openEuler可通过`sudo dnf install -y python3 CUnit-devel`安装测试依赖。
+3. 如果环境中没有`CUnit-devel`软件包，可从CUnit上游源码构建，并确保CUnit头文件和库能够被`test/CMakeLists.txt`找到。
+
+    ```text
+    python3 build.py [target] [release/debug/clean] [cover/asan/tsan]
+    cover：覆盖率
+    asan：内存检测（暂未开启）
+    tsan：线程竞争检测（暂未开启）
+    ```
+
+    `target`不指定时默认编译全部目标，也可指定`testdemo_ut`或`megascan_demo`。
+
+```bash
+cd test
+python3 build.py debug
 ```
-```c
-cd test/
-./build.py debug
-```
+
 #### 3、运行
-```c
+
+```bash
 cd ./build/bin/
-./hwoff_ut
-```
-若需要以交互形式运行
-```c
-./hwoff_ut -i（暂不支持）
+./testdemo_ut
 ```
 
 #### 4、覆盖率
-保证源码先编译完成（需带覆盖率编译选项）
-```c
-运行测试码：
-cd test
-python3 debug cover
+
+保证源码先编译完成，并安装`lcov`和`genhtml`。返回`Megascan/test`目录后执行：
+
+```bash
+python3 build.py testdemo_ut debug cover
 ```
-报告生成位置为`build/cover/lcov_result`目录，可通过浏览器打开其中的`index.html`查看报告。
+
+报告生成位置为`build/cover/lcov_result`目录，可打开其中的`index.html`查看覆盖率报告。
+
+#### 5、运行demo
+
+返回`Megascan/test`目录后执行：
+
+```bash
+./build/bin/megascan_demo --help
+```
+
+API参数化调用、session流程和920/HG测试方法请参见[《Demo使用说明》](./demo/README.md)。

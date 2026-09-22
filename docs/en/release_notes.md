@@ -12,7 +12,7 @@
 </tr>
 <tr id="row226mcpsimp"><th class="firstcol" valign="top" width="26%" id="mcps1.1.3.2.1"><p id="p228mcpsimp"><a name="p228mcpsimp"></a><a name="p228mcpsimp"></a>Product Version</p>
 </th>
-<td class="cellrowborder" valign="top" width="74%" headers="mcps1.1.3.2.1 "><p id="p230mcpsimp"><a name="p230mcpsimp"></a><a name="p230mcpsimp"></a>25.3.0</p>
+<td class="cellrowborder" valign="top" width="74%" headers="mcps1.1.3.2.1 "><p id="p230mcpsimp"><a name="p230mcpsimp"></a><a name="p230mcpsimp"></a>26.2.RC1</p>
 </td>
 </tr>
 <tr id="row231mcpsimp"><th class="firstcol" valign="top" width="26%" id="mcps1.1.3.3.1"><p id="p233mcpsimp"><a name="p233mcpsimp"></a><a name="p233mcpsimp"></a>Software</p>
@@ -40,7 +40,7 @@
 The software packages, release documents, and product documents have been scanned by multiple antivirus software, and no virus is found. The virus scan results are as follows:
 
 <a name="table16283894"></a>
-<table><tbody><tr id="row10198465"><th class="firstcol" valign="top" width="50%" id="mcps1.1.3.1.1"><p id="p20769304"><a name="p20769304"></a><a name="p20769304"></a><strong id="b986744653413"><a name="b986744653413"></a><a name="b986744653413"></a>Antivirus Software Name</strong></p>
+<table><tbody><tr id="row10198465"><th class="firstcol" valign="top" width="50%" id="mcps1.1.3.1.1"><p id="p20769304"><a name="p20769304"></a><a name="p20769304"></a><strong id="b986744653413"><a name="b986744653413"></a><a name="b986744653413"></a>Antivirus Software Name</strong></p> <!-- pragma: allowlist secret -->
 </th>
 <td class="cellrowborder" valign="top" width="50%" headers="mcps1.1.3.1.1 "><p id="p729911354711"><a name="p729911354711"></a><a name="p729911354711"></a>QiAnXin</p>
 </td>
@@ -50,12 +50,12 @@ The software packages, release documents, and product documents have been scanne
 <td class="cellrowborder" valign="top" width="50%" headers="mcps1.1.3.2.1 "><p id="p82991034475"><a name="p82991034475"></a><a name="p82991034475"></a>8.0.5.5260</p>
 </td>
 </tr>
-<tr id="row49174790"><th class="firstcol" valign="top" width="50%" id="mcps1.1.3.3.1"><p id="p23735071"><a name="p23735071"></a><a name="p23735071"></a><strong id="b1897618493712"><a name="b1897618493712"></a><a name="b1897618493712"></a>Antivirus Database Version</strong></p>
+<tr id="row49174790"><th class="firstcol" valign="top" width="50%" id="mcps1.1.3.3.1"><p id="p23735071"><a name="p23735071"></a><a name="p23735071"></a><strong id="b1897618493712"><a name="b1897618493712"></a><a name="b1897618493712"></a>Antivirus Database Version</strong></p> <!-- pragma: allowlist secret -->
 </th>
 <td class="cellrowborder" valign="top" width="50%" headers="mcps1.1.3.3.1 "><p id="p1129919354712"><a name="p1129919354712"></a><a name="p1129919354712"></a>2025-12-29 08:00:00.0</p>
 </td>
 </tr>
-<tr id="row30698276"><th class="firstcol" valign="top" width="50%" id="mcps1.1.3.4.1"><p id="p3532453"><a name="p3532453"></a><a name="p3532453"></a><strong id="b1945510963714"><a name="b1945510963714"></a><a name="b1945510963714"></a>Scan Time</strong></p>
+<tr id="row30698276"><th class="firstcol" valign="top" width="50%" id="mcps1.1.3.4.1"><p id="p3532453"><a name="p3532453"></a><a name="p3532453"></a><strong id="b1945510963714"><a name="b1945510963714"></a><a name="b1945510963714"></a>Scan Time</strong></p> <!-- pragma: allowlist secret -->
 </th>
 <td class="cellrowborder" valign="top" width="50%" headers="mcps1.1.3.4.1 "><p id="p429913114712"><a name="p429913114712"></a><a name="p429913114712"></a>2025-12-30 17:32:07</p>
 </td>
@@ -230,14 +230,13 @@ N/A
 
 |Document|Description|Delivery Method|
 |--|--|--|
-|Kunpeng BoostKit 25.3.0 Intelligent Data Analytics Developer Guide|Provides guidance on how to use Intelligent Data Analytics features and related APIs.|Kunpeng community|
-|Kunpeng BoostKit 25.3.0 Intelligent Data Analytics Release Notes|Describes the release information.|
+|Kunpeng BoostKit 26.2.RC1 Intelligent Data Analytics Developer Guide|Provides guidance on how to use Intelligent Data Analytics features and related APIs.|Kunpeng community|
+|Kunpeng BoostKit 26.2.RC1 Intelligent Data Analytics Release Notes|Describes the release information.|
 
 
 
 ### Obtaining Documentation<a name="EN-US_TOPIC_0000002552888641"></a>
 
 You can access the  [Kunpeng community](https://www.hikunpeng.com/document/detail/en/kunpengddk/wtsnew/index.html)  to browse and obtain related documents.
-
 
 
