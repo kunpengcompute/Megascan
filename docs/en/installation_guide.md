@@ -1,77 +1,221 @@
 # Installation Guide<a name="EN-US_TOPIC_0000002553346771"></a>
 
-## Environment Requirements<a name="EN-US_TOPIC_0000002522226848"></a>
+<!-- md-trans-meta sourceCommit=cef0cf22901fa9ada7db6826684488ff749a38f9 translatedAt=2026-08-31T01:41:59.718Z pushedAt=2026-09-04T09:24:07.724Z -->
 
-To use KDADK-MMPM smoothly and securely, ensure that your environment is one of the verified environments. If you encounter any problem when using this feature, check that your environment is a verified environment.
+This document describes how to install Megascan via source code compilation and RPM packages. Source code compilation is suitable for development, debugging, and custom builds, whereas the RPM method is intended for deployment scenarios where an official software package has been obtained.
 
-**Table  1**  Verified environments
+To use Megascan smoothly and securely, ensure that your environment is one of the verified environments. If you encounter any problem when using Megascan, check first whether your environment can be switched to a verified environment.
+
+**Table 1** Verified environments<a id="verified-environments"></a>
 
 |OS|CPU|GCC Version|
 |--|--|--|
 |openEuler 22.03 LTS SP4|New Kunpeng 920 processor model|10.3.1|
 |openEuler 24.03 LTS SP1|New Kunpeng 920 processor model|12.3.1|
 
+Compiling the Megascan dynamic library does not depend on third-party algorithm libraries such as Boost and PCRE.
 
-**Table  2**  Software requirement
-
-|Software|Version|How to Obtain|
+|Software|Version|Purpose|
 |--|--|--|
-|Boostkit-boostida-kdadk-mmpm-2.5.3.zip|2.5.3|Obtain the software package from the **Smart Data Analysis > Resource Download** page.|
+|GCC|10.3 or later|Mandatory, used for compiling the Megascan dynamic library|
+|CMake|3.22 or later|Mandatory, used for generating the build project|
+|GNU Make|Matching the OS|Mandatory, used for executing the default build|
+|glibc and POSIX Threads|Matching the OS|Mandatory, used for providing the basic runtime library and thread interfaces|
+|Python 3|3.8 or later|Optional, used for building test programs|
+|CUnit|1.0 or later|Optional, used for running unit tests|
+|rpm-build and tar|Matching the OS|Optional, used for building RPM packages|
 
+Install the basic compilation tools on openEuler.
 
-To use KDADK-MMPM smoothly and securely, ensure that your environment is one of the verified environments. If you encounter any problem when using this feature, check that your environment is a verified environment.
-## Software Deployment<a name="EN-US_TOPIC_0000002553186817"></a>
+```bash
+sudo dnf install -y gcc gcc-c++ cmake make
+```
 
-**Obtaining the Software Package and Verifying Its Integrity<a name="section5964123113114"></a>**
+After the installation, check the versions.
 
-1. Obtain the software package and its SHA-256 checksum file from the Kunpeng community.
+```bash
+gcc --version
+cmake --version
+make --version
+```
 
-    Obtain the  **Boostkit-boostida-kdadk-mmpm-2.5.3.zip**  software package as instructed in  [Table 2](environment-requirements.md#table95981444171712). 
+## Source Code Compilation
 
-    >![](public_sys-resources/icon-note.gif) **NOTE:** 
-    >Before using the software package, read and agree to  [Kunpeng BoostKit User License Agreement 2.0](https://www.hikunpeng.com/en/legal/developer/boostkit/software/protocol).
+The following commands are all executed in the root directory of the Megascan source code.
 
-2. Calculate the SHA-256 checksum of the software package.
+1. Go to the source code directory.
 
-    Run the following command on Linux:
-
-    ```sh
-    sha256sum Boostkit-boostida-kdadk-mmpm-2.5.3.zip
+    ```bash
+    cd Megascan
     ```
 
-    Run the following command on Windows:
+2. Generate the `Release` build directory.
 
-    ```sh
-    certutil -hashfile Boostkit-boostida-kdadk-mmpm-2.5.3.zip SHA256
+    ```bash
+    cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
     ```
 
-3. Compare the calculated checksum with the value recorded in the SHA-256 checksum file. If the values match, the software package is intact. If they do not match, obtain the software package again.
+3. Compile the dynamic library.
 
-**Installing the Software Package<a name="section3965331101111"></a>**
-
-KDADK-MMPM is a multi-pattern rule matching software package, which accelerates matching of massive-scale fixed-length rules or matching of hundreds of thousands of variable-length rules.
-
-1. Obtain the KDADK-MMPM software package  **Boostkit-boostida-kdadk-mmpm-2.5.3.zip**  as instructed in  [Table 2](environment-requirements.md#table95981444171712).
-2. Decompress  **Boostkit-boostida-kdadk-mmpm-2.5.3.zip**  to obtain the KDADK-MMPM binary RPM package.
-3. Install KDADK-MMPM.
-
-    ```
-    rpm -ivh mmpm-xxxx.aarch64.rpm
+    ```bash
+    cmake --build build -j"$(nproc)"
     ```
 
-    ![](figures/1.png)
+4. Check the compilation outputs.
 
-    After the installation is complete, the dynamic library is installed to  **/usr/local/lib**, and the header file of the public function API is saved to  **/usr/local/include**.
-
-    >![](public_sys-resources/icon-note.gif) **NOTE:** 
-    >In the preceding command,  _xxxx_  indicates the version.
-
-4. Enable KDADK-MMPM.
-
-    When using KDADK-MMPM, you need to include the  **mmpm.h**  header file in the program and call the KDADK-MMPM-related functions. For example, with GCC, you can link the library by adding  **-lmmpm**  in the compilation and linking command. For details, see the example in  [API Usage Example](en-us_topic_0000002553346765.md).
-
-    ```
-    gcc your_program.c -o your_program -lmmpm
+    ```bash
+    test -f output/lib/libms.so && echo "libms.so: OK"
+    test -f output/include/ms.h && echo "ms.h: OK"
     ```
 
-    Successful compilation and normal execution of your program indicate that KDADK-MMPM has been successfully enabled.
+    An example of command output is as follows:
+
+    ```text
+    libms.so: OK
+    ms.h: OK
+    ```
+
+The main outputs after compilation are as follows:
+
+|Path|Description|
+|--|--|
+|`output/lib/libms.so`|Megascan dynamic library|
+|`output/include/*.h`|Public header files|
+|`build/`|CMake intermediate files|
+
+When you need to retain debug symbols and stack frame information, you can create a separate build directory.
+
+```bash
+cmake -S . -B build-profile \
+  -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+  -DMS_ENABLE_PROFILING=ON
+cmake --build build-profile -j"$(nproc)"
+```
+
+For rebuilding, delete the corresponding build directory and run the CMake commands again.
+
+```bash
+rm -rf build
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j"$(nproc)"
+```
+
+## Compilation and Testing
+
+The test program depends on Python 3 and CUnit. You can install them first on openEuler.
+
+```bash
+sudo dnf install -y python3 CUnit-devel
+```
+
+If the `CUnit-devel` software package is not available in your environment, place the CUnit header files and libraries into the test project by following instructions in [KTest Test Framework](../../test/README.md).
+
+After compiling the Megascan dynamic library, run the following commands in the root directory of the source code:
+
+```bash
+cd test
+python3 build.py debug
+```
+
+Run the unit test.
+
+```bash
+./build/bin/testdemo_ut
+```
+
+View the demo help.
+
+```bash
+./build/bin/megascan_demo --help
+```
+
+The current directory is `Megascan/test`, so the two programs are actually generated at `Megascan/test/build/bin/testdemo_ut` and `Megascan/test/build/bin/megascan_demo`, respectively. For details about the KTest description, test pass conditions, and the coverage measurement method, see [KTest Test Framework](../../test/README.md). For the complete usage of the demo, see [Demo Usage Guide](../../test/demo/README.md).
+
+## RPM Package Installation
+
+If you have obtained the official RPM package, you can install it directly.
+
+```bash
+sudo rpm -ivh boostida-kdadk-ms-release-xxxx.aarch64.rpm
+```
+
+`xxxx` indicates the software version. After installation, the default file locations are as follows:
+
+|Path|Description|
+|--|--|
+|`/usr/local/lib/libms.so`|Megascan dynamic library|
+|`/usr/local/include/*.h`|Public header files|
+
+Check the installation result:
+
+```bash
+rpm -q boostkit-kdadk-ms
+rpm -ql boostkit-kdadk-ms
+ldconfig -p | grep libms
+```
+
+The following is an example of the output upon successful installation. The version number and header file list are subject to the actual result.
+
+```text
+boostkit-kdadk-ms-1.1.0-oe2203.aarch64
+/usr/local/lib/libms.so
+/usr/local/include/ms.h
+...
+libms.so (libc6,AArch64) => /usr/local/lib/libms.so
+```
+
+To upgrade an installed package, run the following command:
+
+```bash
+sudo rpm -Uvh boostida-kdadk-ms-release-xxxx.aarch64.rpm
+```
+
+The following is an example of the output upon successful upgrade. The package name and progress are subject to the actual result.
+
+```text
+Verifying...                          ################################# [100%]
+Preparing...                          ################################# [100%]
+Updating / installing...
+   1:boostkit-kdadk-ms-xxxx           ################################# [ 50%]
+Cleaning up / removing...
+   2:boostkit-kdadk-ms-xxxx           ################################# [100%]
+```
+
+## RPM Package Build
+
+`build.sh` is used to build the RPM package in the AArch64 environment. Before executing it, install the packaging tools.
+
+```bash
+sudo dnf install -y rpm-build tar
+```
+
+After successful installation, the end of the `dnf` command output usually shows:
+
+```text
+Complete!
+```
+
+Run the following commands in the root directory of the source code:
+
+```bash
+chmod +x build.sh
+./build.sh
+```
+
+The generated software package is located in the `output` directory. You can run the following command to confirm it:
+
+```bash
+ls -1 output/*.rpm
+```
+
+An example of command output is as follows:
+
+```text
+output/boostida-kdadk-ms-release-1.1.0.oe2203.aarch64.rpm
+```
+
+This script rebuilds the source code and organizes the packaging directory. It is not recommended for routine incremental compilation when only `libms.so` is needed.
+
+## Development Environment Verification
+
+After completing source code compilation or RPM package installation, you can compile the example program by following instructions in [Quick Start](./quick_start.md). If the example can successfully link `libms.so` and output the expected rule ID, the Megascan development environment is available.
