@@ -1,0 +1,37 @@
+# Repository identity for the Megascan project.
+project: boostkit/Megascan
+version: "1.0"
+
+# Classify directories by their primary purpose.
+# Only the source directory type is included in scanning.
+directories:
+  # Chinese and English documentation, including API references, installation
+  # guides, quick starts, release notes and their image resources.
+  - path: "./docs/"
+    type: docs
+
+  # Standalone Megascan usage examples, including the AC stream scanning demo.
+  - path: "./examples/"
+    type: examples
+
+  # Megascan library implementation and public headers for Hash and AC matching,
+  # rule compilation, logical expressions, block/stream scanning and allocation.
+  - path: "./ms/"
+    type: source
+
+  # RPM packaging specification for the Megascan library and public headers.
+  - path: "./spec/"
+    type: packaging
+
+  # Unit and fuzz tests, test framework support, API validation demos,
+  # performance benchmarks, and test build and coverage scripts.
+  - path: "./test/"
+    type: test
+
+files:
+  # Project license text: Mulan Permissive Software License, Version 2.
+  - path: "./LICENSE"
+    type: license
+  # Repository layout and type declarations used to classify scan scope.
+  - path: "./.gitcode/opensource-repo-layout.yaml"
+    type: compliance-config
