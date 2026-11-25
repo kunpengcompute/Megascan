@@ -1,0 +1,50 @@
+name: Build Job
+
+on:
+  workflow_call:
+    inputs:
+      runs_on_flavor:
+        required: true
+        type: string
+      docker_img:
+        required: true
+        type: string
+      pr_id:
+        required: true
+        type: string
+      default_branch:
+        required: true
+        type: string
+
+jobs:
+  JOB_Compile:
+    name: Compile
+    select: selected_by_default
+    runs-on: [ self-hosted, os=euler, arch=arm64, type=pr, "${{ inputs.runs_on_flavor }}" ]
+    container:
+      image: ${{ inputs.docker_img }}
+    steps:
+      - name: fast_checkout
+        identifier: fast_checkout
+        uses: checkout
+        with:
+          # fork PR 预合并引用会被安全拦截，需显式放行
+          allow-unsafe-pr-checkout: true
+          ref: refs/merge-requests/${{ inputs.pr_id }}/merge
+      - name: checkout_default_scripts
+        uses: checkout
+        with:
+          ref: ${{ inputs.default_branch }}
+          path: base-scripts
+      - name: init_script
+        run: cp -rf base-scripts/.gitcode/. .gitcode/
+      - name: build
+        run: sh .gitcode/scripts/build_ci.sh
+      - name: upload build artifacts
+        uses: upload-artifact
+        with:
+          name: megascan-build
+          # build.sh 成功后已删除 output/lib，仅保留 RPM 作为制品
+          path: output/*.aarch64.rpm
+          # 仅当次运行内消费，1 天即释放
+          retention-days: 1
